@@ -1,15 +1,26 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react'
+import { supabase } from '../utils/supabase'
 
 export default function App() {
+  const [todos, setTodos] = useState([])
+
+  useEffect(() => {
+    async function getTodos() {
+      const { data: todos } = await supabase.from('todos').select()
+
+      if (todos) {
+        setTodos(todos)
+      }
+    }
+
+    getTodos()
+  }, [])
+
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/web" replace />} />
-        
-        <Route path="/web/*" element={<div className="p-4">LGU Web Dashboard Placeholder</div>} />
-        
-        <Route path="/mobile/*" element={<div className="p-4">BHW Mobile App Placeholder</div>} />
-      </Routes>
-    </BrowserRouter>
-  );
+    <ul>
+      {todos.map((todo) => (
+        <li key={todo.id}>{todo.name}</li>
+      ))}
+    </ul>
+  )
 }
