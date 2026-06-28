@@ -1,73 +1,81 @@
-# React + TypeScript + Vite
+# Project MABISA
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Project MABISA is a Mobile-based Application for Assessment of Barangay Inhabitants and Supply Allocation. It supports Barangay Health Workers during field visits with offline resident profiling, BMI-based health assessments, and local supply disbursement logging, while preparing queued records for synchronization to the LGU Supabase backend.
 
-Currently, two official plugins are available:
+## Technical Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React with TypeScript
+- Vite
+- Capacitor for Android packaging
+- Capacitor Community SQLite for device-local storage
+- Capacitor Network for connection restoration events
+- Supabase self-hosted via Docker for LAN or cloud deployment
+- PostgreSQL for central records
+- SQLite for offline mobile records
 
-## React Compiler
+## Application Surfaces
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Mobile BHW client: offline-first forms for residents, health assessments, supply disbursements, and sync status.
+- Web LGU portal: Supabase-connected administrative dashboard planned for Phase 4.
+- Backend database: Supabase PostgreSQL schema with Row Level Security policies.
 
-## Expanding the ESLint configuration
+## Setup
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Install dependencies:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Create `.env` with Supabase client values:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+VITE_SUPABASE_URL=http://localhost:54321
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Run TypeScript verification:
+
+```bash
+npx tsc -b
+```
+
+Run the development server with Node 20.19 or newer:
+
+```bash
+npm run dev
+```
+
+Build with Node 20.19 or newer:
+
+```bash
+npm run build
+```
+
+## Supabase Schema
+
+The initial PostgreSQL migration is located at:
+
+```text
+supabase/migrations/202606280001_initial_mabisa_schema.sql
+```
+
+It creates the central `users`, `residents`, `health_assessments`, `inventory_items`, and `supply_disbursements` tables with RLS policies for LGU/admin access and BHW-scoped resident data.
+
+## Offline Mobile Flow
+
+The mobile client initializes local SQLite tables through:
+
+```text
+src/services/localDatabase.ts
+```
+
+Data entry forms write to local SQLite first. Each create or update also writes a matching entry to `sync_queue`. The background sync service reads pending queue entries when network connectivity is restored and pushes them to Supabase sequentially.
+
+## Documentation
+
+Detailed architecture notes are available at:
+
+```text
+docs/CODE_DOCUMENTATION.md
 ```
