@@ -1,155 +1,127 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../utils/supabase';
+import { useEffect, useMemo, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import './App.css';
 import Dashboard from './components/Dashboard';
+import { supabase } from '../utils/supabase';
 
-type Todo = {
-  id: number;
-  name: string;
+type LoginState = {
+  email: string;
+  password: string;
 };
 
 export default function App() {
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loginState, setLoginState] = useState<LoginState>({
+    email: '',
+    password: '',
+  });
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const [email, setEmail] =
-    useState<string>('');
+  const bhwId = useMemo(() => session?.user.id ?? null, [session]);
 
-  const [password, setPassword] =
-    useState<string>('');
-
-  const [todos, setTodos] = useState<Todo[]>(
-    []
-  );
-
-  // CHECK SESSION
   useEffect(() => {
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
-        setSession(session);
+      .then(({ data }) => {
+        setSession(data.session);
+      })
+      .finally(() => {
+        setAuthLoading(false);
       });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-      }
-    );
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
-  // FETCH TODOS AFTER LOGIN
-  useEffect(() => {
-    if (session) {
-      getTodos();
-    }
-  }, [session]);
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthMessage(null);
+    setAuthLoading(true);
 
-  // GET TODOS
-  async function getTodos() {
-    const { data, error } = await supabase
-      .from('todos')
-      .select('*');
+    const { error } = await supabase.auth.signInWithPassword({
+      email: loginState.email,
+      password: loginState.password,
+    });
 
-    if (error) {
-      console.log(error);
-    } else {
-      setTodos(data || []);
-    }
-  }
-
-  // LOGIN
-  async function handleLogin(
-    e: React.FormEvent
-  ) {
-    e.preventDefault();
-
-    const { error } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    setAuthLoading(false);
 
     if (error) {
-      alert(error.message);
+      setAuthMessage(error.message);
+      return;
     }
+
+    setLoginState({
+      email: '',
+      password: '',
+    });
   }
 
-  // REGISTER
-  async function handleRegister() {
-    const { error } =
-      await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-    if (error) {
-      alert(error.message);
-    } else {
-      alert('Registration successful!');
-    }
-  }
-
-  // LOGOUT
   async function handleLogout() {
     await supabase.auth.signOut();
   }
 
-  // LOGIN PAGE
-  if (!session) {
+  if (!bhwId) {
     return (
-      <div style={{ padding: '20px' }}>
-        <h1>Login</h1>
+      <main className="mobile-shell auth-shell">
+        <section className="login-panel">
+          <div>
+            <p className="eyebrow">Project MABISA</p>
+            <h1>BHW Mobile Login</h1>
+            <p className="muted">Sign in once while online, then continue encoding barangay records on the device.</p>
+          </div>
 
-        <form onSubmit={handleLogin}>
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) =>
-              setEmail(e.target.value)
-            }
-          />
+          <form className="stack" onSubmit={handleLogin}>
+            <label>
+              <span>Email</span>
+              <input
+                autoComplete="email"
+                inputMode="email"
+                type="email"
+                value={loginState.email}
+                onChange={(event) =>
+                  setLoginState((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
 
-          <br />
-          <br />
+            <label>
+              <span>Password</span>
+              <input
+                autoComplete="current-password"
+                type="password"
+                value={loginState.password}
+                onChange={(event) =>
+                  setLoginState((current) => ({
+                    ...current,
+                    password: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-          />
+            {authMessage ? <p className="alert">{authMessage}</p> : null}
 
-          <br />
-          <br />
-
-          <button type="submit">
-            Login
-          </button>
-
-          <button
-            type="button"
-            onClick={handleRegister}
-            style={{ marginLeft: '10px' }}
-          >
-            Register
-          </button>
-        </form>
-      </div>
+            <button className="primary-button" type="submit" disabled={authLoading}>
+              {authLoading ? 'Checking Access' : 'Login'}
+            </button>
+          </form>
+        </section>
+      </main>
     );
   }
 
-  // DASHBOARD
-  return (
-    <Dashboard
-      todos={todos}
-      logout={handleLogout}
-    />
-  );
+  return <Dashboard bhwId={bhwId} logout={handleLogout} />;
 }
