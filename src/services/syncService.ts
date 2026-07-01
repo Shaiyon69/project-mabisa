@@ -5,7 +5,7 @@ import type {
   Resident,
   SupplyDisbursement,
 } from '../types/database';
-import { supabase } from '../../utils/supabase';
+import { supabase } from '../lib/supabase';
 import {
   initializeLocalDatabase,
   markSyncQueueEntryFailed,

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { BrowserRouter } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import './App.css';
-import Dashboard from './components/Dashboard';
-import { supabase } from '../utils/supabase';
+import { MabisaDataProvider } from './app/MabisaDataContext';
+import { AppRoutes } from './app/routes/AppRoutes';
+import { LoginPage } from './pages/auth/LoginPage';
+import { supabase } from './lib/supabase';
 
 type LoginState = {
   email: string;
@@ -11,6 +14,7 @@ type LoginState = {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [demoAccess, setDemoAccess] = useState<'bhw' | 'admin' | null>(null);
   const [loginState, setLoginState] = useState<LoginState>({
     email: '',
     password: '',
@@ -19,6 +23,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
+  const activeBhwId = bhwId ?? (demoAccess ? 'demo-ui-testing-bhw' : null);
 
   useEffect(() => {
     supabase.auth
@@ -65,63 +70,47 @@ export default function App() {
   }
 
   async function handleLogout() {
+    setDemoAccess(null);
     await supabase.auth.signOut();
   }
 
-  if (!bhwId) {
+  // Temporary demo entry points for UI review only.
+  // Keep the real Supabase login flow intact for production authentication.
+  function handleDemoAccess(target: 'bhw' | 'admin') {
+    window.history.pushState({}, '', target === 'admin' ? '/admin' : '/bhw');
+    setDemoAccess(target);
+  }
+
+  if (!activeBhwId) {
     return (
-      <main className="mobile-shell auth-shell">
-        <section className="login-panel">
-          <div>
-            <p className="eyebrow">Project MABISA</p>
-            <h1>BHW Mobile Login</h1>
-            <p className="muted">Sign in once while online, then continue encoding barangay records on the device.</p>
-          </div>
-
-          <form className="stack" onSubmit={handleLogin}>
-            <label>
-              <span>Email</span>
-              <input
-                autoComplete="email"
-                inputMode="email"
-                type="email"
-                value={loginState.email}
-                onChange={(event) =>
-                  setLoginState((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            <label>
-              <span>Password</span>
-              <input
-                autoComplete="current-password"
-                type="password"
-                value={loginState.password}
-                onChange={(event) =>
-                  setLoginState((current) => ({
-                    ...current,
-                    password: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            {authMessage ? <p className="alert">{authMessage}</p> : null}
-
-            <button className="primary-button" type="submit" disabled={authLoading}>
-              {authLoading ? 'Checking Access' : 'Login'}
-            </button>
-          </form>
-        </section>
-      </main>
+      <LoginPage
+        email={loginState.email}
+        password={loginState.password}
+        authMessage={authMessage}
+        authLoading={authLoading}
+        onEmailChange={(email) =>
+          setLoginState((current) => ({
+            ...current,
+            email,
+          }))
+        }
+        onPasswordChange={(password) =>
+          setLoginState((current) => ({
+            ...current,
+            password,
+          }))
+        }
+        onSubmit={handleLogin}
+        onDemoAccess={handleDemoAccess}
+      />
     );
   }
 
-  return <Dashboard bhwId={bhwId} logout={handleLogout} />;
+  return (
+    <BrowserRouter>
+      <MabisaDataProvider bhwId={activeBhwId}>
+        <AppRoutes logout={handleLogout} />
+      </MabisaDataProvider>
+    </BrowserRouter>
+  );
 }
