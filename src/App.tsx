@@ -6,13 +6,14 @@ import { MabisaDataProvider } from './app/MabisaDataContext';
 import { AppRoutes } from './app/routes/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
+import { logDev } from './lib/utils';
 
 type LoginState = {
   email: string;
   password: string;
 };
 
-export default function App() {
+export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [demoAccess, setDemoAccess] = useState<'bhw' | 'admin' | null>(null);
   const [loginState, setLoginState] = useState<LoginState>({
@@ -59,6 +60,7 @@ export default function App() {
     setAuthLoading(false);
 
     if (error) {
+      logDev('Supabase login failed', error.message);
       setAuthMessage(error.message);
       return;
     }

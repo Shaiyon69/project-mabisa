@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import { Button } from '../../components/common/Button';
-import { Input } from '../../components/common/Input';
+import { FormField } from '../../components/common/FormField';
 
 type LoginPageProps = {
   email: string;
@@ -38,7 +38,7 @@ export function LoginPage({
         </div>
 
         <form className="stack" onSubmit={onSubmit}>
-          <Input
+          <FormField
             label="Email"
             autoComplete="email"
             inputMode="email"
@@ -49,7 +49,7 @@ export function LoginPage({
             required
           />
 
-          <Input
+          <FormField
             label="Password"
             autoComplete="current-password"
             type="password"

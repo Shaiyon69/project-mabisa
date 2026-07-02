@@ -1,8 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { useMabisaData } from '../mabisaData';
-import { Badge } from '../../components/common/Badge';
-import { Button } from '../../components/common/Button';
-import { PageHeader } from '../../components/common/PageHeader';
+import { useMabisaData } from '../../app/mabisaData';
+import { Badge } from '../common/Badge';
+import { Button } from '../common/Button';
+import { PageHeader } from '../common/PageHeader';
 
 const bhwNavItems = [
   { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', end: true },
@@ -18,8 +18,7 @@ type BHWLayoutProps = {
 export function BHWLayout({ logout }: BHWLayoutProps) {
   const { isOnline, message } = useMabisaData();
 
-  // BHW screens are intentionally constrained to a phone-sized shell
-  // because this interface is packaged as a Capacitor Android application.
+  // BHW uses a phone-sized shell because this interface is packaged with Capacitor.
   return (
     <main className="bhw-preview-shell">
       <section className="bhw-mobile-shell" aria-label="BHW mobile app preview">

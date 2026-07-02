@@ -5,6 +5,7 @@ import type {
   Resident,
   SupplyDisbursement,
 } from '../types/database';
+import { logDev } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import {
   initializeLocalDatabase,
@@ -80,6 +81,12 @@ export async function syncPendingQueue(): Promise<SyncResult> {
         processed += 1;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Sync failed';
+        logDev('Offline sync queue entry failed', {
+          queueId: entry.queue_id,
+          table: entry.target_table,
+          operation: entry.operation_type,
+          errorMessage,
+        });
         await markSyncQueueEntryFailed(entry.queue_id, errorMessage);
 
         return {

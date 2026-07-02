@@ -53,3 +53,9 @@ export function formatDate(value: string): string {
     year: 'numeric',
   }).format(new Date(value));
 }
+
+export function logDev(message: string, data?: unknown): void {
+  if (import.meta.env.DEV) {
+    console.info(`[MABISA] ${message}`, data ?? '');
+  }
+}

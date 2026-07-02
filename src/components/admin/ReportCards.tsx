@@ -1,7 +1,7 @@
 import type { HealthAssessment, SupplyDisbursement } from '../../types/database';
 import { formatDate, titleCase } from '../../lib/utils';
 import { Card } from '../common/Card';
-import { EmptyState } from '../common/EmptyState';
+import { EmptyState } from '../common/StateMessage';
 
 type ReportCardsProps = {
   assessments: HealthAssessment[];

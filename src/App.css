@@ -1,3 +1,5 @@
+/* Base layout */
+
 .mobile-shell {
   width: min(100%, 1180px);
   min-height: 100svh;
@@ -50,7 +52,7 @@
 .compact-list li,
 .stock-card,
 .activity-card,
-.table-wrap {
+.ui-table-wrap {
   transition:
     transform 180ms ease,
     box-shadow 180ms ease,
@@ -111,6 +113,8 @@
   font-weight: 800;
 }
 
+/* Common components */
+
 .side-rail {
   display: flex;
   flex-direction: column;
@@ -162,7 +166,7 @@
   gap: 15px;
 }
 
-label {
+.ui-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -170,6 +174,12 @@ label {
   font-size: 13px;
   font-weight: 900;
   text-align: left;
+}
+
+.ui-field small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 input,
@@ -265,6 +275,8 @@ button:active,
   background: var(--secondary);
   box-shadow: 0 12px 24px rgb(193 140 93 / 0.2);
 }
+
+/* Auth */
 
 .mobile-tabs {
   display: grid;
@@ -526,7 +538,7 @@ button:active,
   border-color: var(--border);
 }
 
-.empty-state {
+.ui-state {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -538,24 +550,55 @@ button:active,
   font-size: 14px;
 }
 
-.empty-state strong {
+.ui-state strong {
   color: var(--text-h);
 }
 
-.table-wrap {
+.ui-state-loading {
+  flex-direction: row;
+  align-items: center;
+}
+
+.ui-state-loading span {
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+
+.ui-state-error {
+  color: #7c352d;
+  background: #f7e7e2;
+  border-color: #e1c2bb;
+}
+
+.ui-state-offline {
+  color: #75512f;
+  background: #f7eadc;
+  border-color: #e9caa9;
+}
+
+.ui-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: rgb(255 253 247 / 0.76);
 }
 
-.table-stack {
+.ui-table-stack {
   display: flex;
   flex-direction: column;
   gap: 13px;
 }
 
-.table-meta {
+.ui-table-toolbar {
+  display: grid;
+  gap: 12px;
+}
+
+.ui-table-meta {
   color: var(--muted);
   font-size: 12px;
 }
@@ -663,6 +706,8 @@ tbody tr:hover {
   flex: 1 1 150px;
 }
 
+/* Admin web */
+
 .admin-layout {
   width: min(100%, 1320px);
 }
@@ -710,6 +755,8 @@ tbody tr:hover {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* BHW mobile */
 
 .bhw-preview-shell {
   min-height: 100svh;
@@ -867,22 +914,7 @@ tbody tr:hover {
   box-shadow: var(--shadow-clay);
 }
 
-.loading-state {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px;
-  color: var(--muted);
-}
-
-.loading-state span {
-  width: 18px;
-  height: 18px;
-  border: 3px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 900ms linear infinite;
-}
+/* Utilities */
 
 @keyframes spin {
   to {

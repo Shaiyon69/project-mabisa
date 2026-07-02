@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Resident } from '../../types/database';
 import { titleCase } from '../../lib/utils';
-import { Badge } from '../common/Badge';
-import { EmptyState } from '../common/EmptyState';
-import { Input } from '../common/Input';
-import { TableWrapper } from '../common/TableWrapper';
+import { FormField } from '../common/FormField';
+import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
 
 type ResidentsTableProps = {
   residents: Resident[];
@@ -13,6 +11,28 @@ type ResidentsTableProps = {
 
 export function ResidentsTable({ residents, pendingQueueCount }: ResidentsTableProps) {
   const [query, setQuery] = useState('');
+  const columns: TableColumn<Resident>[] = [
+    {
+      key: 'resident',
+      header: 'Resident',
+      render: (resident) => resident.name,
+    },
+    {
+      key: 'sex',
+      header: 'Sex',
+      render: (resident) => titleCase(resident.sex),
+    },
+    {
+      key: 'address',
+      header: 'Address',
+      render: (resident) => resident.address,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: () => <TableBadge label={pendingQueueCount ? 'Pending Sync' : 'Synced'} tone={pendingQueueCount ? 'warning' : 'success'} />,
+    },
+  ];
   const filteredResidents = useMemo(() => {
     const search = query.trim().toLowerCase();
 
@@ -24,34 +44,19 @@ export function ResidentsTable({ residents, pendingQueueCount }: ResidentsTableP
   }, [query, residents]);
 
   return (
-    <div className="table-stack">
-      <Input label="Search residents" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, sex, or address" />
-      <TableWrapper>
-        <table>
-          <thead>
-            <tr>
-              <th>Resident</th>
-              <th>Sex</th>
-              <th>Address</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredResidents.slice(0, 10).map((resident) => (
-              <tr key={resident.resident_id}>
-                <td>{resident.name}</td>
-                <td>{titleCase(resident.sex)}</td>
-                <td>{resident.address}</td>
-                <td>
-                  <Badge label={pendingQueueCount ? 'Pending Sync' : 'Synced'} tone={pendingQueueCount ? 'warning' : 'success'} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!filteredResidents.length ? <EmptyState title="No resident rows" text="Try a different search or register residents from the BHW app." /> : null}
-      </TableWrapper>
-      <p className="table-meta">Showing {Math.min(filteredResidents.length, 10)} of {filteredResidents.length} local resident row(s).</p>
+    <div className="ui-table-stack">
+      <TableToolbar>
+        <FormField label="Search residents" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, sex, or address" />
+      </TableToolbar>
+      <Table
+        columns={columns}
+        rows={filteredResidents}
+        getRowKey={(resident) => resident.resident_id}
+        emptyTitle="No resident rows"
+        emptyText="Try a different search or register residents from the BHW app."
+        limit={10}
+      />
+      <TableMeta shown={Math.min(filteredResidents.length, 10)} total={filteredResidents.length} label="resident" />
     </div>
   );
 }

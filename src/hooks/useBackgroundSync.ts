@@ -17,10 +17,24 @@ export function useBackgroundSync(): BackgroundSyncState {
 
   const runSync = useCallback(async () => {
     setStatus('syncing');
-    const result = await syncPendingQueue();
-    setStatus(result.status);
-    setLastResult(result);
-    return result;
+
+    try {
+      const result = await syncPendingQueue();
+      setStatus(result.status);
+      setLastResult(result);
+      return result;
+    } catch (error) {
+      const failedResult: SyncResult = {
+        status: 'failed',
+        processed: 0,
+        failedQueueId: null,
+        errorMessage: error instanceof Error ? error.message : 'Synchronization failed',
+      };
+
+      setStatus('failed');
+      setLastResult(failedResult);
+      return failedResult;
+    }
   }, []);
 
   useEffect(() => {
