@@ -1,15 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { AdminLayout } from '../layouts/AdminLayout';
-import { BHWLayout } from '../layouts/BHWLayout';
-import { AccountsPage } from '../../pages/admin/AccountsPage';
-import { AdminDashboardPage } from '../../pages/admin/AdminDashboardPage';
-import { InventoryPage } from '../../pages/admin/InventoryPage';
-import { ReportsPage } from '../../pages/admin/ReportsPage';
-import { ResidentsPage } from '../../pages/admin/ResidentsPage';
-import { BHWHomePage } from '../../pages/bhw/BHWHomePage';
-import { HealthAssessmentPage } from '../../pages/bhw/HealthAssessmentPage';
-import { RegisterResidentPage } from '../../pages/bhw/RegisterResidentPage';
-import { SupplyDisbursementPage } from '../../pages/bhw/SupplyDisbursementPage';
+import { AdminLayout } from '../../components/admin/AdminLayout';
+import { BHWLayout } from '../../components/bhw/BHWLayout';
+import { AccountsPage, AdminDashboardPage, InventoryPage, ReportsPage, ResidentsPage } from '../../pages/admin/AdminPages';
+import { BHWHomePage, HealthAssessmentPage, RegisterResidentPage, SupplyDisbursementPage } from '../../pages/bhw/BHWPages';
 
 type AppRoutesProps = {
   logout: () => Promise<void>;

@@ -5,8 +5,7 @@ import { saveInventoryItemLocally, saveSupplyDisbursementLocally } from '../../s
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { Input } from '../common/Input';
-import { Select } from '../common/Select';
+import { FormActions, FormField, SelectField } from '../common/FormField';
 import { ResidentSearch } from './ResidentSearch';
 
 type SupplyDisbursementFormProps = {
@@ -22,6 +21,7 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
   const [disbursementDate, setDisbursementDate] = useState(today());
   const [quantity, setQuantity] = useState('');
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const selectedResidentId = residentId || residents[0]?.resident_id || '';
   const selectedItemId = itemId || inventoryItems[0]?.item_id || '';
   const selectedItem = inventoryItems.find((item) => item.item_id === selectedItemId) ?? null;
@@ -48,6 +48,7 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
     }
 
     setSaving(true);
+    setFormError(null);
     const timestamp = new Date().toISOString();
     const disbursement: SupplyDisbursement = {
       log_id: createId(),
@@ -64,12 +65,17 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
       updated_at: timestamp,
     };
 
-    await saveSupplyDisbursementLocally(disbursement);
-    await saveInventoryItemLocally(updatedItem, 'UPDATE');
-    setQuantity('');
-    setDisbursementDate(today());
-    setSaving(false);
-    await onSaved();
+    try {
+      await saveSupplyDisbursementLocally(disbursement);
+      await saveInventoryItemLocally(updatedItem, 'UPDATE');
+      setQuantity('');
+      setDisbursementDate(today());
+      await onSaved();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Supply disbursement was not saved.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -85,24 +91,25 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
         />
       </div>
       <form className="stack" onSubmit={handleSubmit}>
+        {formError ? <p className="form-hint">{formError}</p> : null}
         <ResidentSearch residents={residents} selectedResidentId={selectedResidentId} onChange={setResidentId} />
-        <Input
+        <FormField
           label="Search Supply Item"
           value={itemSearch}
           onChange={(event) => setItemSearch(event.target.value)}
           placeholder="Search by item name or type"
           disabled={!inventoryItems.length}
         />
-        <Select label="Supply Item" value={selectedItemId} onChange={(event) => setItemId(event.target.value)} required disabled={!inventoryItems.length}>
+        <SelectField label="Supply Item" value={selectedItemId} onChange={(event) => setItemId(event.target.value)} required disabled={!inventoryItems.length}>
           {filteredInventoryItems.map((item) => (
             <option key={item.item_id} value={item.item_id}>
               {item.item_name} • {titleCase(item.type)} • {item.current_stock} left
             </option>
           ))}
-        </Select>
+        </SelectField>
         <div className="field-row">
-          <Input label="Date Released" type="date" value={disbursementDate} onChange={(event) => setDisbursementDate(event.target.value)} required />
-          <Input
+          <FormField label="Date Released" type="date" value={disbursementDate} onChange={(event) => setDisbursementDate(event.target.value)} required />
+          <FormField
             label="Quantity"
             min="1"
             max={selectedItem?.current_stock ?? 1}
@@ -117,11 +124,11 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
           <strong>{selectedItem?.current_stock ?? 0}</strong>
           <small>{selectedItem ? titleCase(selectedItem.type) : 'Select an inventory item'}</small>
         </div>
-        <div className="sticky-actions">
+        <FormActions>
           <Button type="submit" disabled={saving || !residents.length || !inventoryItems.length}>
             {saving ? 'Saving Offline' : 'Save Disbursement'}
           </Button>
-        </div>
+        </FormActions>
       </form>
     </Card>
   );

@@ -5,7 +5,7 @@ import { saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { Input } from '../common/Input';
+import { FormActions, FormField } from '../common/FormField';
 import { ResidentSearch } from './ResidentSearch';
 
 type HealthAssessmentFormProps = {
@@ -19,6 +19,7 @@ export function HealthAssessmentForm({ residents, onSaved }: HealthAssessmentFor
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const selectedResidentId = residentId || residents[0]?.resident_id || '';
   const bmi = calculateBmi(Number(weight), Number(height));
   const nutritionStatus = getNutritionStatus(bmi);
@@ -31,6 +32,7 @@ export function HealthAssessmentForm({ residents, onSaved }: HealthAssessmentFor
     }
 
     setSaving(true);
+    setFormError(null);
     const timestamp = new Date().toISOString();
     const assessment: HealthAssessment = {
       assessment_id: createId(),
@@ -44,12 +46,17 @@ export function HealthAssessmentForm({ residents, onSaved }: HealthAssessmentFor
       updated_at: timestamp,
     };
 
-    await saveHealthAssessmentLocally(assessment);
-    setWeight('');
-    setHeight('');
-    setAssessmentDate(today());
-    setSaving(false);
-    await onSaved();
+    try {
+      await saveHealthAssessmentLocally(assessment);
+      setWeight('');
+      setHeight('');
+      setAssessmentDate(today());
+      await onSaved();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Health assessment was not saved.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -62,23 +69,24 @@ export function HealthAssessmentForm({ residents, onSaved }: HealthAssessmentFor
         <Badge label={residents.length ? 'Ready' : 'Needs Resident'} tone={residents.length ? 'success' : 'warning'} />
       </div>
       <form className="stack" onSubmit={handleSubmit}>
+        {formError ? <p className="form-hint">{formError}</p> : null}
         <ResidentSearch residents={residents} selectedResidentId={selectedResidentId} onChange={setResidentId} />
         {!residents.length ? <p className="form-hint">Register a resident before recording a health assessment.</p> : null}
-        <Input label="Assessment Date" type="date" value={assessmentDate} onChange={(event) => setAssessmentDate(event.target.value)} required />
+        <FormField label="Assessment Date" type="date" value={assessmentDate} onChange={(event) => setAssessmentDate(event.target.value)} required />
         <div className="field-row">
-          <Input label="Weight kg" min="1" step="0.1" type="number" value={weight} onChange={(event) => setWeight(event.target.value)} required />
-          <Input label="Height cm" min="1" step="0.1" type="number" value={height} onChange={(event) => setHeight(event.target.value)} required />
+          <FormField label="Weight kg" min="1" step="0.1" type="number" value={weight} onChange={(event) => setWeight(event.target.value)} required />
+          <FormField label="Height cm" min="1" step="0.1" type="number" value={height} onChange={(event) => setHeight(event.target.value)} required />
         </div>
         <div className="computed-panel">
           <span>BMI</span>
           <strong>{bmi ? bmi.toFixed(2) : '0.00'}</strong>
           <Badge label={nutritionStatus ?? 'Waiting for measurements'} tone={nutritionStatus === 'normal' ? 'success' : nutritionStatus ? 'warning' : 'info'} />
         </div>
-        <div className="sticky-actions">
+        <FormActions>
           <Button type="submit" disabled={saving || !residents.length}>
             {saving ? 'Saving Offline' : 'Save Assessment'}
           </Button>
-        </div>
+        </FormActions>
       </form>
     </Card>
   );

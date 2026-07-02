@@ -5,8 +5,7 @@ import { saveResidentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { Input } from '../common/Input';
-import { Select } from '../common/Select';
+import { FormActions, FormField, SelectField, TextAreaField } from '../common/FormField';
 
 type ResidentFormProps = {
   bhwId: string;
@@ -19,10 +18,12 @@ export function ResidentForm({ bhwId, onSaved }: ResidentFormProps) {
   const [sex, setSex] = useState<ResidentSex>('female');
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
+    setFormError(null);
 
     const timestamp = new Date().toISOString();
     const resident: Resident = {
@@ -36,13 +37,18 @@ export function ResidentForm({ bhwId, onSaved }: ResidentFormProps) {
       updated_at: timestamp,
     };
 
-    await saveResidentLocally(resident);
-    setName('');
-    setBirthdate('');
-    setSex('female');
-    setAddress('');
-    setSaving(false);
-    await onSaved();
+    try {
+      await saveResidentLocally(resident);
+      setName('');
+      setBirthdate('');
+      setSex('female');
+      setAddress('');
+      await onSaved();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Resident profile was not saved.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -55,23 +61,27 @@ export function ResidentForm({ bhwId, onSaved }: ResidentFormProps) {
         <Badge label="Saved Offline" tone="success" />
       </div>
       <form className="stack" onSubmit={handleSubmit}>
-        <Input label="Full Name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Juan Dela Cruz" required />
+        {formError ? <p className="form-hint">{formError}</p> : null}
+        <FormField label="Full Name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Juan Dela Cruz" required />
         <div className="field-row">
-          <Input label="Birthdate" type="date" value={birthdate} onChange={(event) => setBirthdate(event.target.value)} required />
-          <Select label="Sex" value={sex} onChange={(event) => setSex(event.target.value as ResidentSex)}>
+          <FormField label="Birthdate" type="date" value={birthdate} onChange={(event) => setBirthdate(event.target.value)} required />
+          <SelectField label="Sex" value={sex} onChange={(event) => setSex(event.target.value as ResidentSex)}>
             <option value="female">Female</option>
             <option value="male">Male</option>
-          </Select>
+          </SelectField>
         </div>
-        <label>
-          <span>Purok / Address</span>
-          <textarea value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Purok, street, or household landmark" required />
-        </label>
-        <div className="sticky-actions">
+        <TextAreaField
+          label="Purok / Address"
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+          placeholder="Purok, street, or household landmark"
+          required
+        />
+        <FormActions>
           <Button type="submit" disabled={saving}>
             {saving ? 'Saving Offline' : 'Save Resident'}
           </Button>
-        </div>
+        </FormActions>
       </form>
     </Card>
   );

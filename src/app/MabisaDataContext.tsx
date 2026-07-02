@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBackgroundSync } from '../hooks/useBackgroundSync';
+import { logDev } from '../lib/utils';
 import {
   readLocalHealthAssessments,
   readLocalInventoryItems,
@@ -46,10 +47,18 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
 
   const runManualSync = useCallback(async () => {
     setSyncingManually(true);
-    const result = await backgroundSync.runSync();
-    await refreshLocalData();
-    setMessage(result.status === 'synced' ? `Synced ${result.processed} queued change(s).` : result.errorMessage);
-    setSyncingManually(false);
+
+    try {
+      const result = await backgroundSync.runSync();
+      await refreshLocalData();
+      setMessage(result.status === 'synced' ? `Synced ${result.processed} queued change(s).` : result.errorMessage);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Manual synchronization failed';
+      logDev('Manual sync refresh failed', message);
+      setMessage(message);
+    } finally {
+      setSyncingManually(false);
+    }
   }, [backgroundSync, refreshLocalData]);
 
   const value = useMemo<MabisaDataContextValue>(

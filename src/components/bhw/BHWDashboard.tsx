@@ -3,7 +3,7 @@ import type { LocalSnapshot } from '../../app/mabisaData';
 import { formatDate, titleCase } from '../../lib/utils';
 import { Badge } from '../common/Badge';
 import { Card } from '../common/Card';
-import { EmptyState } from '../common/EmptyState';
+import { EmptyState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
 
 type BHWDashboardProps = {

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Resident } from '../../types/database';
-import { Input } from '../common/Input';
-import { Select } from '../common/Select';
+import { FormField, SelectField } from '../common/FormField';
 
 type ResidentSearchProps = {
   residents: Resident[];
@@ -23,20 +22,20 @@ export function ResidentSearch({ residents, selectedResidentId, onChange }: Resi
 
   return (
     <>
-      <Input
+      <FormField
         label="Search Resident"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search by name or address"
         disabled={!residents.length}
       />
-      <Select label="Resident" value={selectedResidentId} onChange={(event) => onChange(event.target.value)} required disabled={!residents.length}>
+      <SelectField label="Resident" value={selectedResidentId} onChange={(event) => onChange(event.target.value)} required disabled={!residents.length}>
         {filteredResidents.map((resident) => (
           <option key={resident.resident_id} value={resident.resident_id}>
             {resident.name} • {resident.address}
           </option>
         ))}
-      </Select>
+      </SelectField>
     </>
   );
 }
