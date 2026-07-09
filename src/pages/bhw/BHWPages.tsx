@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
 import { BHWDashboard } from '../../components/bhw/BHWDashboard';
 import { HealthAssessmentForm } from '../../components/bhw/HealthAssessmentForm';
-import { ResidentForm } from '../../components/bhw/ResidentForm';
+import { HouseholdForm } from '../../components/bhw/HouseholdForm';
 import { SupplyDisbursementForm } from '../../components/bhw/SupplyDisbursementForm';
 
 export function BHWHomePage() {
@@ -24,11 +24,11 @@ export function RegisterResidentPage() {
   const { bhwId, refreshLocalData, setMessage } = useMabisaData();
 
   return (
-    <ResidentForm
+    <HouseholdForm
       bhwId={bhwId}
       onSaved={async () => {
         await refreshLocalData();
-        setMessage('Saved Offline. Resident profile is queued for sync.');
+        setMessage('Saved Offline. Household profile is queued for sync.');
         navigate('/bhw');
       }}
     />
@@ -41,7 +41,7 @@ export function HealthAssessmentPage() {
 
   return (
     <HealthAssessmentForm
-      residents={snapshot.residents}
+      individuals={snapshot.individuals} // Updated from residents
       onSaved={async () => {
         await refreshLocalData();
         setMessage('Pending Sync. Health assessment was saved on this device.');
@@ -57,7 +57,7 @@ export function SupplyDisbursementPage() {
 
   return (
     <SupplyDisbursementForm
-      residents={snapshot.residents}
+      individuals={snapshot.individuals} // Updated from residents
       inventoryItems={snapshot.inventoryItems}
       onSaved={async () => {
         await refreshLocalData();
