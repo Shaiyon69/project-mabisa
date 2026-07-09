@@ -1,20 +1,20 @@
 import { useMemo, useState } from 'react';
-import type { InventoryItem, Resident, SupplyDisbursement } from '../../types/database';
+import type { InventoryItem, Individual, SupplyDisbursement } from '../../types/database';
 import { createId, titleCase, today } from '../../lib/utils';
 import { saveInventoryItemLocally, saveSupplyDisbursementLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { FormActions, FormField, SelectField } from '../common/FormField';
-import { ResidentSearch } from './ResidentSearch';
+import { IndividualSearch } from './IndividualSearch'; // Updated import
 
 type SupplyDisbursementFormProps = {
-  residents: Resident[];
+  individuals: Individual[]; // Updated from residents
   inventoryItems: InventoryItem[];
   onSaved: () => Promise<void>;
 };
 
-export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: SupplyDisbursementFormProps) {
+export function SupplyDisbursementForm({ individuals, inventoryItems, onSaved }: SupplyDisbursementFormProps) {
   const [residentId, setResidentId] = useState('');
   const [itemId, setItemId] = useState('');
   const [itemSearch, setItemSearch] = useState('');
@@ -22,9 +22,12 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
   const [quantity, setQuantity] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const selectedResidentId = residentId || residents[0]?.resident_id || '';
+  
+  // Fallback to the first individual if none is selected
+  const selectedResidentId = residentId || individuals[0]?.resident_id || '';
   const selectedItemId = itemId || inventoryItems[0]?.item_id || '';
   const selectedItem = inventoryItems.find((item) => item.item_id === selectedItemId) ?? null;
+  
   const filteredInventoryItems = useMemo(() => {
     const search = itemSearch.trim().toLowerCase();
 
@@ -50,15 +53,18 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
     setSaving(true);
     setFormError(null);
     const timestamp = new Date().toISOString();
+    
+    // Note: resident_id remains the same to maintain the database foreign key link
     const disbursement: SupplyDisbursement = {
       log_id: createId(),
       item_id: selectedItemId,
-      resident_id: selectedResidentId,
+      resident_id: selectedResidentId, 
       disbursement_date: disbursementDate,
       quantity: releasedQuantity,
       created_at: timestamp,
       updated_at: timestamp,
     };
+    
     const updatedItem: InventoryItem = {
       ...selectedItem,
       current_stock: selectedItem.current_stock - releasedQuantity,
@@ -86,13 +92,16 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
           <h2>Log Supply Disbursement</h2>
         </div>
         <Badge
-          label={!residents.length ? 'Needs Resident' : !inventoryItems.length ? 'Needs Inventory' : 'Ready'}
-          tone={residents.length && inventoryItems.length ? 'success' : 'warning'}
+          label={!individuals.length ? 'Needs Profile' : !inventoryItems.length ? 'Needs Inventory' : 'Ready'}
+          tone={individuals.length && inventoryItems.length ? 'success' : 'warning'}
         />
       </div>
       <form className="stack" onSubmit={handleSubmit}>
         {formError ? <p className="form-hint">{formError}</p> : null}
-        <ResidentSearch residents={residents} selectedResidentId={selectedResidentId} onChange={setResidentId} />
+        
+        {/* Swapped to IndividualSearch and passed the new array */}
+        <IndividualSearch individuals={individuals} selectedResidentId={selectedResidentId} onChange={setResidentId} />
+        
         <FormField
           label="Search Supply Item"
           value={itemSearch}
@@ -125,8 +134,8 @@ export function SupplyDisbursementForm({ residents, inventoryItems, onSaved }: S
           <small>{selectedItem ? titleCase(selectedItem.type) : 'Select an inventory item'}</small>
         </div>
         <FormActions>
-          <Button type="submit" disabled={saving || !residents.length || !inventoryItems.length}>
-            {saving ? 'Saving Offline' : 'Save Disbursement'}
+          <Button type="submit" disabled={saving || !individuals.length || !inventoryItems.length}>
+            {saving ? 'Saving Offline...' : 'Save Disbursement'}
           </Button>
         </FormActions>
       </form>

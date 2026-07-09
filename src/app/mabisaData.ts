@@ -1,8 +1,9 @@
 import { createContext, useContext } from 'react';
-import type { HealthAssessment, InventoryItem, Resident, SupplyDisbursement } from '../types/database';
+import type { HealthAssessment, Household, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
 
 export type LocalSnapshot = {
-  residents: Resident[];
+  households: Household[];
+  individuals: Individual[];
   assessments: HealthAssessment[];
   inventoryItems: InventoryItem[];
   disbursements: SupplyDisbursement[];
@@ -22,7 +23,8 @@ export type MabisaDataContextValue = {
 };
 
 export const emptySnapshot: LocalSnapshot = {
-  residents: [],
+  households: [],
+  individuals: [],
   assessments: [],
   inventoryItems: [],
   disbursements: [],

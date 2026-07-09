@@ -14,9 +14,11 @@
     "@capacitor/core": "^7.4.4",
     "@capacitor/network": "^7.0.2",
     "@supabase/supabase-js": "^2.108.2",
+    "jeep-sqlite": "^2.8.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.15.1"
+    "react-router-dom": "^7.15.1",
+    "sql.js": "1.11.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
