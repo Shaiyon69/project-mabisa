@@ -15,7 +15,8 @@ type BHWDashboardProps = {
 };
 
 export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, onManualSync }: BHWDashboardProps) {
-  const latestResidents = useMemo(() => snapshot.residents.slice(0, 5), [snapshot.residents]);
+  // Swapped residents for individuals
+  const latestIndividuals = useMemo(() => snapshot.individuals.slice(0, 5), [snapshot.individuals]);
   const latestAssessments = useMemo(() => snapshot.assessments.slice(0, 3), [snapshot.assessments]);
 
   return (
@@ -29,9 +30,10 @@ export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, 
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
-        <Metric label="Residents" value={snapshot.residents.length} detail="Local profiles" tone="blue" />
-        <Metric label="Assessments" value={snapshot.assessments.length} detail="Health records" tone="green" />
-        <Metric label="Inventory" value={snapshot.inventoryItems.length} detail="Tracked items" tone="amber" />
+        {/* Updated metrics to reflect the new relational model */}
+        <Metric label="Households" value={snapshot.households.length} detail="Registered dwellings" tone="blue" />
+        <Metric label="Individuals" value={snapshot.individuals.length} detail="Local profiles" tone="green" />
+        <Metric label="Assessments" value={snapshot.assessments.length} detail="Health records" tone="amber" />
         <Metric label="Released" value={snapshot.disbursements.length} detail="Supply logs" tone="red" />
       </section>
 
@@ -39,23 +41,24 @@ export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, 
         <div className="panel-heading">
           <div>
             <p className="eyebrow">BHW workflow</p>
-            <h2>Recent Residents</h2>
+            <h2>Recent Profiles</h2>
           </div>
           <Badge label={snapshot.pendingQueueCount ? 'Pending Sync' : 'Saved Offline'} tone={snapshot.pendingQueueCount ? 'warning' : 'success'} />
         </div>
-        {latestResidents.length ? (
+        
+        {latestIndividuals.length ? (
           <ul className="compact-list">
-            {latestResidents.map((resident) => (
-              <li key={resident.resident_id}>
-                <span>{resident.name}</span>
+            {latestIndividuals.map((person) => (
+              <li key={person.resident_id}>
+                <span>{person.first_name} {person.last_name} {person.is_household_head ? '(Head)' : ''}</span>
                 <small>
-                  {titleCase(resident.sex)} • {resident.address}
+                  {titleCase(person.sex)}
                 </small>
               </li>
             ))}
           </ul>
         ) : (
-          <EmptyState title="No local resident profiles yet" text="Register a resident to start the offline-first BHW workflow." />
+          <EmptyState title="No local profiles yet" text="Register a household to start the offline-first BHW workflow." />
         )}
       </Card>
 

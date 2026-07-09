@@ -1,9 +1,12 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type UserRole = 'admin' | 'lgu' | 'bhw';
-export type ResidentSex = 'male' | 'female';
+export type IndividualSex = 'male' | 'female';
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
+export type DwellingType = 'concrete' | 'wood' | 'mixed' | 'makeshift';
+export type ElectricService = 'lamp' | 'gas' | 'iselco' | 'none';
+export type FuelUsed = 'wood' | 'charcoal' | 'lpg' | 'electricity';
 
 export type User = {
   user_id: string;
@@ -15,13 +18,33 @@ export type User = {
   updated_at: string;
 };
 
-export type Resident = {
+export type Household = {
+  household_id: string;
+  household_number: string;
+  dwelling_type: DwellingType;
+  electric_service: ElectricService;
+  fuel_used: FuelUsed;
+  toilet_type: string[];
+  water_source: string[];
+  food_production: string[];
+  health_status_notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Individual = {
   resident_id: string;
-  name: string;
-  birthdate: string;
-  sex: ResidentSex;
-  address: string;
-  assigned_bhw: string;
+  household_id: string;
+  first_name: string;
+  last_name: string;
+  sex: IndividualSex;
+  birthday: string;
+  is_household_head: boolean;
+  occupation: string | null;
+  educational_attainment: string | null;
+  is_out_of_school_youth: boolean;
+  is_pregnant_nursing_fp: boolean;
+  philhealth_number: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -63,12 +86,19 @@ export type UserInsert = Omit<User, 'created_at' | 'updated_at'> & {
 };
 export type UserUpdate = Partial<Omit<User, 'user_id'>>;
 
-export type ResidentInsert = Omit<Resident, 'resident_id' | 'created_at' | 'updated_at'> & {
+export type HouseholdInsert = Omit<Household, 'household_id' | 'created_at' | 'updated_at'> & {
+  household_id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+export type HouseholdUpdate = Partial<Omit<Household, 'household_id'>>;
+
+export type IndividualInsert = Omit<Individual, 'resident_id' | 'created_at' | 'updated_at'> & {
   resident_id?: string;
   created_at?: string;
   updated_at?: string;
 };
-export type ResidentUpdate = Partial<Omit<Resident, 'resident_id'>>;
+export type IndividualUpdate = Partial<Omit<Individual, 'resident_id'>>;
 
 export type HealthAssessmentInsert = Omit<HealthAssessment, 'assessment_id' | 'assessment_date' | 'created_at' | 'updated_at'> & {
   assessment_id?: string;
@@ -105,7 +135,8 @@ export type Database = {
   public: {
     Tables: {
       users: RowDefinition<User, UserInsert, UserUpdate>;
-      residents: RowDefinition<Resident, ResidentInsert, ResidentUpdate>;
+      households: RowDefinition<Household, HouseholdInsert, HouseholdUpdate>;
+      individuals: RowDefinition<Individual, IndividualInsert, IndividualUpdate>;
       health_assessments: RowDefinition<HealthAssessment, HealthAssessmentInsert, HealthAssessmentUpdate>;
       inventory_items: RowDefinition<InventoryItem, InventoryItemInsert, InventoryItemUpdate>;
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
@@ -129,9 +160,12 @@ export type Database = {
     };
     Enums: {
       user_role: UserRole;
-      resident_sex: ResidentSex;
+      individual_sex: IndividualSex;
       inventory_item_type: InventoryItemType;
       nutrition_status: NutritionStatus;
+      dwelling_type: DwellingType;
+      electric_service: ElectricService;
+      fuel_used: FuelUsed;
     };
     CompositeTypes: Record<string, never>;
   };
