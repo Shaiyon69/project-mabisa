@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from '@capacitor-community/sqlite';
 import type {
   HealthAssessment,
@@ -180,15 +181,39 @@ const migrations = [
  * This is called automatically when the app starts.
  */
 export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
+  // 1. If connection already exists, return it immediately
   if (localDatabase) {
-    return localDatabase; // Return existing connection to avoid memory leaks
+    return localDatabase;
   }
 
+  // 2. THE WEB POLYFILL
+  // This block ONLY runs in the browser. It ensures the emulator is injected
+  // exactly when needed, preventing Vite HMR race conditions.
+  if (Capacitor.getPlatform() === 'web') {
+    try {
+      let jeepEl = document.querySelector('jeep-sqlite');
+      
+      if (!jeepEl) {
+        jeepEl = document.createElement('jeep-sqlite');
+        document.body.appendChild(jeepEl);
+      }
+      
+      // Force the app to wait until the browser fully registers the element
+      await customElements.whenDefined('jeep-sqlite');
+      
+      // Initialize the web store via the sqlite wrapper, not the raw Capacitor instance
+      await sqlite.initWebStore();
+      
+    } catch (error: any) {
+      // If Vite Hot-Reloads, initWebStore might throw an "already initialized" error.
+      // We catch it here so it doesn't crash your React app.
+      console.warn('SQLite Web Store warning (safe to ignore during dev):', error);
+    }
+  }
+
+  // 3. CREATE & OPEN CONNECTION
   const database = await sqlite.createConnection('mabisa_local', false, 'no-encryption', 1, false);
   await database.open();
-  
-  // Enforce foreign key constraints so SQLite throws errors if we try to save
-  // an individual without a valid household_id.
   await database.execute('pragma foreign_keys = on');
 
   for (const statement of migrations) {
