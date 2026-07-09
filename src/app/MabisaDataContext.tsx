@@ -3,8 +3,9 @@ import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { logDev } from '../lib/utils';
 import {
   readLocalHealthAssessments,
+  readLocalHouseholds,
+  readLocalIndividuals,
   readLocalInventoryItems,
-  readLocalResidents,
   readLocalSupplyDisbursements,
   readSyncQueue,
 } from '../services/localDatabase';
@@ -18,8 +19,9 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
 
   // Shared offline snapshot for BHW mobile screens and Admin monitoring views.
   const refreshLocalData = useCallback(async () => {
-    const [residents, assessments, inventoryItems, disbursements, queue] = await Promise.all([
-      readLocalResidents(),
+    const [households, individuals, assessments, inventoryItems, disbursements, queue] = await Promise.all([
+      readLocalHouseholds(),
+      readLocalIndividuals(),
       readLocalHealthAssessments(),
       readLocalInventoryItems(),
       readLocalSupplyDisbursements(),
@@ -27,7 +29,8 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     ]);
 
     setSnapshot({
-      residents,
+      households,
+      individuals,
       assessments,
       inventoryItems,
       disbursements,
