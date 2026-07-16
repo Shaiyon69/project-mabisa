@@ -16,8 +16,9 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
   const [snapshot, setSnapshot] = useState<LocalSnapshot>(emptySnapshot);
   const [message, setMessage] = useState<string | null>(null);
   const [syncingManually, setSyncingManually] = useState(false);
+  
+  const [syncError, setSyncError] = useState<string | null>(null); 
 
-  // Shared offline snapshot for BHW mobile screens and Admin monitoring views.
   const refreshLocalData = useCallback(async () => {
     const [households, individuals, assessments, inventoryItems, disbursements, queue] = await Promise.all([
       readLocalHouseholds(),
@@ -50,15 +51,23 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
 
   const runManualSync = useCallback(async () => {
     setSyncingManually(true);
+    setSyncError(null); 
 
     try {
       const result = await backgroundSync.runSync();
       await refreshLocalData();
-      setMessage(result.status === 'synced' ? `Synced ${result.processed} queued change(s).` : result.errorMessage);
+      
+      if (result.status === 'synced') {
+        setMessage(`Synced ${result.processed} queued change(s).`);
+      } else {
+        setMessage(result.errorMessage);
+        setSyncError(result.errorMessage ?? 'Unknown sync failure');
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Manual synchronization failed';
-      logDev('Manual sync refresh failed', message);
-      setMessage(message);
+      const errorMessage = error instanceof Error ? error.message : 'Manual synchronization failed';
+      logDev('Manual sync refresh failed', errorMessage);
+      setMessage(errorMessage);
+      setSyncError(errorMessage);
     } finally {
       setSyncingManually(false);
     }
@@ -70,13 +79,13 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       snapshot,
       message,
       setMessage,
-      syncStatus: backgroundSync.status,
+      syncStatus: syncError ? `Error: ${syncError}` : backgroundSync.status,
       isOnline: backgroundSync.isOnline,
       syncingManually,
       refreshLocalData,
       runManualSync,
     }),
-    [backgroundSync.isOnline, backgroundSync.status, bhwId, message, refreshLocalData, runManualSync, snapshot, syncingManually],
+    [backgroundSync.isOnline, backgroundSync.status, bhwId, message, refreshLocalData, runManualSync, snapshot, syncingManually, syncError],
   );
 
   return <MabisaDataContext.Provider value={value}>{children}</MabisaDataContext.Provider>;
