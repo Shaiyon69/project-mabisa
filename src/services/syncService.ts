@@ -15,6 +15,9 @@ import {
   removeSyncQueueEntry,
   type LocalTableName,
   type SyncQueueEntry,
+  pullInventoryFromServer, 
+  pullHouseholdsFromServer, 
+  pullIndividualsFromServer
 } from './localDatabase';
 
 export type SyncStatus = 'idle' | 'offline' | 'syncing' | 'synced' | 'failed';
@@ -125,6 +128,19 @@ export async function syncPendingQueue(): Promise<SyncResult> {
           errorMessage,
         };
       }
+    }
+    try {
+      await pullRemoteUpdates();
+    } catch (pullError) {
+      // If the pull fails, we still want to acknowledge the push succeeded,
+      // but we warn the user that they might not have the latest inventory.
+      const errorMessage = pullError instanceof Error ? pullError.message : 'Pull failed';
+      return {
+        status: 'failed', // Triggers the red UI state so the BHW knows to try again
+        processed,
+        failedQueueId: null,
+        errorMessage: `Push succeeded, but downloading new inventory failed: ${errorMessage}`,
+      };
     }
 
     return {
@@ -251,4 +267,45 @@ function withoutPrimaryKey<T extends Record<string, unknown>, K extends keyof T>
   const copy: Partial<T> = { ...payload };
   delete copy[key];
   return copy as Omit<T, K>;
+}
+
+// -----------------------------------------------------------------------------
+// Pull Remote Updates Logic
+// -----------------------------------------------------------------------------
+
+export async function pullRemoteUpdates(): Promise<void> {
+  try {
+    // 1. Fetch tables sequentially to respect foreign key constraints
+    
+    // Fetch Households
+    const { data: cloudHouseholds, error: hError } = await supabase.from('households').select('*');
+    if (hError) throw new Error(`Household Pull Error: ${hError.message}`);
+
+    // Fetch Individuals
+    const { data: cloudIndividuals, error: iError } = await supabase.from('individuals').select('*');
+    if (iError) throw new Error(`Individual Pull Error: ${iError.message}`);
+
+    // Fetch Inventory
+    const { data: cloudInventory, error: invError } = await supabase.from('inventory_items').select('*');
+    if (invError) throw new Error(`Inventory Pull Error: ${invError.message}`);
+
+    // 2. Upsert data into local SQLite in the exact order of their dependencies
+    if (cloudHouseholds && cloudHouseholds.length > 0) {
+      await pullHouseholdsFromServer(cloudHouseholds);
+    }
+    
+    if (cloudIndividuals && cloudIndividuals.length > 0) {
+      await pullIndividualsFromServer(cloudIndividuals);
+    }
+    
+    if (cloudInventory && cloudInventory.length > 0) {
+      await pullInventoryFromServer(cloudInventory);
+    }
+
+    console.log('Successfully pulled all updates from the cloud.');
+
+  } catch (error) {
+    console.error('Failed to pull remote updates:', error);
+    throw error;
+  }
 }
