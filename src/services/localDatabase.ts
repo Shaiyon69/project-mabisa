@@ -552,3 +552,122 @@ function parseLocalTableName(value: string): LocalTableName {
 export function toSqlValue(value: string | number | null | undefined): SqlValue {
   return value ?? null;
 }
+
+// -----------------------------------------------------------------------------
+//  DATA FETCHING CODE
+// -----------------------------------------------------------------------------
+
+export async function pullInventoryFromServer(cloudItems: InventoryItem[]): Promise<void> {
+  if (!cloudItems.length) return; // Skip if nothing to pull
+  const db = await initializeLocalDatabase();
+  
+  const statement = `
+    INSERT INTO inventory_items (item_id, item_name, type, current_stock, created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(item_id) DO UPDATE SET 
+    item_name = excluded.item_name,
+    type = excluded.type,
+    current_stock = excluded.current_stock,
+    updated_at = excluded.updated_at;
+  `;
+
+  // Map the array of objects into an array of arrays for the batch executor
+  const values = cloudItems.map(item => [
+    item.item_id,
+    item.item_name,
+    item.type,
+    item.current_stock,
+    item.created_at,
+    item.updated_at,
+  ]);
+
+  try {
+    await db.executeSet([{ statement, values }]);
+  } catch (error) {
+    console.error('Failed to pull inventory into SQLite:', error);
+    throw error;
+  }
+}
+
+export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Promise<void> {
+  if (!cloudHouseholds.length) return;
+  const db = await initializeLocalDatabase();
+  
+  const statement = `
+    INSERT INTO households (household_id, household_number, dwelling_type, electric_service, fuel_used, toilet_type, water_source, food_production, health_status_notes, created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(household_id) DO UPDATE SET 
+    household_number = excluded.household_number,
+    dwelling_type = excluded.dwelling_type,
+    electric_service = excluded.electric_service,
+    fuel_used = excluded.fuel_used,
+    toilet_type = excluded.toilet_type,
+    water_source = excluded.water_source,
+    food_production = excluded.food_production,
+    health_status_notes = excluded.health_status_notes,
+    updated_at = excluded.updated_at;
+  `;
+
+  const values = cloudHouseholds.map(h => [
+    h.household_id,
+    h.household_number,
+    h.dwelling_type,
+    h.electric_service,
+    h.fuel_used,
+    JSON.stringify(h.toilet_type || []),
+    JSON.stringify(h.water_source || []),
+    JSON.stringify(h.food_production || []),
+    h.health_status_notes || null,
+    h.created_at,
+    h.updated_at,
+  ]);
+
+  try {
+    await db.executeSet([{ statement, values }]);
+  } catch (error) {
+    console.error('Failed to pull households into SQLite:', error);
+    throw error;
+  }
+}
+
+export async function pullIndividualsFromServer(cloudIndividuals: Individual[]): Promise<void> {
+  if (!cloudIndividuals.length) return;
+  const db = await initializeLocalDatabase();
+  
+  const statement = `
+    INSERT INTO individuals (resident_id, household_id, first_name, middle_name, last_name, sex, birthday, is_household_head, is_out_of_school_youth, is_pregnant_nursing_fp, created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(resident_id) DO UPDATE SET 
+    first_name = excluded.first_name,
+    middle_name = excluded.middle_name,
+    last_name = excluded.last_name,
+    sex = excluded.sex,
+    birthday = excluded.birthday,
+    is_household_head = excluded.is_household_head,
+    is_out_of_school_youth = excluded.is_out_of_school_youth,
+    is_pregnant_nursing_fp = excluded.is_pregnant_nursing_fp,
+    updated_at = excluded.updated_at;
+  `;
+
+  const values = cloudIndividuals.map(ind => [
+    ind.resident_id,
+    ind.household_id,
+    ind.first_name,
+    ind.middle_name || null,
+    ind.last_name,
+    ind.sex,
+    ind.birthday,
+    ind.is_household_head ? 1 : 0,
+    ind.is_out_of_school_youth ? 1 : 0,
+    ind.is_pregnant_nursing_fp ? 1 : 0,
+    ind.created_at,
+    ind.updated_at,
+  ]);
+
+  try {
+    await db.executeSet([{ statement, values }]);
+  } catch (error) {
+    console.error('Failed to pull individuals into SQLite:', error);
+    throw error;
+  }
+}
