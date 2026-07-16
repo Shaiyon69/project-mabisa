@@ -36,6 +36,7 @@ export type Individual = {
   resident_id: string;
   household_id: string;
   first_name: string;
+  middle_name?: string;
   last_name: string;
   sex: IndividualSex;
   birthday: string;

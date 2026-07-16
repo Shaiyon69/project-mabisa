@@ -11,17 +11,14 @@ type IndividualSearchProps = {
 export function IndividualSearch({ individuals, selectedResidentId, onChange }: IndividualSearchProps) {
   const [query, setQuery] = useState('');
   
-  const filteredIndividuals = useMemo(() => {
+const filteredIndividuals = useMemo(() => {
     const search = query.trim().toLowerCase();
+    if (!search) return individuals;
 
-    if (!search) {
-      return individuals;
-    }
-
-    // Filter based on the new first_name and last_name properties
-    return individuals.filter((person) => 
-      `${person.first_name} ${person.last_name}`.toLowerCase().includes(search)
-    );
+    return individuals.filter((person) => {
+      const fullName = `${person.first_name} ${person.middle_name || ''} ${person.last_name}`.toLowerCase();
+      return fullName.includes(search);
+    });
   }, [query, individuals]);
 
   return (
@@ -40,11 +37,15 @@ export function IndividualSearch({ individuals, selectedResidentId, onChange }: 
         required 
         disabled={!individuals.length}
       >
-        {filteredIndividuals.map((person) => (
-          <option key={person.resident_id} value={person.resident_id}>
-            {person.last_name}, {person.first_name} {person.is_household_head ? '(Head)' : ''}
-          </option>
-        ))}
+        {filteredIndividuals.map((person) => {
+          const mi = person.middle_name ? ` ${person.middle_name.charAt(0)}.` : '';
+          
+          return (
+            <option key={person.resident_id} value={person.resident_id}>
+              {person.last_name}, {person.first_name}{mi} {person.is_household_head ? '(Head)' : ''}
+            </option>
+          );
+        })}
       </SelectField>
     </>
   );

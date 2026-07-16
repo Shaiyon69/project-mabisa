@@ -103,7 +103,8 @@ const migrations = [
   `create table if not exists individuals (
     resident_id text primary key,
     household_id text not null,
-    first_name text not null,
+    first_name text not null,\
+    middle_name TEXT,
     last_name text not null,
     sex text not null check (sex in ('male', 'female')),
     birthday text not null,
