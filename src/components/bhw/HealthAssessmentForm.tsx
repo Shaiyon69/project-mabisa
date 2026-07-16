@@ -79,10 +79,35 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
         
         {!individuals.length ? <p className="form-hint">Register a household before recording a health assessment.</p> : null}
         
-        <FormField label="Assessment Date" type="date" value={assessmentDate} onChange={(event) => setAssessmentDate(event.target.value)} required />
+        <FormField 
+          label="Assessment Date" 
+          type="date" 
+          max={today()} // Cannot assess in the future
+          value={assessmentDate} 
+          onChange={(event) => setAssessmentDate(event.target.value)} 
+          required 
+        />
         <div className="field-row">
-          <FormField label="Weight kg" min="1" step="0.1" type="number" value={weight} onChange={(event) => setWeight(event.target.value)} required />
-          <FormField label="Height cm" min="1" step="0.1" type="number" value={height} onChange={(event) => setHeight(event.target.value)} required />
+          <FormField 
+            label="Weight (kg)" 
+            type="number" 
+            min="1" 
+            max="300" // Prevents extra zero typos
+            step="0.1" 
+            value={weight} 
+            onChange={(event) => setWeight(event.target.value)} 
+            required 
+          />
+          <FormField 
+            label="Height (cm)" 
+            type="number" 
+            min="30"  // Baseline for infants
+            max="250" // Upper limit for adults
+            step="0.1" 
+            value={height} 
+            onChange={(event) => setHeight(event.target.value)} 
+            required 
+          />
         </div>
         <div className="computed-panel">
           <span>BMI</span>
