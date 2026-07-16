@@ -3,7 +3,7 @@ import { AccountsTable } from '../../components/admin/AccountsTable';
 import { AdminDashboard } from '../../components/admin/AdminDashboard';
 import { InventoryTable } from '../../components/admin/InventoryTable';
 import { ReportCards } from '../../components/admin/ReportCards';
-import { ResidentsTable } from '../../components/admin/ResidentsTable';
+import { IndividualsTable } from '../../components/admin/IndividualsTable';
 import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
 
@@ -29,7 +29,7 @@ export function ResidentsPage() {
     <>
       <PageHeader eyebrow="Residents" title="Resident Registry" description="Search and review resident profiles saved on this device." />
       <Card className="admin-monitor">
-        <ResidentsTable residents={snapshot.residents} pendingQueueCount={snapshot.pendingQueueCount} />
+        <IndividualsTable individuals={snapshot.individuals} pendingQueueCount={snapshot.pendingQueueCount} />
       </Card>
     </>
   );
