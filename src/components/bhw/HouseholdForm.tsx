@@ -58,6 +58,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
   const [members, setMembers] = useState<Partial<Individual>[]>([
     {
       first_name: '',
+      middle_name: '',
       last_name: '',
       sex: 'female',
       birthday: '',
@@ -81,6 +82,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
       ...members, 
       {
         first_name: '',
+        middle_name: '',
         last_name: '',
         sex: 'female',
         birthday: '',
@@ -220,6 +222,12 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
                 value={member.first_name} 
                 onChange={(e) => updateMember(index, 'first_name', e.target.value)} 
                 required 
+              />
+              <FormField 
+                label="Middle Name" 
+                value={member.middle_name || ''} 
+                onChange={(e) => updateMember(index, 'middle_name', e.target.value)} 
+                placeholder="(Optional)"
               />
               <FormField 
                 label="Last Name" 
