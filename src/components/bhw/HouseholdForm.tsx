@@ -43,7 +43,7 @@ type HouseholdFormProps = {
   onSaved: () => Promise<void>;
 };
 
-export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
+export function HouseholdForm({ onSaved }: HouseholdFormProps) {
   const [household, setHousehold] = useState<Partial<Household>>({
     household_number: '',
     dwelling_type: 'concrete',
