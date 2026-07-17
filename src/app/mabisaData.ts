@@ -1,9 +1,9 @@
 import { createContext, useContext } from 'react';
-import type { HealthAssessment, Household, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
+import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
 
 export type LocalSnapshot = {
-  households: Household[];
-  individuals: Individual[];
+  householdCount: number;  // Replaced households: Household[]
+  individualCount: number; // Replaced individuals: Individual[]
   assessments: HealthAssessment[];
   inventoryItems: InventoryItem[];
   disbursements: SupplyDisbursement[];
@@ -23,8 +23,8 @@ export type MabisaDataContextValue = {
 };
 
 export const emptySnapshot: LocalSnapshot = {
-  households: [],
-  individuals: [],
+  householdCount: 0,
+  individualCount: 0,
   assessments: [],
   inventoryItems: [],
   disbursements: [],
@@ -33,12 +33,10 @@ export const emptySnapshot: LocalSnapshot = {
 
 export const MabisaDataContext = createContext<MabisaDataContextValue | null>(null);
 
-export function useMabisaData(): MabisaDataContextValue {
-  const value = useContext(MabisaDataContext);
-
-  if (!value) {
-    throw new Error('useMabisaData must be used inside MabisaDataProvider');
+export function useMabisaData() {
+  const context = useContext(MabisaDataContext);
+  if (!context) {
+    throw new Error('useMabisaData must be used within a MabisaDataProvider');
   }
-
-  return value;
+  return context;
 }

@@ -35,6 +35,7 @@ export type Household = {
 export type Individual = {
   resident_id: string;
   household_id: string;
+  household_number?: string;
   first_name: string;
   middle_name?: string;
   last_name: string;

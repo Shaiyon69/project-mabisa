@@ -1,19 +1,22 @@
+// Goal: Update the HealthAssessmentForm to rely on the new optimized 
+// SQLite-backed IndividualSearch, removing dependencies on massive data arrays.
+
 import { useState } from 'react';
-import type { HealthAssessment, Individual } from '../../types/database';
+import type { HealthAssessment } from '../../types/database'; // Removed Individual import
 import { calculateBmi, createId, getNutritionStatus, today } from '../../lib/utils';
 import { saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { FormActions, FormField } from '../common/FormField';
-import { IndividualSearch } from './IndividualSearch'; // Renamed to reflect the new model
+import { IndividualSearch } from './IndividualSearch';
 
 type HealthAssessmentFormProps = {
-  individuals: Individual[];
+  individualCount: number; // Swapped individuals array for a lightweight count
   onSaved: () => Promise<void>;
 };
 
-export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentFormProps) {
+export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessmentFormProps) {
   const [residentId, setResidentId] = useState('');
   const [assessmentDate, setAssessmentDate] = useState(today());
   const [weight, setWeight] = useState('');
@@ -21,15 +24,16 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   
-  // Fallback to the first individual if none is selected
-  const selectedResidentId = residentId || individuals[0]?.resident_id || '';
+  // Calculate dynamic metrics
   const bmi = calculateBmi(Number(weight), Number(height));
   const nutritionStatus = getNutritionStatus(bmi);
+  const hasIndividuals = individualCount > 0;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!bmi || !nutritionStatus) {
+    if (!bmi || !nutritionStatus || !residentId) {
+      setFormError('Please select a resident and fill out all fields.');
       return;
     }
 
@@ -39,7 +43,7 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
     
     const assessment: HealthAssessment = {
       assessment_id: createId(),
-      resident_id: selectedResidentId, // Stays resident_id to match the database foreign key
+      resident_id: residentId, 
       assessment_date: assessmentDate,
       weight: Number(weight),
       height: Number(height),
@@ -54,6 +58,7 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
       setWeight('');
       setHeight('');
       setAssessmentDate(today());
+      setResidentId(''); // Clear selection after successful save
       await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Health assessment was not saved.');
@@ -69,20 +74,20 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
           <p className="eyebrow">Assessment</p>
           <h2>Health Assessment</h2>
         </div>
-        <Badge label={individuals.length ? 'Ready' : 'Needs Profile'} tone={individuals.length ? 'success' : 'warning'} />
+        <Badge label={hasIndividuals ? 'Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
       </div>
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="form-hint">{formError}</p> : null}
+        {formError ? <p className="form-hint" style={{color: 'red'}}>{formError}</p> : null}
         
-        {/* Swapped to IndividualSearch and passed the new array */}
-        <IndividualSearch individuals={individuals} selectedResidentId={selectedResidentId} onChange={setResidentId} />
+        {/* The TS Error is fixed: We no longer pass the individuals prop */}
+        <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} />
         
-        {!individuals.length ? <p className="form-hint">Register a household before recording a health assessment.</p> : null}
+        {!hasIndividuals ? <p className="form-hint">Register a household before recording a health assessment.</p> : null}
         
         <FormField 
           label="Assessment Date" 
           type="date" 
-          max={today()} // Cannot assess in the future
+          max={today()} 
           value={assessmentDate} 
           onChange={(event) => setAssessmentDate(event.target.value)} 
           required 
@@ -92,7 +97,7 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
             label="Weight (kg)" 
             type="number" 
             min="1" 
-            max="300" // Prevents extra zero typos
+            max="300" 
             step="0.1" 
             value={weight} 
             onChange={(event) => setWeight(event.target.value)} 
@@ -101,8 +106,8 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
           <FormField 
             label="Height (cm)" 
             type="number" 
-            min="30"  // Baseline for infants
-            max="250" // Upper limit for adults
+            min="30"  
+            max="250" 
             step="0.1" 
             value={height} 
             onChange={(event) => setHeight(event.target.value)} 
@@ -115,8 +120,9 @@ export function HealthAssessmentForm({ individuals, onSaved }: HealthAssessmentF
           <Badge label={nutritionStatus ?? 'Waiting for measurements'} tone={nutritionStatus === 'normal' ? 'success' : nutritionStatus ? 'warning' : 'info'} />
         </div>
         <FormActions>
-          <Button type="submit" disabled={saving || !individuals.length}>
-            {saving ? 'Saving Offline' : 'Save Assessment'}
+          {/* Prevent saving if no resident is selected */}
+          <Button type="submit" disabled={saving || !hasIndividuals || !residentId}>
+            {saving ? 'Saving Offline...' : 'Save Assessment'}
           </Button>
         </FormActions>
       </form>

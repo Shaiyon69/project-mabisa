@@ -22,6 +22,12 @@ import type {
 // Type Definitions for the Sync Code
 // -----------------------------------------------------------------------------
 
+export type PaginatedQuery = {
+  limit?: number;
+  offset?: number;
+  searchQuery?: string;
+};
+
 // Defines the exact tables that exist in our local SQLite database.
 export type LocalTableName =
   | 'households'
@@ -416,52 +422,96 @@ export async function saveSupplyDisbursementLocally(
   await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
 }
 
+
+export async function getHouseholdCount(): Promise<number> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query('SELECT COUNT(*) as total FROM households');
+  return result.values?.[0]?.total || 0;
+}
+
+export async function getIndividualCount(): Promise<number> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query('SELECT COUNT(*) as total FROM individuals');
+  return result.values?.[0]?.total || 0;
+}
 // -----------------------------------------------------------------------------
 // Read Operations (Loading data into the React UI)
 // -----------------------------------------------------------------------------
 
-/**
- * Loads all households to populate the global state.
- */
-export async function readLocalHouseholds(): Promise<Household[]> {
-  const database = await getLocalDatabase();
-  const result = await database.query('select * from households order by household_number asc');
+export async function readLocalIndividuals(options?: PaginatedQuery): Promise<Individual[]> {
+  const db = await initializeLocalDatabase();
   
-  return (result.values ?? []).map((row) => ({
+  // Use a LEFT JOIN to pull the readable household_number alongside the individual's data
+  let query = `
+    SELECT i.*, h.household_number 
+    FROM individuals i
+    LEFT JOIN households h ON i.household_id = h.household_id
+  `;
+  const params: any[] = [];
+
+  if (options?.searchQuery) {
+    const searchTerm = `%${options.searchQuery.trim()}%`;
+    // Added table prefixes (i. and h.) to prevent ambiguous column errors, 
+    // and added the ability to search for residents by their HH number!
+    query += ` WHERE i.first_name LIKE ? 
+                  OR i.last_name LIKE ? 
+                  OR i.middle_name LIKE ? 
+                  OR h.household_number LIKE ?`;
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+  }
+
+  query += ' ORDER BY i.last_name ASC, i.first_name ASC';
+
+  if (options?.limit !== undefined) {
+    query += ' LIMIT ?';
+    params.push(options.limit);
+  }
+  if (options?.offset !== undefined) {
+    query += ' OFFSET ?';
+    params.push(options.offset);
+  }
+
+  const result = await db.query(query, params);
+  
+  return (result.values || []).map((row) => ({
     ...row,
-    // Restore JSON strings back into standard arrays for the frontend UI
-    toilet_type: JSON.parse(String(row.toilet_type)),
-    water_source: JSON.parse(String(row.water_source)),
-    food_production: JSON.parse(String(row.food_production)),
-  })) as Household[];
+    is_household_head: row.is_household_head === 1,
+    is_out_of_school_youth: row.is_out_of_school_youth === 1,
+    is_pregnant_nursing_fp: row.is_pregnant_nursing_fp === 1,
+  })) as Individual[];
 }
 
-/**
- * Loads individuals. Can optionally filter by householdId.
- */
-export async function readLocalIndividuals(householdId?: string): Promise<Individual[]> {
-  const database = await getLocalDatabase();
-  
-  // Conditionally build the query based on provided arguments
-  const query = householdId
-    ? {
-        statement: 'select * from individuals where household_id = ? order by last_name asc, first_name asc',
-        values: [householdId],
-      }
-    : {
-        statement: 'select * from individuals order by last_name asc, first_name asc',
-        values: [],
-      };
-      
-  const result = await database.query(query.statement, query.values);
-  
-  return (result.values ?? []).map((row) => ({
+export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Household[]> {
+  const db = await initializeLocalDatabase();
+  let query = 'SELECT * FROM households';
+  const params: any[] = [];
+
+  if (options?.searchQuery) {
+    const searchTerm = `%${options.searchQuery.trim()}%`;
+    query += ' WHERE household_number LIKE ?';
+    params.push(searchTerm);
+  }
+
+  query += ' ORDER BY created_at DESC';
+
+  if (options?.limit !== undefined) {
+    query += ' LIMIT ?';
+    params.push(options.limit);
+  }
+  if (options?.offset !== undefined) {
+    query += ' OFFSET ?';
+    params.push(options.offset);
+  }
+
+  const result = await db.query(query, params);
+
+  // Translate SQLite JSON strings back into JavaScript arrays
+  return (result.values || []).map((row) => ({
     ...row,
-    // Restore integers (0/1) back into booleans for the frontend UI
-    is_household_head: Number(row.is_household_head) === 1,
-    is_out_of_school_youth: Number(row.is_out_of_school_youth) === 1,
-    is_pregnant_nursing_fp: Number(row.is_pregnant_nursing_fp) === 1,
-  })) as Individual[];
+    toilet_type: JSON.parse(row.toilet_type || '[]'),
+    water_source: JSON.parse(row.water_source || '[]'),
+    food_production: JSON.parse(row.food_production || '[]'),
+  })) as Household[];
 }
 
 export async function readLocalHealthAssessments(residentId?: string): Promise<HealthAssessment[]> {

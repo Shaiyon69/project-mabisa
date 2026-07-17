@@ -41,7 +41,7 @@ export function HealthAssessmentPage() {
 
   return (
     <HealthAssessmentForm
-      individuals={snapshot.individuals} // Updated from residents
+      individualCount={snapshot.individualCount} // Updated from residents
       onSaved={async () => {
         await refreshLocalData();
         setMessage('Pending Sync. Health assessment was saved on this device.');
@@ -57,7 +57,7 @@ export function SupplyDisbursementPage() {
 
   return (
     <SupplyDisbursementForm
-      individuals={snapshot.individuals} // Updated from residents
+      individualCount={snapshot.individualCount} // <-- Fix: Swapped to individualCount
       inventoryItems={snapshot.inventoryItems}
       onSaved={async () => {
         await refreshLocalData();

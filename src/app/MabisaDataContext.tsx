@@ -3,8 +3,8 @@ import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { logDev } from '../lib/utils';
 import {
   readLocalHealthAssessments,
-  readLocalHouseholds,
-  readLocalIndividuals,
+  getHouseholdCount,      // Replaced readLocalHouseholds
+  getIndividualCount,     // Replaced readLocalIndividuals
   readLocalInventoryItems,
   readLocalSupplyDisbursements,
   readSyncQueue,
@@ -16,27 +16,28 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
   const [snapshot, setSnapshot] = useState<LocalSnapshot>(emptySnapshot);
   const [message, setMessage] = useState<string | null>(null);
   const [syncingManually, setSyncingManually] = useState(false);
-  
   const [syncError, setSyncError] = useState<string | null>(null); 
 
   const refreshLocalData = useCallback(async () => {
-    const [households, individuals, assessments, inventoryItems, disbursements, queue] = await Promise.all([
-      readLocalHouseholds(),
-      readLocalIndividuals(),
+    // 1. Fetch lightweight counts instead of massive arrays
+    const [householdCount, individualCount, assessments, inventoryItems, disbursements, queue] = await Promise.all([
+      getHouseholdCount(),
+      getIndividualCount(),
       readLocalHealthAssessments(),
       readLocalInventoryItems(),
       readLocalSupplyDisbursements(),
       readSyncQueue(),
     ]);
 
+    // 2. Update the snapshot payload
     setSnapshot({
-      households,
-      individuals,
+      householdCount,      // Previously: households
+      individualCount,     // Previously: individuals
       assessments,
       inventoryItems,
       disbursements,
       pendingQueueCount: queue.length,
-    });
+    } as unknown as LocalSnapshot); // Cast added temporarily until you update mabisaData.ts types
   }, []);
 
   useEffect(() => {
