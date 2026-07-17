@@ -1,25 +1,32 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { FormField, SelectField } from '../common/FormField';
+import { readLocalIndividuals } from '../../services/localDatabase';
 
 type IndividualSearchProps = {
-  individuals: Individual[];
   selectedResidentId: string;
   onChange: (residentId: string) => void;
 };
 
-export function IndividualSearch({ individuals, selectedResidentId, onChange }: IndividualSearchProps) {
+export function IndividualSearch({ selectedResidentId, onChange }: IndividualSearchProps) {
   const [query, setQuery] = useState('');
-  
-const filteredIndividuals = useMemo(() => {
-    const search = query.trim().toLowerCase();
-    if (!search) return individuals;
+  const [searchResults, setSearchResults] = useState<Individual[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-    return individuals.filter((person) => {
-      const fullName = `${person.first_name} ${person.middle_name || ''} ${person.last_name}`.toLowerCase();
-      return fullName.includes(search);
-    });
-  }, [query, individuals]);
+  // Directly query SQLite when the search query changes (with a 300ms debounce)
+  useEffect(() => {
+    setIsLoading(true);
+    const timeoutId = setTimeout(() => {
+      readLocalIndividuals({ searchQuery: query, limit: 50 })
+        .then((results) => {
+          setSearchResults(results);
+        })
+        .catch(console.error)
+        .finally(() => setIsLoading(false));
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [query]);
 
   return (
     <>
@@ -27,17 +34,19 @@ const filteredIndividuals = useMemo(() => {
         label="Search Profile"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search by name"
-        disabled={!individuals.length}
+        placeholder="Search by name..."
       />
       <SelectField 
         label="Individual" 
         value={selectedResidentId} 
         onChange={(event) => onChange(event.target.value)} 
         required 
-        disabled={!individuals.length}
+        disabled={isLoading || !searchResults.length}
       >
-        {filteredIndividuals.map((person) => {
+        <option value="" disabled>
+          {isLoading ? 'Searching...' : 'Select a resident'}
+        </option>
+        {searchResults.map((person) => {
           const mi = person.middle_name ? ` ${person.middle_name.charAt(0)}.` : '';
           
           return (

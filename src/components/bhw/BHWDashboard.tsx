@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { LocalSnapshot } from '../../app/mabisaData';
+import type { Individual } from '../../types/database';
 import { formatDate, titleCase } from '../../lib/utils';
 import { Badge } from '../common/Badge';
 import { Card } from '../common/Card';
 import { EmptyState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
+import { readLocalIndividuals } from '../../services/localDatabase';
 
 type BHWDashboardProps = {
   snapshot: LocalSnapshot;
@@ -15,8 +17,17 @@ type BHWDashboardProps = {
 };
 
 export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, onManualSync }: BHWDashboardProps) {
-  // Swapped residents for individuals
-  const latestIndividuals = useMemo(() => snapshot.individuals.slice(0, 5), [snapshot.individuals]);
+  // 1. Replaced the useMemo slice with a local state for our SQLite query
+  const [latestIndividuals, setLatestIndividuals] = useState<Individual[]>([]);
+
+  // 2. Fetch a tiny chunk of individuals directly from the local DB for the list.
+  // We re-run this anytime the individualCount changes (e.g., when a new one is saved).
+  useEffect(() => {
+    readLocalIndividuals({ limit: 5 })
+      .then(setLatestIndividuals)
+      .catch(console.error);
+  }, [snapshot.individualCount]);
+
   const latestAssessments = useMemo(() => snapshot.assessments.slice(0, 3), [snapshot.assessments]);
 
   return (
@@ -30,9 +41,9 @@ export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, 
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
-        {/* Updated metrics to reflect the new relational model */}
-        <Metric label="Households" value={snapshot.households.length} detail="Registered dwellings" tone="blue" />
-        <Metric label="Individuals" value={snapshot.individuals.length} detail="Local profiles" tone="green" />
+        {/* 3. Updated metrics to use the new lightweight integer counts */}
+        <Metric label="Households" value={snapshot.householdCount} detail="Registered dwellings" tone="blue" />
+        <Metric label="Individuals" value={snapshot.individualCount} detail="Local profiles" tone="green" />
         <Metric label="Assessments" value={snapshot.assessments.length} detail="Health records" tone="amber" />
         <Metric label="Released" value={snapshot.disbursements.length} detail="Supply logs" tone="red" />
       </section>

@@ -1,3 +1,6 @@
+// Goal: Update the AdminDashboard to use the memory-optimized LocalSnapshot 
+// and properly mount the newly paginated IndividualsTable.
+
 import type { LocalSnapshot } from '../../app/mabisaData';
 import { Card } from '../common/Card';
 import { InventoryTable } from './InventoryTable';
@@ -13,11 +16,13 @@ export function AdminDashboard({ snapshot }: AdminDashboardProps) {
   return (
     <div className="dashboard-grid">
       <section className="metric-grid admin-metrics" aria-label="Admin metrics">
-        <StatCard label="Residents" value={snapshot.individuals.length} detail="Profiled locally" tone="blue" />
+        {/* Fix 1: Swapped snapshot.individuals.length for the lightweight snapshot.individualCount */}
+        <StatCard label="Residents" value={snapshot.individualCount} detail="Profiled locally" tone="blue" />
         <StatCard label="Assessments" value={snapshot.assessments.length} detail="Health records" tone="green" />
         <StatCard label="Inventory" value={snapshot.inventoryItems.length} detail="Tracked supplies" tone="amber" />
         <StatCard label="Released" value={snapshot.disbursements.length} detail="Disbursement logs" tone="red" />
       </section>
+      
       <Card className="admin-monitor">
         <div className="panel-heading">
           <div>
@@ -25,8 +30,10 @@ export function AdminDashboard({ snapshot }: AdminDashboardProps) {
             <h2>Resident Monitoring</h2>
           </div>
         </div>
-        <IndividualsTable individuals={snapshot.individuals} pendingQueueCount={snapshot.pendingQueueCount} />
+        {/* Fix 2: Removed the 'individuals' prop because this table now safely paginates its own data directly from SQLite */}
+        <IndividualsTable pendingQueueCount={snapshot.pendingQueueCount} />
       </Card>
+      
       <Card className="admin-monitor">
         <div className="panel-heading">
           <div>
@@ -36,6 +43,7 @@ export function AdminDashboard({ snapshot }: AdminDashboardProps) {
         </div>
         <InventoryTable inventoryItems={snapshot.inventoryItems} />
       </Card>
+      
       <Card className="activity-panel">
         <div className="panel-heading">
           <div>
