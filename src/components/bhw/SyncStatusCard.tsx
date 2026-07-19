@@ -25,9 +25,6 @@ export function SyncStatusCard({
   const syncedLabel = isError ? 'Sync Failed' : isPending ? 'Pending Sync' : 'Synced';
   const badgeTone = isError ? 'danger' : (!isOnline || isPending) ? 'warning' : 'success';
 
-  // FIX: The button is now ONLY disabled if the app is actively syncing, 
-  // or if the device has no internet connection. 
-  // We removed the "empty queue" restriction so BHWs can pull updates anytime.
   const isButtonDisabled = syncingManually || !isOnline;
 
   return (
@@ -66,7 +63,6 @@ export function SyncStatusCard({
 
       <div style={{ marginTop: '1.5rem' }}>
         <Button onClick={onManualSync} disabled={isButtonDisabled}>
-          {/* Dynamic Button Text explains exactly what the click will do */}
           {syncingManually 
             ? 'Syncing...' 
             : !isOnline

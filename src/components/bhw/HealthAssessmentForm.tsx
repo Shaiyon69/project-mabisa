@@ -1,8 +1,5 @@
-// Goal: Update the HealthAssessmentForm to rely on the new optimized 
-// SQLite-backed IndividualSearch, removing dependencies on massive data arrays.
-
 import { useState } from 'react';
-import type { HealthAssessment } from '../../types/database'; // Removed Individual import
+import type { HealthAssessment } from '../../types/database';
 import { calculateBmi, createId, getNutritionStatus, today } from '../../lib/utils';
 import { saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
@@ -12,7 +9,7 @@ import { FormActions, FormField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
 
 type HealthAssessmentFormProps = {
-  individualCount: number; // Swapped individuals array for a lightweight count
+  individualCount: number;
   onSaved: () => Promise<void>;
 };
 
@@ -24,7 +21,6 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   
-  // Calculate dynamic metrics
   const bmi = calculateBmi(Number(weight), Number(height));
   const nutritionStatus = getNutritionStatus(bmi);
   const hasIndividuals = individualCount > 0;
@@ -58,7 +54,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       setWeight('');
       setHeight('');
       setAssessmentDate(today());
-      setResidentId(''); // Clear selection after successful save
+      setResidentId('');
       await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Health assessment was not saved.');
@@ -79,7 +75,6 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       <form className="stack" onSubmit={handleSubmit}>
         {formError ? <p className="form-hint" style={{color: 'red'}}>{formError}</p> : null}
         
-        {/* The TS Error is fixed: We no longer pass the individuals prop */}
         <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} />
         
         {!hasIndividuals ? <p className="form-hint">Register a household before recording a health assessment.</p> : null}
@@ -120,7 +115,6 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           <Badge label={nutritionStatus ?? 'Waiting for measurements'} tone={nutritionStatus === 'normal' ? 'success' : nutritionStatus ? 'warning' : 'info'} />
         </div>
         <FormActions>
-          {/* Prevent saving if no resident is selected */}
           <Button type="submit" disabled={saving || !hasIndividuals || !residentId}>
             {saving ? 'Saving Offline...' : 'Save Assessment'}
           </Button>

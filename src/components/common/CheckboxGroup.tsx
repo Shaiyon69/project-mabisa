@@ -20,24 +20,24 @@ export function CheckboxGroup({ label, options, selectedValues, onChange }: Chec
   }
 
   return (
-    <div className="form-field stack" style={{ marginBottom: '1rem' }}>
-      <span className="field-label" style={{ fontWeight: 600, fontSize: '0.875rem' }}>{label}</span>
-      <div 
-        className="checkbox-grid" 
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.5rem', marginTop: '0.25rem' }}
-      >
-        {options.map((option) => (
-          <label key={option.value} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem' }}>
-            <input
-              type="checkbox"
-              checked={selectedValues.includes(option.value)}
-              onChange={() => handleToggle(option.value)}
-              style={{ cursor: 'pointer' }}
-            />
-            {option.label}
-          </label>
-        ))}
+    <fieldset className="checkbox-group">
+      <legend className="field-label">{label}</legend>
+      <div className="checkbox-grid">
+        {options.map((option) => {
+          const isSelected = selectedValues.includes(option.value);
+
+          return (
+            <label key={option.value} className={`check-option${isSelected ? ' is-selected' : ''}`}>
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => handleToggle(option.value)}
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
       </div>
-    </div>
+    </fieldset>
   );
 }

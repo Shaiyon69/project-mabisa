@@ -13,7 +13,6 @@ export function IndividualSearch({ selectedResidentId, onChange }: IndividualSea
   const [searchResults, setSearchResults] = useState<Individual[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Directly query SQLite when the search query changes (with a 300ms debounce)
   useEffect(() => {
     setIsLoading(true);
     const timeoutId = setTimeout(() => {

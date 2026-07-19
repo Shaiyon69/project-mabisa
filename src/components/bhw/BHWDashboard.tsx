@@ -17,11 +17,8 @@ type BHWDashboardProps = {
 };
 
 export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, onManualSync }: BHWDashboardProps) {
-  // 1. Replaced the useMemo slice with a local state for our SQLite query
   const [latestIndividuals, setLatestIndividuals] = useState<Individual[]>([]);
 
-  // 2. Fetch a tiny chunk of individuals directly from the local DB for the list.
-  // We re-run this anytime the individualCount changes (e.g., when a new one is saved).
   useEffect(() => {
     readLocalIndividuals({ limit: 5 })
       .then(setLatestIndividuals)
@@ -41,7 +38,6 @@ export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, 
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
-        {/* 3. Updated metrics to use the new lightweight integer counts */}
         <Metric label="Households" value={snapshot.householdCount} detail="Registered dwellings" tone="blue" />
         <Metric label="Individuals" value={snapshot.individualCount} detail="Local profiles" tone="green" />
         <Metric label="Assessments" value={snapshot.assessments.length} detail="Health records" tone="amber" />

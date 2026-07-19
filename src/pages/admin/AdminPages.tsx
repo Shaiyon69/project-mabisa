@@ -29,7 +29,7 @@ export function ResidentsPage() {
     <>
       <PageHeader eyebrow="Residents" title="Resident Registry" description="Search and review resident profiles saved on this device." />
       <Card className="admin-monitor">
-        <IndividualsTable individuals={snapshot.individuals} pendingQueueCount={snapshot.pendingQueueCount} />
+        <IndividualsTable pendingQueueCount={snapshot.pendingQueueCount} />
       </Card>
     </>
   );

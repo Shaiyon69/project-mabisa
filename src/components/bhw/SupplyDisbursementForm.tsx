@@ -1,6 +1,3 @@
-// Goal: Decouple the form from massive data arrays by utilizing the 
-// SQLite-backed IndividualSearch component, strictly adhering to the existing DB schema.
-
 import { useState } from 'react';
 import type { InventoryItem, SupplyDisbursement } from '../../types/database'; 
 import { createId, today } from '../../lib/utils';
@@ -41,7 +38,6 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     setFormError(null);
     const timestamp = new Date().toISOString();
 
-    // Removed the hallucinated 'notes' property to fix TS(2353)
     const disbursement: SupplyDisbursement = {
       log_id: createId(),
       resident_id: residentId,
