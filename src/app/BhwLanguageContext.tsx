@@ -1,0 +1,167 @@
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+
+type Language = 'en' | 'fil';
+
+const filipino: Record<string, string> = {
+  'Project MABISA': 'Proyektong MABISA',
+  'BHW Mobile': 'BHW Mobile',
+  'Resident profiling, health assessment, supply logging, and offline sync.': 'Pagtatala ng residente, pagsusuri ng kalusugan, pamamahagi ng suplay, at offline sync.',
+  'Online': 'Online',
+  'Offline': 'Offline',
+  'Logout': 'Mag-logout',
+  'Status': 'Kalagayan',
+  'Resident': 'Residente',
+  'Health': 'Kalusugan',
+  'Supply': 'Suplay',
+  'Log out of MABISA?': 'Mag-logout sa MABISA?',
+  'Make sure pending records are synchronized before leaving this device.': 'Tiyaking na-sync ang mga nakabinbing tala bago umalis sa device na ito.',
+  'Stay logged in': 'Manatiling naka-login',
+  'Log out': 'Mag-logout',
+  'Device status': 'Kalagayan ng device',
+  'Ready to sync records': 'Handang mag-sync ng mga tala',
+  'Encoding works offline': 'Maaaring magtala kahit offline',
+  'Connection': 'Koneksyon',
+  'Sync status': 'Kalagayan ng sync',
+  'Queue': 'Nakahilera',
+  'Synced': 'Naka-sync',
+  'Pending Sync': 'Naghihintay ng sync',
+  'Sync Failed': 'Hindi nag-sync',
+  'Check for Updates': 'Tingnan ang Updates',
+  'Push Local Changes': 'I-sync ang mga Tala',
+  'Retry Sync': 'Subukang Muli',
+  'Syncing...': 'Nagsi-sync...',
+  'Households': 'Mga Sambahayan',
+  'Registered dwellings': 'Rehistradong tirahan',
+  'Individuals': 'Mga Residente',
+  'Local profiles': 'Mga profile sa device',
+  'Assessments': 'Mga Pagsusuri',
+  'Health records': 'Mga tala ng kalusugan',
+  'Released': 'Naipamahagi',
+  'Supply logs': 'Mga tala ng suplay',
+  'BHW workflow': 'Gawain ng BHW',
+  'Recent Profiles': 'Mga Bagong Profile',
+  'Saved Offline': 'Naka-save Offline',
+  'No local profiles yet': 'Wala pang profile sa device',
+  'Register a household to start the offline-first BHW workflow.': 'Magrehistro ng sambahayan upang makapagsimula.',
+  'Recent checks': 'Mga Bagong Pagsusuri',
+  'Health Assessments': 'Mga Pagsusuri sa Kalusugan',
+  'No assessments yet': 'Wala pang pagsusuri',
+  'Saved health assessments will appear here.': 'Dito makikita ang mga na-save na pagsusuri.',
+  'Household Profiling': 'Pagtatala ng Sambahayan',
+  'New Household Registration': 'Bagong Rehistro ng Sambahayan',
+  'Dwelling Information': 'Impormasyon ng Tirahan',
+  'Household Number': 'Numero ng Sambahayan',
+  'Dwelling Type': 'Uri ng Tirahan',
+  'Electric Service': 'Serbisyo ng Kuryente',
+  'Concrete': 'Kongkreto',
+  'Wood': 'Kahoy',
+  'Mixed': 'Halo-halong Materyales',
+  'Makeshift': 'Pansamantala',
+  'None': 'Wala',
+  'Local Water District': 'Lokal na Water District',
+  'Deep Well': 'Malalim na Balon',
+  'Artesian Well': 'Balong Artesian',
+  'Bottled/Purified': 'Bote o Purified Water',
+  'Spring / River': 'Bukal o Ilog',
+  'Water-sealed (Flush)': 'Water-sealed o Flush',
+  'Pit Latrine': 'Hukay na Palikuran',
+  'Shared / Communal': 'Pinagsasaluhan',
+  'Backyard Garden': 'Gulayan sa Bakuran',
+  'Livestock / Poultry': 'Hayop o Manok',
+  'Farming': 'Pagsasaka',
+  'Primary Water Source(s)': 'Pangunahing Pinagmumulan ng Tubig',
+  'Toilet Facility': 'Uri ng Palikuran',
+  'Food Production': 'Produksyon ng Pagkain',
+  'Household Members': 'Mga Miyembro ng Sambahayan',
+  'Member': 'Miyembro',
+  'Head': 'Puno',
+  'First Name': 'Pangalan',
+  'Middle Name': 'Gitnang Pangalan',
+  'Last Name': 'Apelyido',
+  'Birthdate': 'Petsa ng Kapanganakan',
+  'Sex': 'Kasarian',
+  'Female': 'Babae',
+  'Male': 'Lalaki',
+  'This person is a Household Head': 'Ang taong ito ang puno ng sambahayan',
+  '+ Add Another Member': '+ Magdagdag ng Miyembro',
+  'Save Complete Household': 'I-save ang Sambahayan',
+  'Saving Offline...': 'Sine-save Offline...',
+  'Assessment': 'Pagsusuri',
+  'Health Assessment': 'Pagsusuri sa Kalusugan',
+  'Ready': 'Handa',
+  'Needs Profile': 'Kailangan ng Profile',
+  'Search Profile': 'Maghanap ng Profile',
+  'Search by name...': 'Maghanap gamit ang pangalan...',
+  'Individual': 'Residente',
+  'Select a resident': 'Pumili ng residente',
+  'Searching...': 'Naghahanap...',
+  'Assessment Date': 'Petsa ng Pagsusuri',
+  'Weight (kg)': 'Timbang (kg)',
+  'Height (cm)': 'Taas (cm)',
+  'Waiting for measurements': 'Naghihintay ng sukat',
+  'Save Assessment': 'I-save ang Pagsusuri',
+  'Inventory': 'Imbentaryo',
+  'Disburse Supplies': 'Ipamahagi ang Suplay',
+  'Residents Ready': 'Handa ang mga Residente',
+  'Stock Available': 'May Stock',
+  'Empty Stock': 'Walang Stock',
+  'Item': 'Aytem',
+  'Quantity': 'Dami',
+  'Date': 'Petsa',
+  'Save Disbursement': 'I-save ang Pamamahagi',
+  'Register a household before recording a health assessment.': 'Magrehistro muna ng sambahayan bago gumawa ng pagsusuri.',
+  'Register a household before disbursing supplies.': 'Magrehistro muna ng sambahayan bago mamahagi ng suplay.',
+  'Admin must sync inventory items before disbursement.': 'Kailangang i-sync muna ng admin ang imbentaryo.',
+  'Select a resident.': 'Pumili ng residente.',
+  'Assessment date is required.': 'Kailangan ang petsa ng pagsusuri.',
+  'Enter a weight from 1 to 300 kg.': 'Maglagay ng timbang mula 1 hanggang 300 kg.',
+  'Enter a height from 30 to 250 cm.': 'Maglagay ng taas mula 30 hanggang 250 cm.',
+  'Select an inventory item.': 'Pumili ng aytem sa imbentaryo.',
+  'Enter a quantity of at least 1.': 'Maglagay ng dami na hindi bababa sa 1.',
+  'Disbursement date is required.': 'Kailangan ang petsa ng pamamahagi.',
+  'Action Required:': 'Kailangang Ayusin:',
+  'Household number is required.': 'Kailangan ang numero ng sambahayan.',
+  'First name is required.': 'Kailangan ang pangalan.',
+  'Last name is required.': 'Kailangan ang apelyido.',
+  'Birthdate is required.': 'Kailangan ang petsa ng kapanganakan.',
+  'Assign one household head.': 'Magtalaga ng isang puno ng sambahayan.',
+  'Select at least one water source.': 'Pumili ng kahit isang pinagmumulan ng tubig.',
+  'Select at least one toilet facility.': 'Pumili ng kahit isang uri ng palikuran.',
+  'Select at least one food-production option.': 'Pumili ng kahit isang paraan ng produksyon ng pagkain.',
+};
+
+type BhwLanguageValue = {
+  language: Language;
+  setLanguage: (language: Language) => void;
+  t: (text: string) => string;
+  isFilipino: boolean;
+};
+
+const BhwLanguageContext = createContext<BhwLanguageValue | null>(null);
+
+export function BhwLanguageProvider({ children }: { children: ReactNode }) {
+  const [language, setLanguageState] = useState<Language>(() => {
+    const savedLanguage = localStorage.getItem('mabisa-language');
+    return savedLanguage === 'fil' || savedLanguage === 'tl' ? 'fil' : 'en';
+  });
+
+  const value = useMemo<BhwLanguageValue>(() => ({
+    language,
+    setLanguage(nextLanguage) {
+      localStorage.setItem('mabisa-language', nextLanguage);
+      setLanguageState(nextLanguage);
+    },
+    t(text) {
+      return language === 'fil' ? filipino[text] ?? text : text;
+    },
+    isFilipino: language === 'fil',
+  }), [language]);
+
+  return <BhwLanguageContext.Provider value={value}>{children}</BhwLanguageContext.Provider>;
+}
+
+export function useBhwLanguage() {
+  const value = useContext(BhwLanguageContext);
+  if (!value) throw new Error('useBhwLanguage must be used within BhwLanguageProvider');
+  return value;
+}

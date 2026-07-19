@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'ghost' | 'secondary';
+  variant?: 'primary' | 'ghost' | 'secondary' | 'danger';
   children: ReactNode;
 };
 

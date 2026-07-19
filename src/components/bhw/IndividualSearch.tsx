@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { FormField, SelectField } from '../common/FormField';
 import { readLocalIndividuals } from '../../services/localDatabase';
+import { useBhwLanguage } from '../../app/BhwLanguageContext';
 
 type IndividualSearchProps = {
   selectedResidentId: string;
   onChange: (residentId: string) => void;
+  error?: string;
 };
 
-export function IndividualSearch({ selectedResidentId, onChange }: IndividualSearchProps) {
+export function IndividualSearch({ selectedResidentId, onChange, error }: IndividualSearchProps) {
+  const { t } = useBhwLanguage();
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Individual[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,20 +33,21 @@ export function IndividualSearch({ selectedResidentId, onChange }: IndividualSea
   return (
     <>
       <FormField
-        label="Search Profile"
+        label={t('Search Profile')}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search by name..."
+        placeholder={t('Search by name...')}
       />
       <SelectField 
-        label="Individual" 
+        label={t('Individual')}
         value={selectedResidentId} 
         onChange={(event) => onChange(event.target.value)} 
+        error={error}
         required 
         disabled={isLoading || !searchResults.length}
       >
         <option value="" disabled>
-          {isLoading ? 'Searching...' : 'Select a resident'}
+          {t(isLoading ? 'Searching...' : 'Select a resident')}
         </option>
         {searchResults.map((person) => {
           const mi = person.middle_name ? ` ${person.middle_name.charAt(0)}.` : '';
