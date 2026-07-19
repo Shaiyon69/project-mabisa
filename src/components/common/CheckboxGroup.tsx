@@ -8,9 +8,10 @@ type CheckboxGroupProps = {
   options: CheckboxOption[];
   selectedValues: string[];
   onChange: (newValues: string[]) => void;
+  error?: string;
 };
 
-export function CheckboxGroup({ label, options, selectedValues, onChange }: CheckboxGroupProps) {
+export function CheckboxGroup({ label, options, selectedValues, onChange, error }: CheckboxGroupProps) {
   function handleToggle(value: string) {
     if (selectedValues.includes(value)) {
       onChange(selectedValues.filter((v) => v !== value));
@@ -20,8 +21,8 @@ export function CheckboxGroup({ label, options, selectedValues, onChange }: Chec
   }
 
   return (
-    <fieldset className="checkbox-group">
-      <legend className="field-label">{label}</legend>
+    <fieldset className={`checkbox-group${error ? ' has-error' : ''}`} aria-invalid={Boolean(error)}>
+      <legend className="field-label">{label}{error ? <b className="required-mark"> *</b> : null}</legend>
       <div className="checkbox-grid">
         {options.map((option) => {
           const isSelected = selectedValues.includes(option.value);
@@ -38,6 +39,7 @@ export function CheckboxGroup({ label, options, selectedValues, onChange }: Chec
           );
         })}
       </div>
+      {error ? <small className="field-error">{error}</small> : null}
     </fieldset>
   );
 }

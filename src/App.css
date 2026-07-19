@@ -235,6 +235,41 @@ button,
     transform 160ms ease;
 }
 
+.required-mark,
+.field-error {
+  color: var(--danger);
+}
+
+.field-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ui-field.has-error input,
+.ui-field.has-error select,
+.ui-field.has-error textarea,
+.check-option.has-error {
+  border-color: var(--danger);
+  background: #fff8f6;
+  box-shadow: 0 0 0 2px rgb(183 76 66 / 0.12);
+}
+
+button .ui-icon {
+  flex: 0 0 auto;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 button:hover,
 .mobile-tabs a:hover,
 .admin-nav a:hover,
@@ -601,6 +636,63 @@ button:active,
   line-height: 1;
   text-transform: capitalize;
   white-space: nowrap;
+  gap: 5px;
+}
+
+.danger-button {
+  color: #fff;
+  background: var(--danger);
+  box-shadow: 0 12px 24px rgb(183 76 66 / 0.2);
+}
+
+.danger-button:hover {
+  background: #963e36;
+}
+
+.ui-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.form-alert,
+.form-review {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #e1c2bb;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  color: #7c352d;
+  background: #f7e7e2;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.form-alert {
+  margin: 0;
+  font-weight: 800;
+}
+
+.form-review div {
+  display: grid;
+  gap: 2px;
+}
+
+.form-review strong,
+.form-review span {
+  display: block;
+}
+
+.form-review.has-warning {
+  color: #75512f;
+  border-color: #e9caa9;
+  background: #f7eadc;
+}
+
+.form-review.is-ready {
+  color: #40533a;
+  border-color: #cfdbc8;
+  background: #edf2e9;
 }
 
 .tone-success {
@@ -737,6 +829,8 @@ tbody tr:hover {
   position: sticky;
   bottom: 0;
   z-index: 1;
+  display: grid;
+  gap: 10px;
   margin: 4px -20px -20px;
   padding: 12px 20px 20px;
   border-top: 1px solid var(--border);
@@ -883,6 +977,7 @@ tbody tr:hover {
   background:
     radial-gradient(circle at top right, rgb(193 140 93 / 0.14), transparent 14rem),
     var(--bg);
+  font-size: 16px;
 }
 
 .bhw-mobile-shell .app-header {
@@ -896,9 +991,33 @@ tbody tr:hover {
   justify-content: space-between;
 }
 
+.language-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--field-soft);
+}
+
+.bhw-mobile-shell .language-toggle button {
+  min-height: 42px;
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: var(--text);
+  background: transparent;
+  font-size: 13px;
+}
+
+.bhw-mobile-shell .language-toggle button.active {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
 .bhw-mobile-shell .header-copy {
   max-width: 100%;
-  font-size: 13px;
+  font-size: 15px;
+  line-height: 1.55;
 }
 
 .bhw-mobile-content {
@@ -918,15 +1037,40 @@ tbody tr:hover {
   gap: 14px;
 }
 
+.bhw-mobile-shell .dashboard-grid > * {
+  width: 100%;
+  min-width: 0;
+  grid-column: 1 / -1;
+}
+
+.bhw-mobile-shell .dashboard-grid > .sync-hero,
+.bhw-mobile-shell .dashboard-grid > .metric-grid,
+.bhw-mobile-shell .dashboard-grid > .list-section {
+  grid-column: 1 / -1;
+}
+
 .bhw-mobile-shell .metric-grid {
-  box-sizing: border-box;
-  justify-items: center;
-  padding-left: 26px;
+  width: 100%;
+  justify-items: stretch;
 }
 
 .bhw-mobile-shell .metric {
-  width: calc(100% - 12px);
+  width: 100%;
+  min-height: 96px;
   box-sizing: border-box;
+  padding: 18px;
+}
+
+.bhw-mobile-shell .metric span,
+.bhw-mobile-shell .metric small,
+.bhw-mobile-shell .status-card span {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.bhw-mobile-shell .metric strong,
+.bhw-mobile-shell .status-card strong {
+  font-size: 30px;
 }
 
 .bhw-mobile-shell .screen-panel {
@@ -945,15 +1089,59 @@ tbody tr:hover {
   gap: 10px;
 }
 
+.bhw-mobile-shell .panel-heading h2 {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.bhw-mobile-shell .eyebrow {
+  font-size: 13px;
+}
+
+.bhw-mobile-shell .ui-field {
+  gap: 9px;
+  font-size: 15px;
+}
+
+.bhw-mobile-shell .ui-field small,
+.bhw-mobile-shell .field-error {
+  font-size: 13px;
+}
+
+.bhw-mobile-shell .check-option {
+  min-height: 54px;
+  font-size: 16px;
+}
+
 .bhw-mobile-shell input,
 .bhw-mobile-shell select,
 .bhw-mobile-shell textarea,
 .bhw-mobile-shell button {
-  min-height: 54px;
+  min-height: 58px;
+  font-size: 16px;
 }
 
 .bhw-mobile-shell input[type='checkbox'] {
   min-height: 20px;
+}
+
+.bhw-mobile-shell .logout-button {
+  width: auto;
+  min-height: 44px;
+  padding: 9px 14px;
+  font-size: 14px;
+}
+
+.bhw-mobile-shell .sticky-actions .primary-button,
+.bhw-mobile-shell .add-member-button {
+  width: 100%;
+  min-height: 58px;
+}
+
+.bhw-mobile-shell .modal-actions button {
+  min-width: 120px;
+  min-height: 46px;
+  padding: 10px 16px;
 }
 
 .bhw-mobile-shell .form-panel > .panel-heading {
@@ -997,9 +1185,11 @@ tbody tr:hover {
 .bhw-bottom-nav a {
   display: flex;
   min-width: 0;
-  min-height: 52px;
+  min-height: 58px;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 3px;
   border-radius: 999px;
   color: var(--muted);
   font-size: 13px;
@@ -1026,6 +1216,8 @@ tbody tr:hover {
 
 .bhw-bottom-nav .nav-short {
   display: inline;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .modal-backdrop {
@@ -1051,6 +1243,26 @@ tbody tr:hover {
   box-shadow: var(--shadow-clay);
 }
 
+.logout-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  border: 1px solid #e1c2bb;
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: #7c352d;
+  background: #f7e7e2;
+  line-height: 1.45;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* Utilities */
 
 @keyframes spin {
@@ -1060,6 +1272,15 @@ tbody tr:hover {
 }
 
 @media (max-width: 420px) {
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+
   .mobile-shell {
     padding: 12px;
   }
@@ -1079,15 +1300,15 @@ tbody tr:hover {
     gap: 8px;
   }
 
-  .status-card,
-  .metric {
-    padding: 11px;
+  .bhw-mobile-shell .status-card,
+  .bhw-mobile-shell .metric {
+    padding: 16px;
   }
 
-  .status-card strong,
-  .metric strong,
-  .stock-card strong {
-    font-size: 22px;
+  .bhw-mobile-shell .status-card strong,
+  .bhw-mobile-shell .metric strong,
+  .bhw-mobile-shell .stock-card strong {
+    font-size: 28px;
   }
 }
 

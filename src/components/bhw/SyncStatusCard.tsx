@@ -2,6 +2,7 @@ import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { titleCase } from '../../lib/utils';
+import { useBhwLanguage } from '../../app/BhwLanguageContext';
 
 type SyncStatusCardProps = {
   isOnline: boolean;
@@ -18,11 +19,12 @@ export function SyncStatusCard({
   syncingManually, 
   onManualSync 
 }: SyncStatusCardProps) {
+  const { t } = useBhwLanguage();
   
   const isError = syncStatus.toLowerCase().includes('error') || syncStatus.toLowerCase().includes('fail');
   const isPending = pendingQueueCount > 0;
 
-  const syncedLabel = isError ? 'Sync Failed' : isPending ? 'Pending Sync' : 'Synced';
+  const syncedLabel = t(isError ? 'Sync Failed' : isPending ? 'Pending Sync' : 'Synced');
   const badgeTone = isError ? 'danger' : (!isOnline || isPending) ? 'warning' : 'success';
 
   const isButtonDisabled = syncingManually || !isOnline;
@@ -31,25 +33,25 @@ export function SyncStatusCard({
     <Card className="sync-hero">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Device status</p>
-          <h2>{isOnline ? 'Ready to sync records' : 'Encoding works offline'}</h2>
+          <p className="eyebrow">{t('Device status')}</p>
+          <h2>{t(isOnline ? 'Ready to sync records' : 'Encoding works offline')}</h2>
         </div>
         <Badge label={syncedLabel} tone={badgeTone} />
       </div>
 
       <div className="status-strip">
         <StatusCard 
-          label="Connection" 
-          value={isOnline ? 'Online' : 'Offline'} 
+          label={t('Connection')}
+          value={t(isOnline ? 'Online' : 'Offline')}
           tone={isOnline ? 'success' : 'warning'} 
         />
         <StatusCard 
-          label="Sync status" 
+          label={t('Sync status')}
           value={isError ? 'Failed' : titleCase(syncStatus)} 
           tone={isError ? 'danger' : 'info'} 
         />
         <StatusCard 
-          label="Queue" 
+          label={t('Queue')}
           value={`${pendingQueueCount}`} 
           tone={isPending ? 'warning' : 'success'} 
         />
@@ -57,21 +59,21 @@ export function SyncStatusCard({
 
       {isError && (
         <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fef2f2', borderLeft: '4px solid #ef4444', color: '#991b1b', fontSize: '0.875rem' }}>
-          <strong>Action Required:</strong> {syncStatus}
+          <strong>{t('Action Required:')}</strong> {syncStatus}
         </div>
       )}
 
       <div style={{ marginTop: '1.5rem' }}>
         <Button onClick={onManualSync} disabled={isButtonDisabled}>
           {syncingManually 
-            ? 'Syncing...' 
+            ? t('Syncing...')
             : !isOnline
-              ? 'Offline'
+              ? t('Offline')
               : isError 
-                ? 'Retry Sync' 
+                ? t('Retry Sync')
                 : isPending
-                  ? 'Push Local Changes'
-                  : 'Check for Updates'} 
+                  ? t('Push Local Changes')
+                  : t('Check for Updates')}
         </Button>
       </div>
     </Card>
