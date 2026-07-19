@@ -3,8 +3,8 @@ import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { logDev } from '../lib/utils';
 import {
   readLocalHealthAssessments,
-  getHouseholdCount,      // Replaced readLocalHouseholds
-  getIndividualCount,     // Replaced readLocalIndividuals
+  getHouseholdCount,
+  getIndividualCount,
   readLocalInventoryItems,
   readLocalSupplyDisbursements,
   readSyncQueue,
@@ -19,7 +19,6 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
   const [syncError, setSyncError] = useState<string | null>(null); 
 
   const refreshLocalData = useCallback(async () => {
-    // 1. Fetch lightweight counts instead of massive arrays
     const [householdCount, individualCount, assessments, inventoryItems, disbursements, queue] = await Promise.all([
       getHouseholdCount(),
       getIndividualCount(),
@@ -29,15 +28,14 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       readSyncQueue(),
     ]);
 
-    // 2. Update the snapshot payload
     setSnapshot({
-      householdCount,      // Previously: households
-      individualCount,     // Previously: individuals
+      householdCount,
+      individualCount,
       assessments,
       inventoryItems,
       disbursements,
       pendingQueueCount: queue.length,
-    } as unknown as LocalSnapshot); // Cast added temporarily until you update mabisaData.ts types
+    });
   }, []);
 
   useEffect(() => {

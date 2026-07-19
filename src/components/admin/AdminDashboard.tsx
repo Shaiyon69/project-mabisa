@@ -1,6 +1,3 @@
-// Goal: Update the AdminDashboard to use the memory-optimized LocalSnapshot 
-// and properly mount the newly paginated IndividualsTable.
-
 import type { LocalSnapshot } from '../../app/mabisaData';
 import { Card } from '../common/Card';
 import { InventoryTable } from './InventoryTable';
@@ -16,7 +13,6 @@ export function AdminDashboard({ snapshot }: AdminDashboardProps) {
   return (
     <div className="dashboard-grid">
       <section className="metric-grid admin-metrics" aria-label="Admin metrics">
-        {/* Fix 1: Swapped snapshot.individuals.length for the lightweight snapshot.individualCount */}
         <StatCard label="Residents" value={snapshot.individualCount} detail="Profiled locally" tone="blue" />
         <StatCard label="Assessments" value={snapshot.assessments.length} detail="Health records" tone="green" />
         <StatCard label="Inventory" value={snapshot.inventoryItems.length} detail="Tracked supplies" tone="amber" />
@@ -30,7 +26,6 @@ export function AdminDashboard({ snapshot }: AdminDashboardProps) {
             <h2>Resident Monitoring</h2>
           </div>
         </div>
-        {/* Fix 2: Removed the 'individuals' prop because this table now safely paginates its own data directly from SQLite */}
         <IndividualsTable pendingQueueCount={snapshot.pendingQueueCount} />
       </Card>
       

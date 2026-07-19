@@ -4,7 +4,6 @@ import type {
   Individual, 
   DwellingType, 
   ElectricService, 
-  FuelUsed, 
   IndividualSex 
 } from '../../types/database';
 import { createId, today } from '../../lib/utils';
@@ -15,7 +14,6 @@ import { Card } from '../common/Card';
 import { FormActions, FormField, SelectField } from '../common/FormField';
 import { CheckboxGroup } from '../common/CheckboxGroup';
 
-// Pre-defined options for the household arrays
 const WATER_OPTIONS = [
   { label: 'Local Water District', value: 'water_district' },
   { label: 'Deep Well', value: 'deep_well' },
@@ -186,7 +184,6 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
           </SelectField>
         </div>
 
-        {/* Replaced comma-separated text fields with CheckboxGroups */}
         <CheckboxGroup
           label="Primary Water Source(s)"
           options={WATER_OPTIONS}
@@ -213,8 +210,8 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
         <h3>Household Members</h3>
         
         {members.map((member, index) => (
-          <div key={index} style={{ border: '1px solid #e5e7eb', padding: '1rem', marginBottom: '1rem', borderRadius: '8px' }}>
-            <h4 style={{ margin: '0 0 1rem 0' }}>Member {index + 1} {member.is_household_head ? '(Head)' : ''}</h4>
+          <div key={index} className="household-member-card">
+            <h4>Member {index + 1} {member.is_household_head ? '(Head)' : ''}</h4>
             
             <div className="field-row">
               <FormField 
@@ -241,7 +238,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
               <FormField 
                 label="Birthdate" 
                 type="date" 
-                max={today()} // Prevents future dates
+                max={today()}
                 value={member.birthday} 
                 onChange={(e) => updateMember(index, 'birthday', e.target.value)} 
                 required 
@@ -256,7 +253,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
               </SelectField>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+            <label className={`check-option household-head-option${member.is_household_head ? ' is-selected' : ''}`}>
               <input 
                 type="checkbox" 
                 checked={member.is_household_head} 
@@ -267,7 +264,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
           </div>
         ))}
 
-        <Button type="button" onClick={addMember} style={{ width: 'fit-content', alignSelf: 'flex-start', marginTop: '0.5rem' }}>
+        <Button type="button" className="add-member-button" onClick={addMember}>
           + Add Another Member
         </Button>
 

@@ -2,8 +2,8 @@ import { createContext, useContext } from 'react';
 import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
 
 export type LocalSnapshot = {
-  householdCount: number;  // Replaced households: Household[]
-  individualCount: number; // Replaced individuals: Individual[]
+  householdCount: number;
+  individualCount: number;
   assessments: HealthAssessment[];
   inventoryItems: InventoryItem[];
   disbursements: SupplyDisbursement[];
