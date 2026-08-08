@@ -54,13 +54,9 @@ npm run build
 
 ## Supabase Schema
 
-The initial PostgreSQL migration is located at:
+The migrations are not kept in this repo — the schema is managed in the Supabase project directly. The central tables are `households`, `individuals`, `health_assessments`, `inventory_items`, and `supply_disbursements`, with Row Level Security enabled on all of them. The local SQLite tables mirror these names one-to-one.
 
-```text
-supabase/migrations/202606280001_initial_mabisa_schema.sql
-```
-
-It creates the central `users`, `residents`, `health_assessments`, `inventory_items`, and `supply_disbursements` tables with RLS policies for LGU/admin access and BHW-scoped resident data.
+Row shapes are declared in `src/types/database.ts`. That file is not currently enforced against the live schema (the Supabase client is untyped), so treat it as documentation rather than a guarantee.
 
 ## Offline Mobile Flow
 
@@ -72,10 +68,19 @@ src/services/localDatabase.ts
 
 Data entry forms write to local SQLite first. Each create or update also writes a matching entry to `sync_queue`. The background sync service reads pending queue entries when network connectivity is restored and pushes them to Supabase sequentially.
 
-## Documentation
-
-Detailed architecture notes are available at:
+## Project Layout
 
 ```text
-docs/CODE_DOCUMENTATION.md
+src/app/          routing and the shared data context
+src/pages/        route-level pages, split by surface (admin, bhw, auth)
+src/components/   admin/, bhw/, and a shared common/ UI kit
+src/services/     localDatabase.ts (SQLite) and syncService.ts (queue replay)
+src/hooks/        useBackgroundSync.ts
+src/types/        database.ts row shapes
+utils/supabase.ts Supabase client, re-exported by src/lib/supabase.ts
 ```
+
+Two surfaces share this codebase. `/bhw` is the phone-sized field client with a bottom
+tab bar; `/admin` is the desktop LGU portal with a sidebar. Each sits behind its own
+layout, and both read the same device-local SQLite database rather than querying
+Supabase directly.
