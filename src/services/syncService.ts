@@ -23,7 +23,19 @@ import {
   pullIndividualsFromServer
 } from './localDatabase';
 
-export type SyncStatus = 'idle' | 'offline' | 'unauthenticated' | 'syncing' | 'synced' | 'failed';
+/**
+ * `deferred` is a normal outcome, not a failure: entries are waiting out a retry
+ * backoff, or held back behind one that is. Kept distinct from `failed` so a
+ * 30-second wait does not raise the same alarm as a quarantined record.
+ */
+export type SyncStatus =
+  | 'idle'
+  | 'offline'
+  | 'unauthenticated'
+  | 'syncing'
+  | 'synced'
+  | 'deferred'
+  | 'failed';
 
 export type SyncResult = {
   status: SyncStatus;
@@ -300,9 +312,23 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       }
     }
 
-    if (deadLettered > 0 || deferred > 0) {
+    // Quarantine is the only outcome here that needs a human: those changes have
+    // left the queue and will not retry on their own. Entries merely waiting out
+    // a backoff report as `deferred`, which the UI treats as a normal state.
+    if (deadLettered > 0) {
       return {
         status: 'failed',
+        processed,
+        deferred,
+        deadLettered,
+        failedQueueId: firstFailedQueueId,
+        errorMessage: describeIncompletePass(deferred, deadLettered, firstErrorMessage),
+      };
+    }
+
+    if (deferred > 0) {
+      return {
+        status: 'deferred',
         processed,
         deferred,
         deadLettered,

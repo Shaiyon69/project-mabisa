@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
 import type { DeadLetterEntry } from '../services/localDatabase';
+import type { SyncStatus } from '../services/syncService';
 
 export type LocalSnapshot = {
   householdCount: number;  // Replaced households: Household[]
@@ -20,7 +21,14 @@ export type MabisaDataContextValue = {
   snapshot: LocalSnapshot;
   message: string | null;
   setMessage: (message: string | null) => void;
-  syncStatus: string;
+  /**
+   * The engine status, kept as the union. It used to be flattened into
+   * `Error: ${message}` here, which left consumers substring-sniffing prose to
+   * decide whether to show an alarm — so rewording a message changed the UI.
+   */
+  syncStatus: SyncStatus;
+  /** Text for the failure banner, or null when the last pass was not a failure. */
+  syncError: string | null;
   isOnline: boolean;
   syncingManually: boolean;
   refreshLocalData: () => Promise<void>;

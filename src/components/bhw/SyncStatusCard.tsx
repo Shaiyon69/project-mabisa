@@ -1,12 +1,15 @@
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { formatDate, titleCase } from '../../lib/utils';
+import { formatDate } from '../../lib/utils';
 import type { DeadLetterEntry, LocalTableName } from '../../services/localDatabase';
+import type { SyncStatus } from '../../services/syncService';
 
 type SyncStatusCardProps = {
   isOnline: boolean;
-  syncStatus: string;
+  syncStatus: SyncStatus;
+  /** Present only on a genuine failure. Drives the "Action Required" banner. */
+  syncError: string | null;
   pendingQueueCount: number;
   deadLetterEntries: DeadLetterEntry[];
   syncingManually: boolean;
@@ -14,13 +17,14 @@ type SyncStatusCardProps = {
   onRetryDeadLetters: () => Promise<void>;
 };
 
-// Raw SyncStatus values are engine vocabulary. Only these need translating —
-// anything else arriving here is already a sentence and falls through to titleCase.
-const statusLabels: Record<string, string> = {
+// Raw SyncStatus values are engine vocabulary. Exhaustive over the union, so a
+// new status is a build error here rather than untranslated jargon on screen.
+const statusLabels: Record<SyncStatus, string> = {
   idle: 'Idle',
   offline: 'Offline',
   syncing: 'Syncing',
   synced: 'Synced',
+  deferred: 'Waiting to retry',
   failed: 'Failed',
   unauthenticated: 'Sign in needed',
 };
@@ -37,6 +41,7 @@ const recordLabels: Record<LocalTableName, string> = {
 export function SyncStatusCard({
   isOnline,
   syncStatus,
+  syncError,
   pendingQueueCount,
   deadLetterEntries,
   syncingManually,
@@ -44,7 +49,10 @@ export function SyncStatusCard({
   onRetryDeadLetters,
 }: SyncStatusCardProps) {
 
-  const isError = syncStatus.toLowerCase().includes('error') || syncStatus.toLowerCase().includes('fail');
+  // Was a substring match on the status text, which meant a change of wording
+  // silently changed the UI — and painted the whole card red for a `deferred`
+  // pass that was only waiting out a 30-second backoff.
+  const isError = syncStatus === 'failed';
   const isPending = pendingQueueCount > 0;
   const setAsideCount = deadLetterEntries.length;
   const hasSetAside = setAsideCount > 0;
@@ -75,7 +83,7 @@ export function SyncStatusCard({
         />
         <StatusCard
           label="Sync status"
-          value={isError ? 'Failed' : statusLabels[syncStatus] ?? titleCase(syncStatus)}
+          value={statusLabels[syncStatus]}
           tone={isError ? 'danger' : 'info'}
         />
         <StatusCard
@@ -87,7 +95,7 @@ export function SyncStatusCard({
 
       {isError && (
         <p className="alert sync-alert">
-          <strong>Action Required:</strong> {syncStatus}
+          <strong>Action Required:</strong> {syncError ?? 'Sync failed. Try again.'}
         </p>
       )}
 
