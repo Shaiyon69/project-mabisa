@@ -730,8 +730,7 @@ tbody tr:hover {
   width: 100%;
 }
 
-.login-footnote,
-.demo-actions {
+.login-footnote {
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
@@ -747,34 +746,6 @@ tbody tr:hover {
   border-radius: 999px;
   padding: 7px 10px;
   background: var(--field-soft);
-}
-
-.demo-access {
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-  border: 1px dashed var(--secondary);
-  border-radius: var(--radius-md);
-  background: rgb(230 220 205 / 0.34);
-}
-
-.demo-access strong {
-  display: block;
-  color: var(--text-h);
-  font-weight: 900;
-}
-
-.demo-access span {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.demo-actions .primary-button,
-.demo-actions .secondary-button,
-.demo-actions .ghost-button {
-  flex: 1 1 150px;
 }
 
 /* Admin web */
