@@ -6,7 +6,7 @@ import { HouseholdForm } from '../../components/bhw/HouseholdForm';
 import { SupplyDisbursementForm } from '../../components/bhw/SupplyDisbursementForm';
 
 export function BHWHomePage() {
-  const { snapshot, isOnline, syncStatus, syncingManually, runManualSync } = useMabisaData();
+  const { snapshot, isOnline, syncStatus, syncingManually, runManualSync, retryDeadLetters } = useMabisaData();
 
   return (
     <BHWDashboard
@@ -15,6 +15,7 @@ export function BHWHomePage() {
       syncStatus={syncStatus}
       syncingManually={syncingManually}
       onManualSync={runManualSync}
+      onRetryDeadLetters={retryDeadLetters}
     />
   );
 }

@@ -14,9 +14,17 @@ type BHWDashboardProps = {
   syncStatus: string;
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
+  onRetryDeadLetters: () => Promise<void>;
 };
 
-export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, onManualSync }: BHWDashboardProps) {
+export function BHWDashboard({
+  snapshot,
+  isOnline,
+  syncStatus,
+  syncingManually,
+  onManualSync,
+  onRetryDeadLetters,
+}: BHWDashboardProps) {
   // 1. Replaced the useMemo slice with a local state for our SQLite query
   const [latestIndividuals, setLatestIndividuals] = useState<Individual[]>([]);
 
@@ -36,8 +44,10 @@ export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, 
         isOnline={isOnline}
         syncStatus={syncStatus}
         pendingQueueCount={snapshot.pendingQueueCount}
+        deadLetterEntries={snapshot.deadLetterEntries}
         syncingManually={syncingManually}
         onManualSync={onManualSync}
+        onRetryDeadLetters={onRetryDeadLetters}
       />
 
       <section className="metric-grid" aria-label="BHW metrics">

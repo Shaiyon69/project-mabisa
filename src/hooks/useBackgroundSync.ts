@@ -27,6 +27,8 @@ export function useBackgroundSync(): BackgroundSyncState {
       const failedResult: SyncResult = {
         status: 'failed',
         processed: 0,
+        deferred: 0,
+        deadLettered: 0,
         failedQueueId: null,
         errorMessage: error instanceof Error ? error.message : 'Synchronization failed',
       };
@@ -64,6 +66,8 @@ export function useBackgroundSync(): BackgroundSyncState {
         setLastResult({
           status: 'failed',
           processed: 0,
+          deferred: 0,
+          deadLettered: 0,
           failedQueueId: null,
           errorMessage: error instanceof Error ? error.message : 'Local database initialization failed',
         });

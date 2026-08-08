@@ -7,6 +7,8 @@ import {
   getIndividualCount,     // Replaced readLocalIndividuals
   readLocalInventoryItems,
   readLocalSupplyDisbursements,
+  readDeadLetterEntries,
+  requeueDeadLetterEntries,
   readSyncQueue,
 } from '../services/localDatabase';
 import { MabisaDataContext, emptySnapshot, type LocalSnapshot, type MabisaDataContextValue } from './mabisaData';
@@ -20,14 +22,16 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
 
   const refreshLocalData = useCallback(async () => {
     // 1. Fetch lightweight counts instead of massive arrays
-    const [householdCount, individualCount, assessments, inventoryItems, disbursements, queue] = await Promise.all([
-      getHouseholdCount(),
-      getIndividualCount(),
-      readLocalHealthAssessments(),
-      readLocalInventoryItems(),
-      readLocalSupplyDisbursements(),
-      readSyncQueue(),
-    ]);
+    const [householdCount, individualCount, assessments, inventoryItems, disbursements, queue, deadLetterEntries] =
+      await Promise.all([
+        getHouseholdCount(),
+        getIndividualCount(),
+        readLocalHealthAssessments(),
+        readLocalInventoryItems(),
+        readLocalSupplyDisbursements(),
+        readSyncQueue(),
+        readDeadLetterEntries(),
+      ]);
 
     // 2. Update the snapshot payload
     setSnapshot({
@@ -37,6 +41,7 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       inventoryItems,
       disbursements,
       pendingQueueCount: queue.length,
+      deadLetterEntries,
     });
   }, []);
 
@@ -59,12 +64,27 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     try {
       const result = await backgroundSync.runSync();
       await refreshLocalData();
-      
-      if (result.status === 'synced') {
-        setMessage(`Synced ${result.processed} queued change(s).`);
-      } else {
-        setMessage(result.errorMessage);
-        setSyncError(result.errorMessage ?? 'Unknown sync failure');
+
+      // Only a genuine 'failed' raises the red banner. 'syncing' (the concurrency
+      // lock was already held), 'offline' and 'unauthenticated' are normal states
+      // with no error text — treating them as failures showed "Action Required"
+      // for a sync that had simply been deferred.
+      switch (result.status) {
+        case 'synced':
+          setMessage(`Synced ${result.processed} queued change(s).`);
+          break;
+        case 'syncing':
+          setMessage('A sync is already running.');
+          break;
+        case 'offline':
+          setMessage('Offline. Changes stay on this device and sync when a connection returns.');
+          break;
+        case 'unauthenticated':
+          setMessage(result.errorMessage);
+          break;
+        default:
+          setMessage(result.errorMessage);
+          setSyncError(result.errorMessage ?? 'Unknown sync failure');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Manual synchronization failed';
@@ -75,6 +95,24 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       setSyncingManually(false);
     }
   }, [backgroundSync, refreshLocalData]);
+
+  const retryDeadLetters = useCallback(async () => {
+    setSyncingManually(true);
+    setSyncError(null);
+
+    try {
+      const requeued = await requeueDeadLetterEntries();
+      setMessage(`Returned ${requeued} set-aside change(s) to the sync queue.`);
+      await runManualSync();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Could not requeue set-aside changes';
+      logDev('Dead letter requeue failed', errorMessage);
+      setMessage(errorMessage);
+      setSyncError(errorMessage);
+    } finally {
+      setSyncingManually(false);
+    }
+  }, [runManualSync]);
 
   const value = useMemo<MabisaDataContextValue>(
     () => ({
@@ -87,8 +125,20 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       syncingManually,
       refreshLocalData,
       runManualSync,
+      retryDeadLetters,
     }),
-    [backgroundSync.isOnline, backgroundSync.status, bhwId, message, refreshLocalData, runManualSync, snapshot, syncingManually, syncError],
+    [
+      backgroundSync.isOnline,
+      backgroundSync.status,
+      bhwId,
+      message,
+      refreshLocalData,
+      retryDeadLetters,
+      runManualSync,
+      snapshot,
+      syncingManually,
+      syncError,
+    ],
   );
 
   return <MabisaDataContext.Provider value={value}>{children}</MabisaDataContext.Provider>;

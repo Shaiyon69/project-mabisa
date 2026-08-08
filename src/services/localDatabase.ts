@@ -36,6 +36,13 @@ export type LocalTableName =
   | 'inventory_items'
   | 'supply_disbursements';
 
+// Device-local bookkeeping tables. These mirror no Supabase table and are never
+// pushed, so they are deliberately kept out of LocalTableName — but they still
+// need to be reachable by the column-upgrade machinery.
+export type LocalBookkeepingTableName = 'sync_queue' | 'sync_dead_letter';
+
+type MigratableTableName = LocalTableName | LocalBookkeepingTableName;
+
 export type SyncOperationType = 'INSERT' | 'UPDATE';
 
 // Maps each local table to its corresponding "Insert" TypeScript interface.
@@ -73,6 +80,25 @@ export type SyncQueueEntry<TTable extends LocalTableName = LocalTableName> = {
   created_at: string;
   attempts: number; // Tracks retry counts if the network fails
   last_error: string | null;
+  // Earliest ISO timestamp at which this entry may be retried. Null means "now".
+  // Persisted rather than held in memory because the app is killed constantly in
+  // the field — in-memory backoff would reset on every cold start.
+  next_attempt_at: string | null;
+};
+
+// A queue entry that exhausted its retries and was set aside so the rest of the
+// queue can keep draining. Nothing is deleted: the payload is preserved in full
+// so a BHW or admin can requeue it once the underlying cause is fixed.
+export type DeadLetterEntry<TTable extends LocalTableName = LocalTableName> = {
+  dead_letter_id: number;
+  original_queue_id: number;
+  operation_type: SyncOperationType;
+  target_table: TTable;
+  payload: LocalInsertPayloadByTable[TTable] | LocalUpdatePayloadByTable[TTable];
+  created_at: string;
+  attempts: number;
+  last_error: string | null;
+  failed_at: string;
 };
 
 type SqlValue = string | number | null;
@@ -173,9 +199,25 @@ const migrations = [
     payload text not null,
     created_at text not null,
     attempts integer not null default 0,
-    last_error text
+    last_error text,
+    next_attempt_at text
   )`,
-  
+
+  // Sync Dead Letter Table
+  // Entries that exhausted their retries, moved aside so the main queue keeps
+  // draining. Health records are never discarded — only quarantined for review.
+  `create table if not exists sync_dead_letter (
+    dead_letter_id integer primary key autoincrement,
+    original_queue_id integer not null,
+    operation_type text not null check (operation_type in ('INSERT', 'UPDATE')),
+    target_table text not null check (target_table in ('households', 'individuals', 'health_assessments', 'inventory_items', 'supply_disbursements')),
+    payload text not null,
+    created_at text not null,
+    attempts integer not null default 0,
+    last_error text,
+    failed_at text not null
+  )`,
+
   // Performance Indices for faster lookups and table joins
   'create index if not exists local_individuals_household_id_idx on individuals(household_id)',
   'create index if not exists local_health_assessments_resident_id_idx on health_assessments(resident_id)',
@@ -183,13 +225,17 @@ const migrations = [
   'create index if not exists local_supply_disbursements_item_id_idx on supply_disbursements(item_id)',
   'create index if not exists local_supply_disbursements_resident_id_idx on supply_disbursements(resident_id)',
   'create index if not exists local_sync_queue_created_at_idx on sync_queue(created_at)',
+  'create index if not exists local_sync_dead_letter_failed_at_idx on sync_dead_letter(failed_at)',
 ];
 
 // Columns introduced after the first release. Every migration above is
 // `create table if not exists`, so a device that installed earlier keeps its original
 // schema forever — each later column has to be added explicitly when it is missing.
-const columnUpgrades: { table: LocalTableName; column: string; definition: string }[] = [
+const columnUpgrades: { table: MigratableTableName; column: string; definition: string }[] = [
   { table: 'individuals', column: 'middle_name', definition: 'text' },
+  // Retry backoff. Devices installed before the resilience work have a sync_queue
+  // without this column, and `create table if not exists` will never add it.
+  { table: 'sync_queue', column: 'next_attempt_at', definition: 'text' },
 ];
 
 /**
@@ -321,7 +367,7 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
 export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
   const database = await getLocalDatabase();
   const result = await database.query(
-    `select queue_id, operation_type, target_table, payload, created_at, attempts, last_error
+    `select queue_id, operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at
      from sync_queue
      order by queue_id asc`,
   );
@@ -333,7 +379,8 @@ export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
     payload: JSON.parse(String(row.payload)), // Parse the raw string back into a JS object
     created_at: String(row.created_at),
     attempts: Number(row.attempts),
-    last_error: row.last_error === null || row.last_error === undefined ? null : String(row.last_error),
+    last_error: nullableText(row.last_error),
+    next_attempt_at: nullableText(row.next_attempt_at),
   }));
 }
 
@@ -346,14 +393,101 @@ export async function removeSyncQueueEntry(queueId: number): Promise<void> {
 }
 
 /**
- * Increments the attempt counter and logs the error. Called when a Supabase upsert fails.
+ * Increments the attempt counter, logs the error, and schedules the next retry.
+ *
+ * `nextAttemptAt` is what stops a failing entry from being hammered on every
+ * single network-status change — the sync loop skips entries whose retry time
+ * has not arrived yet.
  */
-export async function markSyncQueueEntryFailed(queueId: number, errorMessage: string): Promise<void> {
+export async function markSyncQueueEntryFailed(
+  queueId: number,
+  errorMessage: string,
+  nextAttemptAt: string | null = null,
+): Promise<void> {
   const database = await getLocalDatabase();
   await database.run(
-    'update sync_queue set attempts = attempts + 1, last_error = ? where queue_id = ?',
-    [errorMessage, queueId],
+    'update sync_queue set attempts = attempts + 1, last_error = ?, next_attempt_at = ? where queue_id = ?',
+    [errorMessage, nextAttemptAt, queueId],
   );
+}
+
+/**
+ * Moves an entry out of the live queue and into quarantine, preserving its
+ * payload verbatim. Called once an entry has exhausted its retries, or when it
+ * depends on a record that is itself quarantined.
+ *
+ * This is the whole point of the dead-letter design: the main queue can always
+ * drain, and no health record is ever silently dropped.
+ */
+export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, errorMessage: string): Promise<void> {
+  const database = await getLocalDatabase();
+  await database.run(
+    `insert into sync_dead_letter
+     (original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.queue_id,
+      entry.operation_type,
+      entry.target_table,
+      JSON.stringify(entry.payload),
+      entry.created_at,
+      entry.attempts,
+      errorMessage,
+      new Date().toISOString(),
+    ],
+  );
+  await database.run('delete from sync_queue where queue_id = ?', [entry.queue_id]);
+}
+
+export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
+  const database = await getLocalDatabase();
+  const result = await database.query(
+    `select dead_letter_id, original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at
+     from sync_dead_letter
+     order by original_queue_id asc`,
+  );
+
+  return (result.values ?? []).map((row) => ({
+    dead_letter_id: Number(row.dead_letter_id),
+    original_queue_id: Number(row.original_queue_id),
+    operation_type: parseOperationType(String(row.operation_type)),
+    target_table: parseLocalTableName(String(row.target_table)),
+    payload: JSON.parse(String(row.payload)),
+    created_at: String(row.created_at),
+    attempts: Number(row.attempts),
+    last_error: nullableText(row.last_error),
+    failed_at: String(row.failed_at),
+  }));
+}
+
+export async function countDeadLetterEntries(): Promise<number> {
+  const database = await getLocalDatabase();
+  const result = await database.query('select count(*) as total from sync_dead_letter');
+  return Number(result.values?.[0]?.total ?? 0);
+}
+
+/**
+ * Puts every quarantined entry back on the live queue with a fresh attempt count.
+ *
+ * Entries are reinserted in their original queue order so parents are pushed
+ * before their children again — requeueing an individual ahead of its household
+ * would just recreate the orphan the quarantine existed to prevent.
+ */
+export async function requeueDeadLetterEntries(): Promise<number> {
+  const database = await getLocalDatabase();
+  const entries = await readDeadLetterEntries();
+
+  for (const entry of entries) {
+    await database.run(
+      `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at)
+       values (?, ?, ?, ?, 0, null, null)`,
+      [entry.operation_type, entry.target_table, JSON.stringify(entry.payload), entry.created_at],
+    );
+    await database.run('delete from sync_dead_letter where dead_letter_id = ?', [entry.dead_letter_id]);
+  }
+
+  await persistLocalDatabase();
+  return entries.length;
 }
 
 // -----------------------------------------------------------------------------
@@ -657,6 +791,15 @@ export async function readLocalSupplyDisbursements(residentId?: string): Promise
 // -----------------------------------------------------------------------------
 // Parsers & Type Guards
 // -----------------------------------------------------------------------------
+
+/**
+ * Normalizes a nullable SQLite text column into `string | null`.
+ * A column added by `alter table` reads back as undefined on rows written before
+ * the upgrade, so undefined has to collapse to null alongside a real NULL.
+ */
+function nullableText(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value);
+}
 
 /**
  * Validates that an untyped string is a legitimate SyncOperationType.

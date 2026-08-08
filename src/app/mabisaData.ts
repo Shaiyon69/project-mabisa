@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
+import type { DeadLetterEntry } from '../services/localDatabase';
 
 export type LocalSnapshot = {
   householdCount: number;  // Replaced households: Household[]
@@ -8,6 +9,10 @@ export type LocalSnapshot = {
   inventoryItems: InventoryItem[];
   disbursements: SupplyDisbursement[];
   pendingQueueCount: number;
+  // Changes that exhausted their sync retries and were set aside so the queue
+  // could keep draining. Surfaced in the UI so a stuck record is visible rather
+  // than just a frozen count.
+  deadLetterEntries: DeadLetterEntry[];
 };
 
 export type MabisaDataContextValue = {
@@ -20,6 +25,8 @@ export type MabisaDataContextValue = {
   syncingManually: boolean;
   refreshLocalData: () => Promise<void>;
   runManualSync: () => Promise<void>;
+  /** Puts every quarantined change back on the queue and immediately retries. */
+  retryDeadLetters: () => Promise<void>;
 };
 
 export const emptySnapshot: LocalSnapshot = {
@@ -29,6 +36,7 @@ export const emptySnapshot: LocalSnapshot = {
   inventoryItems: [],
   disbursements: [],
   pendingQueueCount: 0,
+  deadLetterEntries: [],
 };
 
 export const MabisaDataContext = createContext<MabisaDataContextValue | null>(null);
