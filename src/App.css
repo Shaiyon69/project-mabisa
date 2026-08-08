@@ -343,6 +343,77 @@ button:active,
     var(--panel);
 }
 
+.sync-alert {
+  margin-top: 16px;
+}
+
+.sync-actions {
+  margin-top: 20px;
+}
+
+.sync-quarantine {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--secondary);
+  border-radius: var(--radius-md);
+  background: var(--field);
+}
+
+.sync-quarantine-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sync-quarantine-heading strong {
+  color: var(--text-h);
+  font-family: var(--display);
+  font-size: 17px;
+}
+
+.sync-quarantine .muted {
+  margin: 0;
+  font-size: 13px;
+}
+
+.sync-quarantine-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sync-quarantine-list li {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.sync-quarantine-list span {
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sync-quarantine-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sync-quarantine-error {
+  overflow-wrap: anywhere;
+  color: var(--danger);
+}
+
 .status-strip,
 .metric-grid,
 .activity-grid,
