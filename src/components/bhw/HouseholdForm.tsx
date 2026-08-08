@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import type { 
-  Household, 
-  Individual, 
-  DwellingType, 
-  ElectricService, 
-  FuelUsed, 
-  IndividualSex 
+import type {
+  Household,
+  Individual,
+  DwellingType,
+  ElectricService,
+  IndividualSex
 } from '../../types/database';
 import { createId, today } from '../../lib/utils';
 import { saveHouseholdLocally, saveIndividualLocally } from '../../services/localDatabase';

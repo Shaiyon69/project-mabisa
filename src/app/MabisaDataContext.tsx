@@ -37,12 +37,14 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       inventoryItems,
       disbursements,
       pendingQueueCount: queue.length,
-    } as unknown as LocalSnapshot); // Cast added temporarily until you update mabisaData.ts types
+    });
   }, []);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      void refreshLocalData();
+      refreshLocalData().catch((error: unknown) => {
+        logDev('Local snapshot refresh failed', error instanceof Error ? error.message : error);
+      });
     }, 0);
 
     return () => {

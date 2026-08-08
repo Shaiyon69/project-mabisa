@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 import {
   initializeLocalDatabase,
   markSyncQueueEntryFailed,
+  persistLocalDatabase,
   readSyncQueue,
   removeSyncQueueEntry,
   type LocalTableName,
@@ -120,6 +121,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
           errorMessage,
         });
         await markSyncQueueEntryFailed(entry.queue_id, errorMessage);
+        await persistLocalDatabase();
 
         return {
           status: 'failed',
@@ -129,6 +131,13 @@ export async function syncPendingQueue(): Promise<SyncResult> {
         };
       }
     }
+
+    // Flush the queue deletions once rather than per entry — saving the web store
+    // serializes the whole database, so doing it inside the loop would be O(n) rewrites.
+    // A crash before this point simply replays the entries, which is safe because
+    // every push is an upsert.
+    await persistLocalDatabase();
+
     try {
       await pullRemoteUpdates();
     } catch (pullError) {

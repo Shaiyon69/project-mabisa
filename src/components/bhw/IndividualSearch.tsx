@@ -13,10 +13,12 @@ export function IndividualSearch({ selectedResidentId, onChange }: IndividualSea
   const [searchResults, setSearchResults] = useState<Individual[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Directly query SQLite when the search query changes (with a 300ms debounce)
+  // Directly query SQLite when the search query changes (with a 300ms debounce).
+  // The loading flag is raised inside the timeout rather than in the effect body, so
+  // typing does not force a synchronous re-render on every keystroke.
   useEffect(() => {
-    setIsLoading(true);
     const timeoutId = setTimeout(() => {
+      setIsLoading(true);
       readLocalIndividuals({ searchQuery: query, limit: 50 })
         .then((results) => {
           setSearchResults(results);

@@ -46,23 +46,27 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
     },
   ];
 
-  // 2. Reset to page 1 whenever the user types a new search query
-  useEffect(() => {
+  // 2. Reset to page 1 whenever the user types a new search query. Done in the handler
+  // rather than an effect on [query], so the page never renders with a stale offset.
+  function handleQueryChange(nextQuery: string) {
+    setQuery(nextQuery);
     setPage(1);
-  }, [query]);
+  }
 
   // 3. Fetch data, re-running whenever the query OR the page changes
   useEffect(() => {
-    getIndividualCount().then(setTotalCount).catch(console.error);
-    
     const timeoutId = setTimeout(() => {
       // Calculate how many rows to skip based on the current page
       const currentOffset = (page - 1) * ITEMS_PER_PAGE;
 
-      readLocalIndividuals({ 
-        searchQuery: query, 
-        limit: ITEMS_PER_PAGE, 
-        offset: currentOffset 
+      // The count has to honour the same search term as the rows, otherwise the
+      // pager offers pages the filtered result set does not have.
+      getIndividualCount({ searchQuery: query }).then(setTotalCount).catch(console.error);
+
+      readLocalIndividuals({
+        searchQuery: query,
+        limit: ITEMS_PER_PAGE,
+        offset: currentOffset
       })
         .then(setTableRows)
         .catch(console.error);
@@ -77,7 +81,7 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
   return (
     <div className="ui-table-stack">
       <TableToolbar>
-        <FormField label="Search residents" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or address" />
+        <FormField label="Search residents" value={query} onChange={(event) => handleQueryChange(event.target.value)} placeholder="Name or household number" />
       </TableToolbar>
       
       <Table
