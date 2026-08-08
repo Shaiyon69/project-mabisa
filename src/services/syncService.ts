@@ -13,6 +13,7 @@ import {
   markSyncQueueEntryFailed,
   moveSyncQueueEntryToDeadLetter,
   persistLocalDatabase,
+  readDeadLetterEntries,
   readSyncQueue,
   removeSyncQueueEntry,
   type LocalTableName,
@@ -466,10 +467,38 @@ function withoutPrimaryKey<T extends Record<string, unknown>, K extends keyof T>
 // Pull Remote Updates Logic
 // -----------------------------------------------------------------------------
 
+/**
+ * Primary keys of the records sitting in the dead letter, grouped by table.
+ *
+ * The pull only runs once `deferred === 0`, which means the live queue has fully
+ * drained — but quarantined entries deliberately do not block it. Those are the
+ * only records where the device copy can still be ahead of the server, so they
+ * are also the only ones a server row must not overwrite: doing so would discard
+ * the very edit the quarantine was holding on to.
+ */
+async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> {
+  const quarantined = new Map<LocalTableName, Set<string>>();
+
+  for (const entry of await readDeadLetterEntries()) {
+    const payload = entry.payload as Record<string, unknown>;
+    const value = payload[primaryKeys[entry.target_table]];
+
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const keys = quarantined.get(entry.target_table) ?? new Set<string>();
+    keys.add(value);
+    quarantined.set(entry.target_table, keys);
+  }
+
+  return quarantined;
+}
+
 export async function pullRemoteUpdates(): Promise<void> {
   try {
     // 1. Fetch tables sequentially to respect foreign key constraints
-    
+
     // Fetch Households
     const { data: cloudHouseholds, error: hError } = await supabase.from('households').select('*');
     if (hError) throw new Error(`Household Pull Error: ${hError.message}`);
@@ -482,20 +511,37 @@ export async function pullRemoteUpdates(): Promise<void> {
     const { data: cloudInventory, error: invError } = await supabase.from('inventory_items').select('*');
     if (invError) throw new Error(`Inventory Pull Error: ${invError.message}`);
 
-    // 2. Upsert data into local SQLite in the exact order of their dependencies
-    if (cloudHouseholds && cloudHouseholds.length > 0) {
-      await pullHouseholdsFromServer(cloudHouseholds);
-    }
-    
-    if (cloudIndividuals && cloudIndividuals.length > 0) {
-      await pullIndividualsFromServer(cloudIndividuals);
-    }
-    
-    if (cloudInventory && cloudInventory.length > 0) {
-      await pullInventoryFromServer(cloudInventory);
-    }
+    // 2. Drop any row whose local copy is quarantined. The server's version of it
+    // is stale by definition — the edit that would have updated it is the one that
+    // failed to push.
+    const quarantined = await readQuarantinedKeys();
 
-    console.log('Successfully pulled all updates from the cloud.');
+    const withoutQuarantined = <TRow>(table: LocalTableName, rows: TRow[] | null): TRow[] => {
+      const held = quarantined.get(table);
+
+      if (!rows?.length || !held?.size) {
+        return rows ?? [];
+      }
+
+      const primaryKey = primaryKeys[table];
+      const kept = rows.filter((row) => !held.has(String((row as Record<string, unknown>)[primaryKey])));
+
+      if (kept.length !== rows.length) {
+        logDev('Held back server rows with quarantined local edits', {
+          table,
+          skipped: rows.length - kept.length,
+        });
+      }
+
+      return kept;
+    };
+
+    // 3. Upsert data into local SQLite in the exact order of their dependencies
+    await pullHouseholdsFromServer(withoutQuarantined('households', cloudHouseholds));
+    await pullIndividualsFromServer(withoutQuarantined('individuals', cloudIndividuals));
+    await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
+
+    logDev('Successfully pulled all updates from the cloud.');
 
   } catch (error) {
     console.error('Failed to pull remote updates:', error);
