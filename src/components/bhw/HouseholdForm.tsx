@@ -37,8 +37,49 @@ const FOOD_OPTIONS = [
   { label: 'None', value: 'none' }
 ];
 
+// The column is plain text with no check constraint, so a fixed list is safe here
+// and keeps the registry searchable in a way free text would not.
+const EDUCATION_OPTIONS = [
+  { label: '(Not specified)', value: '' },
+  { label: 'None', value: 'none' },
+  { label: 'Elementary', value: 'elementary' },
+  { label: 'High School', value: 'high_school' },
+  { label: 'Senior High School', value: 'senior_high' },
+  { label: 'Vocational', value: 'vocational' },
+  { label: 'College', value: 'college' },
+  { label: 'Post-graduate', value: 'post_graduate' }
+];
+
+// PhilHealth numbers get written with dashes or spaces on paper forms. Accept both
+// on input, reject anything that is clearly not a number, and store digits only so
+// the same person cannot end up under two spellings of one ID.
+const PHILHEALTH_ALLOWED = /^[\d\s-]+$/;
+
+/** Blank optional text is stored as NULL rather than an empty string. */
+function emptyToNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** Strips the formatting a BHW typed, leaving the canonical digits. */
+function philhealthDigits(value: string | null | undefined): string | null {
+  const digits = value?.replace(/\D/g, '');
+  return digits ? digits : null;
+}
+
+// Three checkboxes now share this; the surrounding member card is already styled
+// inline, so keeping them consistent with it beats introducing one lone class.
+const checkboxLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  marginTop: '1rem',
+  cursor: 'pointer',
+  fontSize: '0.875rem',
+};
+
 type HouseholdFormProps = {
-  bhwId: string; 
+  bhwId: string;
   onSaved: () => Promise<void>;
 };
 
@@ -62,8 +103,11 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
       sex: 'female',
       birthday: '',
       is_household_head: true,
+      occupation: '',
+      educational_attainment: '',
       is_out_of_school_youth: false,
       is_pregnant_nursing_fp: false,
+      philhealth_number: '',
     }
   ]);
 
@@ -78,7 +122,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
 
   function addMember() {
     setMembers([
-      ...members, 
+      ...members,
       {
         first_name: '',
         middle_name: '',
@@ -86,8 +130,11 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
         sex: 'female',
         birthday: '',
         is_household_head: false,
+        occupation: '',
+        educational_attainment: '',
         is_out_of_school_youth: false,
         is_pregnant_nursing_fp: false,
+        philhealth_number: '',
       }
     ]);
   }
@@ -110,6 +157,20 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
       return;
     }
 
+    // Length is left unchecked on purpose — a partially remembered ID is still
+    // worth recording, and blocking a whole household over it helps nobody.
+    const badPhilhealth = members.findIndex(
+      (member) => member.philhealth_number?.trim() && !PHILHEALTH_ALLOWED.test(member.philhealth_number.trim()),
+    );
+
+    if (badPhilhealth !== -1) {
+      setFormError(
+        `Cannot save: Member ${badPhilhealth + 1}'s PhilHealth number may only contain digits, spaces, and dashes.`,
+      );
+      setSaving(false);
+      return;
+    }
+
     try {
       const householdId = createId();
       const timestamp = new Date().toISOString();
@@ -126,6 +187,11 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
           ...(member as Individual),
           resident_id: createId(),
           household_id: householdId,
+          // Optional text is normalised here so the column holds NULL rather than
+          // an empty string, which reads the same in the UI but not in a query.
+          occupation: emptyToNull(member.occupation),
+          educational_attainment: emptyToNull(member.educational_attainment),
+          philhealth_number: philhealthDigits(member.philhealth_number),
           created_at: timestamp,
           updated_at: timestamp,
         });
@@ -255,13 +321,60 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
               </SelectField>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
-              <input 
-                type="checkbox" 
-                checked={member.is_household_head} 
-                onChange={(e) => updateMember(index, 'is_household_head', e.target.checked)} 
+            <div className="field-row">
+              <FormField
+                label="Occupation"
+                value={member.occupation || ''}
+                onChange={(e) => updateMember(index, 'occupation', e.target.value)}
+                placeholder="(Optional)"
+              />
+              <SelectField
+                label="Educational Attainment"
+                value={member.educational_attainment || ''}
+                onChange={(e) => updateMember(index, 'educational_attainment', e.target.value)}
+              >
+                {EDUCATION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+
+            <FormField
+              label="PhilHealth Number"
+              value={member.philhealth_number || ''}
+              onChange={(e) => updateMember(index, 'philhealth_number', e.target.value)}
+              placeholder="(Optional) e.g. 12-345678901-2"
+              inputMode="numeric"
+              hint="Dashes and spaces are fine — only the digits are saved."
+            />
+
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={member.is_household_head ?? false}
+                onChange={(e) => updateMember(index, 'is_household_head', e.target.checked)}
               />
               This person is a Household Head
+            </label>
+
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={member.is_out_of_school_youth ?? false}
+                onChange={(e) => updateMember(index, 'is_out_of_school_youth', e.target.checked)}
+              />
+              Out-of-school youth
+            </label>
+
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={member.is_pregnant_nursing_fp ?? false}
+                onChange={(e) => updateMember(index, 'is_pregnant_nursing_fp', e.target.checked)}
+              />
+              Pregnant, nursing, or using family planning
             </label>
           </div>
         ))}
