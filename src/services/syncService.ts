@@ -151,28 +151,15 @@ function nextAttemptTimestamp(attempts: number): string {
  * pending operations to the Supabase PostgreSQL database.
  */
 export async function syncPendingQueue(): Promise<SyncResult> {
-  // 1. Check for concurrency lock
+  // 1. Claim the concurrency lock. This has to happen before the first await,
+  // not after the checks below: every one of them yields, so a second trigger
+  // landing in that window (a network flap alongside the mount pass, or the
+  // manual button alongside either) would clear the same check and run a
+  // parallel loop. Remote writes survive that — every push is an upsert — but
+  // both passes increment `attempts` on the same entries, so they quarantine at
+  // roughly half the intended retry budget.
   if (syncInProgress) {
     return idleResult('syncing');
-  }
-
-  await initializeLocalDatabase();
-
-  // 2. Hardware network check before attempting any API calls
-  const connected = await isNetworkConnected();
-  if (!connected) {
-    return idleResult('offline');
-  }
-
-  // 3. Auth check. Row-level security denies every write from an anonymous
-  // client, so pushing without a session burns retry attempts on failures that
-  // are guaranteed. Defer instead — nothing is lost, the queue is durable.
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) {
-    return {
-      ...idleResult('unauthenticated'),
-      errorMessage: 'Not signed in. Records stay saved on this device until you sign in again.',
-    };
   }
 
   syncInProgress = true;
@@ -183,6 +170,25 @@ export async function syncPendingQueue(): Promise<SyncResult> {
   let firstErrorMessage: string | null = null;
 
   try {
+    await initializeLocalDatabase();
+
+    // 2. Hardware network check before attempting any API calls
+    const connected = await isNetworkConnected();
+    if (!connected) {
+      return idleResult('offline');
+    }
+
+    // 3. Auth check. Row-level security denies every write from an anonymous
+    // client, so pushing without a session burns retry attempts on failures that
+    // are guaranteed. Defer instead — nothing is lost, the queue is durable.
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      return {
+        ...idleResult('unauthenticated'),
+        errorMessage: 'Not signed in. Records stay saved on this device until you sign in again.',
+      };
+    }
+
     // 4. Fetch all pending jobs in exact chronological order
     const queue = await readSyncQueue();
     const now = Date.now();
