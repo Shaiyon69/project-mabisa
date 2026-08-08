@@ -66,15 +66,18 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       await refreshLocalData();
 
       // Only a genuine 'failed' raises the red banner. 'syncing' (the concurrency
-      // lock was already held), 'offline' and 'unauthenticated' are normal states
-      // with no error text — treating them as failures showed "Action Required"
-      // for a sync that had simply been deferred.
+      // lock was already held), 'offline', 'unauthenticated' and 'deferred' are
+      // normal states with no error text — treating them as failures showed
+      // "Action Required" for a sync that had simply been deferred.
       switch (result.status) {
         case 'synced':
           setMessage(`Synced ${result.processed} queued change(s).`);
           break;
         case 'syncing':
           setMessage('A sync is already running.');
+          break;
+        case 'deferred':
+          setMessage(result.errorMessage);
           break;
         case 'offline':
           setMessage('Offline. Changes stay on this device and sync when a connection returns.');
@@ -120,7 +123,12 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       snapshot,
       message,
       setMessage,
-      syncStatus: syncError ? `Error: ${syncError}` : backgroundSync.status,
+      syncStatus: backgroundSync.status,
+      // `syncError` only covers the manual path. A background pass that fails
+      // carries its reason on the result instead, so fall back to that rather
+      // than showing a bare "Action Required" with nothing to act on.
+      syncError:
+        syncError ?? (backgroundSync.status === 'failed' ? backgroundSync.lastResult?.errorMessage ?? null : null),
       isOnline: backgroundSync.isOnline,
       syncingManually,
       refreshLocalData,
@@ -129,6 +137,7 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     }),
     [
       backgroundSync.isOnline,
+      backgroundSync.lastResult,
       backgroundSync.status,
       bhwId,
       message,

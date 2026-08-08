@@ -7,11 +7,13 @@ import { Card } from '../common/Card';
 import { EmptyState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
 import { readLocalIndividuals } from '../../services/localDatabase';
+import type { SyncStatus } from '../../services/syncService';
 
 type BHWDashboardProps = {
   snapshot: LocalSnapshot;
   isOnline: boolean;
-  syncStatus: string;
+  syncStatus: SyncStatus;
+  syncError: string | null;
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
   onRetryDeadLetters: () => Promise<void>;
@@ -21,6 +23,7 @@ export function BHWDashboard({
   snapshot,
   isOnline,
   syncStatus,
+  syncError,
   syncingManually,
   onManualSync,
   onRetryDeadLetters,
@@ -43,6 +46,7 @@ export function BHWDashboard({
       <SyncStatusCard
         isOnline={isOnline}
         syncStatus={syncStatus}
+        syncError={syncError}
         pendingQueueCount={snapshot.pendingQueueCount}
         deadLetterEntries={snapshot.deadLetterEntries}
         syncingManually={syncingManually}
