@@ -82,7 +82,9 @@ type SqlValue = string | number | null;
 // -----------------------------------------------------------------------------
 
 const sqlite = new SQLiteConnection(CapacitorSQLite);
+const isWebPlatform = Capacitor.getPlatform() === 'web';
 let localDatabase: SQLiteDBConnection | null = null;
+let localDatabaseSetup: Promise<SQLiteDBConnection> | null = null;
 
 // The schema definitions for the local offline database.
 const migrations = [
@@ -109,8 +111,8 @@ const migrations = [
   `create table if not exists individuals (
     resident_id text primary key,
     household_id text not null,
-    first_name text not null,\
-    middle_name TEXT,
+    first_name text not null,
+    middle_name text,
     last_name text not null,
     sex text not null check (sex in ('male', 'female')),
     birthday text not null,
@@ -183,35 +185,71 @@ const migrations = [
   'create index if not exists local_sync_queue_created_at_idx on sync_queue(created_at)',
 ];
 
+// Columns introduced after the first release. Every migration above is
+// `create table if not exists`, so a device that installed earlier keeps its original
+// schema forever — each later column has to be added explicitly when it is missing.
+const columnUpgrades: { table: LocalTableName; column: string; definition: string }[] = [
+  { table: 'individuals', column: 'middle_name', definition: 'text' },
+];
+
+/**
+ * Adds any post-release column that this device's database predates.
+ * Idempotent: `pragma table_info` is checked first, so re-running is a no-op.
+ */
+async function applyColumnUpgrades(database: SQLiteDBConnection): Promise<void> {
+  for (const upgrade of columnUpgrades) {
+    const info = await database.query(`pragma table_info(${upgrade.table})`);
+    const hasColumn = (info.values ?? []).some((row) => row.name === upgrade.column);
+
+    if (!hasColumn) {
+      await database.execute(`alter table ${upgrade.table} add column ${upgrade.column} ${upgrade.definition}`);
+    }
+  }
+}
+
 /**
  * Bootstraps the local SQLite connection and runs all migrations.
  * This is called automatically when the app starts.
  */
 export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
-  // 1. If connection already exists, return it immediately
   if (localDatabase) {
     return localDatabase;
   }
 
+  // Cache the in-flight promise, not just the resolved connection. refreshLocalData()
+  // fans out several accessors at once and useBackgroundSync initializes in parallel,
+  // so without this every concurrent caller clears the check above and opens its own
+  // connection to `mabisa_local`, re-running the migrations on each one.
+  if (!localDatabaseSetup) {
+    localDatabaseSetup = openLocalDatabase().catch((error: unknown) => {
+      localDatabaseSetup = null; // allow a later call to retry after a failed open
+      throw error;
+    });
+  }
+
+  return localDatabaseSetup;
+}
+
+async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   // 2. THE WEB POLYFILL
   // This block ONLY runs in the browser. It ensures the emulator is injected
   // exactly when needed, preventing Vite HMR race conditions.
-  if (Capacitor.getPlatform() === 'web') {
+  if (isWebPlatform) {
     try {
       let jeepEl = document.querySelector('jeep-sqlite');
-      
+
       if (!jeepEl) {
         jeepEl = document.createElement('jeep-sqlite');
         document.body.appendChild(jeepEl);
       }
-      
+
       // Force the app to wait until the browser fully registers the element
       await customElements.whenDefined('jeep-sqlite');
-      
+
       // Initialize the web store via the sqlite wrapper, not the raw Capacitor instance
       await sqlite.initWebStore();
-      
-    } catch (error: any) {
+
+    } catch (error) {
       // If Vite Hot-Reloads, initWebStore might throw an "already initialized" error.
       // We catch it here so it doesn't crash your React app.
       console.warn('SQLite Web Store warning (safe to ignore during dev):', error);
@@ -227,6 +265,8 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
     await database.execute(statement);
   }
 
+  await applyColumnUpgrades(database);
+
   localDatabase = database;
   return database;
 }
@@ -236,6 +276,21 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
  */
 export async function getLocalDatabase(): Promise<SQLiteDBConnection> {
   return initializeLocalDatabase();
+}
+
+/**
+ * Flushes the database to durable storage.
+ *
+ * Web builds hold the whole database in memory and write nothing to IndexedDB until
+ * the store is saved explicitly, so without this every record is lost on reload.
+ * Native platforms persist on write, where this is a no-op.
+ */
+export async function persistLocalDatabase(): Promise<void> {
+  if (!isWebPlatform) {
+    return;
+  }
+
+  await sqlite.saveToStore('mabisa_local');
 }
 
 // -----------------------------------------------------------------------------
@@ -332,6 +387,7 @@ export async function saveHouseholdLocally(household: Household, operationType: 
   // Note: We queue the raw 'household' object here, NOT the stringified version.
   // This ensures Supabase receives actual arrays when the payload is processed.
   await enqueueSyncOperation('households', operationType, household);
+  await persistLocalDatabase();
 }
 
 /**
@@ -341,12 +397,13 @@ export async function saveIndividualLocally(individual: Individual, operationTyp
   const database = await getLocalDatabase();
   await database.run(
     `insert or replace into individuals
-     (resident_id, household_id, first_name, last_name, sex, birthday, is_household_head, occupation, educational_attainment, is_out_of_school_youth, is_pregnant_nursing_fp, philhealth_number, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (resident_id, household_id, first_name, middle_name, last_name, sex, birthday, is_household_head, occupation, educational_attainment, is_out_of_school_youth, is_pregnant_nursing_fp, philhealth_number, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       individual.resident_id,
       individual.household_id,
       individual.first_name,
+      individual.middle_name ?? null,
       individual.last_name,
       individual.sex,
       individual.birthday,
@@ -363,6 +420,7 @@ export async function saveIndividualLocally(individual: Individual, operationTyp
   
   // Queue the raw object so Supabase receives actual booleans
   await enqueueSyncOperation('individuals', operationType, individual);
+  await persistLocalDatabase();
 }
 
 export async function saveHealthAssessmentLocally(
@@ -387,6 +445,7 @@ export async function saveHealthAssessmentLocally(
     ],
   );
   await enqueueSyncOperation('health_assessments', operationType, assessment);
+  await persistLocalDatabase();
 }
 
 export async function saveInventoryItemLocally(item: InventoryItem, operationType: SyncOperationType = 'INSERT'): Promise<void> {
@@ -398,6 +457,7 @@ export async function saveInventoryItemLocally(item: InventoryItem, operationTyp
     [item.item_id, item.item_name, item.type, item.current_stock, item.created_at, item.updated_at],
   );
   await enqueueSyncOperation('inventory_items', operationType, item);
+  await persistLocalDatabase();
 }
 
 export async function saveSupplyDisbursementLocally(
@@ -420,6 +480,7 @@ export async function saveSupplyDisbursementLocally(
     ],
   );
   await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
+  await persistLocalDatabase();
 }
 
 
@@ -429,42 +490,70 @@ export async function getHouseholdCount(): Promise<number> {
   return result.values?.[0]?.total || 0;
 }
 
-export async function getIndividualCount(): Promise<number> {
+export async function getIndividualCount(options?: Pick<PaginatedQuery, 'searchQuery'>): Promise<number> {
   const db = await initializeLocalDatabase();
-  const result = await db.query('SELECT COUNT(*) as total FROM individuals');
+  const search = buildIndividualSearch(options?.searchQuery);
+
+  // Mirrors the FROM/WHERE of readLocalIndividuals so a filtered count always
+  // matches the rows that query would return.
+  const result = await db.query(
+    `SELECT COUNT(*) as total
+     FROM individuals i
+     LEFT JOIN households h ON i.household_id = h.household_id${search.clause}`,
+    search.params,
+  );
+
   return result.values?.[0]?.total || 0;
 }
+
+/**
+ * Builds the shared search predicate for individual lookups.
+ * Kept in one place so the row query and the count query cannot drift apart —
+ * if they do, the pager offers pages the filtered result set does not have.
+ */
+function buildIndividualSearch(searchQuery?: string): { clause: string; params: SqlValue[] } {
+  const term = searchQuery?.trim();
+
+  if (!term) {
+    return { clause: '', params: [] };
+  }
+
+  // Escape LIKE wildcards so a typed % or _ matches literally instead of
+  // silently widening the search.
+  const pattern = `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+
+  return {
+    clause: ` WHERE (i.first_name LIKE ? ESCAPE '\\'
+                  OR i.middle_name LIKE ? ESCAPE '\\'
+                  OR i.last_name LIKE ? ESCAPE '\\'
+                  OR h.household_number LIKE ? ESCAPE '\\')`,
+    params: [pattern, pattern, pattern, pattern],
+  };
+}
+
 // -----------------------------------------------------------------------------
 // Read Operations (Loading data into the React UI)
 // -----------------------------------------------------------------------------
 
 export async function readLocalIndividuals(options?: PaginatedQuery): Promise<Individual[]> {
   const db = await initializeLocalDatabase();
-  
-  // Use a LEFT JOIN to pull the readable household_number alongside the individual's data
-  let query = `
-    SELECT i.*, h.household_number 
-    FROM individuals i
-    LEFT JOIN households h ON i.household_id = h.household_id
-  `;
-  const params: any[] = [];
 
-  if (options?.searchQuery) {
-    const searchTerm = `%${options.searchQuery.trim()}%`;
-    // Added table prefixes (i. and h.) to prevent ambiguous column errors, 
-    // and added the ability to search for residents by their HH number!
-    query += ` WHERE i.first_name LIKE ? 
-                  OR i.last_name LIKE ? 
-                  OR i.middle_name LIKE ? 
-                  OR h.household_number LIKE ?`;
-    params.push(searchTerm, searchTerm, searchTerm, searchTerm);
-  }
+  // Use a LEFT JOIN to pull the readable household_number alongside the individual's data
+  const search = buildIndividualSearch(options?.searchQuery);
+  let query = `
+    SELECT i.*, h.household_number
+    FROM individuals i
+    LEFT JOIN households h ON i.household_id = h.household_id${search.clause}
+  `;
+  const params: SqlValue[] = [...search.params];
 
   query += ' ORDER BY i.last_name ASC, i.first_name ASC';
 
-  if (options?.limit !== undefined) {
+  // SQLite rejects OFFSET without LIMIT, so an offset-only call needs a limit
+  // supplied for it (-1 means "no limit" in SQLite).
+  if (options?.limit !== undefined || options?.offset !== undefined) {
     query += ' LIMIT ?';
-    params.push(options.limit);
+    params.push(options.limit ?? -1);
   }
   if (options?.offset !== undefined) {
     query += ' OFFSET ?';
@@ -484,7 +573,7 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
 export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Household[]> {
   const db = await initializeLocalDatabase();
   let query = 'SELECT * FROM households';
-  const params: any[] = [];
+  const params: SqlValue[] = [];
 
   if (options?.searchQuery) {
     const searchTerm = `%${options.searchQuery.trim()}%`;
@@ -494,9 +583,10 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
 
   query += ' ORDER BY created_at DESC';
 
-  if (options?.limit !== undefined) {
+  // As above: SQLite rejects OFFSET without a preceding LIMIT.
+  if (options?.limit !== undefined || options?.offset !== undefined) {
     query += ' LIMIT ?';
-    params.push(options.limit);
+    params.push(options.limit ?? -1);
   }
   if (options?.offset !== undefined) {
     query += ' OFFSET ?';
@@ -633,6 +723,7 @@ export async function pullInventoryFromServer(cloudItems: InventoryItem[]): Prom
 
   try {
     await db.executeSet([{ statement, values }]);
+    await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull inventory into SQLite:', error);
     throw error;
@@ -674,6 +765,7 @@ export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Pr
 
   try {
     await db.executeSet([{ statement, values }]);
+    await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull households into SQLite:', error);
     throw error;
@@ -716,6 +808,7 @@ export async function pullIndividualsFromServer(cloudIndividuals: Individual[]):
 
   try {
     await db.executeSet([{ statement, values }]);
+    await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull individuals into SQLite:', error);
     throw error;
