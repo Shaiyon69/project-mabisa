@@ -104,7 +104,8 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
           Previous
         </Button>
         
-        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+        {/* --text-muted has never existed; the token is --muted. */}
+        <span className="muted">
           Page {page} of {totalPages}
         </span>
         
