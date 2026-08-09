@@ -19,25 +19,25 @@ export function CheckboxGroup({ label, options, selectedValues, onChange }: Chec
     }
   }
 
+  // fieldset/legend rather than a div and a span: it is what tells a screen
+  // reader that these options answer one question.
   return (
-    <div className="form-field stack" style={{ marginBottom: '1rem' }}>
-      <span className="field-label" style={{ fontWeight: 600, fontSize: '0.875rem' }}>{label}</span>
-      <div 
-        className="checkbox-grid" 
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.5rem', marginTop: '0.25rem' }}
-      >
-        {options.map((option) => (
-          <label key={option.value} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem' }}>
-            <input
-              type="checkbox"
-              checked={selectedValues.includes(option.value)}
-              onChange={() => handleToggle(option.value)}
-              style={{ cursor: 'pointer' }}
-            />
-            {option.label}
-          </label>
-        ))}
+    <fieldset className="choice-group">
+      <legend>{label}</legend>
+      <div className="choice-list">
+        {options.map((option) => {
+          const checked = selectedValues.includes(option.value);
+
+          return (
+            // The checked class rather than :has() — the state is already here,
+            // and some of the Android builds this ships to predate :has().
+            <label key={option.value} className={`choice${checked ? ' is-checked' : ''}`}>
+              <input type="checkbox" checked={checked} onChange={() => handleToggle(option.value)} />
+              {option.label}
+            </label>
+          );
+        })}
       </div>
-    </div>
+    </fieldset>
   );
 }

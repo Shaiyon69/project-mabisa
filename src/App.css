@@ -182,7 +182,108 @@
   font-weight: 700;
 }
 
-input,
+/* Choice controls
+   A checkbox is a target before it is a control. The whole row toggles, not a
+   12px box, and it is tall enough to hit with a thumb without looking. The
+   native input stays — it behaves the way every other app on this phone has
+   already taught the person using it, which a custom control would undo. */
+
+.choice-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-group legend {
+  margin-bottom: 10px;
+  padding: 0;
+  color: var(--text-h);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choice {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-h);
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  transition:
+    border-color 300ms ease,
+    background 300ms ease;
+}
+
+.choice input {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* Selection is carried by the whole row, not by the tick alone — at arm's length
+   in daylight the 26px mark is the first thing to disappear. */
+.choice.is-checked {
+  border-color: var(--primary);
+  background: var(--muted-surface);
+}
+
+.member-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 15px;
+  padding: 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--field-soft);
+}
+
+.member-card h4 {
+  margin: 0;
+  color: var(--text-h);
+  font-family: var(--display);
+  font-size: 18px;
+  font-variation-settings: 'SOFT' 50;
+  font-weight: 700;
+}
+
+/* Fades out at both ends rather than ruling a hard line across the form. */
+.form-divider {
+  width: 100%;
+  height: 1px;
+  /* The forms are column flex containers, which would otherwise shrink 1px to 0. */
+  flex: 0 0 auto;
+  margin: 6px 0;
+  border: 0;
+  background: linear-gradient(90deg, transparent, var(--border) 18%, var(--border) 82%, transparent);
+}
+
+.add-member-action {
+  width: 100%;
+}
+
+/* Checkboxes and radios are excluded: this rule was stretching every one of them
+   to full width and 52px tall, which is what made the household checkboxes fight
+   their own labels. They are sized as controls in the .choice block below. */
+input:not([type='checkbox'], [type='radio']),
 select,
 textarea {
   width: 100%;
@@ -206,7 +307,7 @@ textarea::placeholder {
   color: #9a968a;
 }
 
-input:hover,
+input:not([type='checkbox'], [type='radio']):hover,
 select:hover,
 textarea:hover {
   background: #fffaf1;
@@ -870,7 +971,7 @@ tbody tr:hover {
   gap: 10px;
 }
 
-.bhw-mobile-shell input,
+.bhw-mobile-shell input:not([type='checkbox'], [type='radio']),
 .bhw-mobile-shell select,
 .bhw-mobile-shell textarea,
 .bhw-mobile-shell button {
