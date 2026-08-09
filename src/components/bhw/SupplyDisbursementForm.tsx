@@ -71,14 +71,14 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
           <p className="eyebrow">Inventory</p>
           <h2>Disburse Supplies</h2>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="header-actions">
           <Badge label={hasIndividuals ? 'Residents Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
           <Badge label={hasInventory ? 'Stock Available' : 'Empty Stock'} tone={hasInventory ? 'success' : 'danger'} />
         </div>
       </div>
 
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="form-hint" style={{ color: 'red' }}>{formError}</p> : null}
+        {formError ? <p className="alert" role="alert">{formError}</p> : null}
 
         <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} />
         {!hasIndividuals ? <p className="form-hint">Register a household before disbursing supplies.</p> : null}
