@@ -67,16 +67,23 @@ function philhealthDigits(value: string | null | undefined): string | null {
   return digits ? digits : null;
 }
 
-// Three checkboxes now share this; the surrounding member card is already styled
-// inline, so keeping them consistent with it beats introducing one lone class.
-const checkboxLabelStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  marginTop: '1rem',
-  cursor: 'pointer',
-  fontSize: '0.875rem',
-};
+/** One per-member yes/no, on the same target as every other choice in the app. */
+function MemberChoice({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className={`choice${checked ? ' is-checked' : ''}`}>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      {label}
+    </label>
+  );
+}
 
 type HouseholdFormProps = {
   bhwId: string;
@@ -216,7 +223,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
       </div>
 
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="form-hint error" style={{ color: 'red' }}>{formError}</p> : null}
+        {formError ? <p className="alert" role="alert">{formError}</p> : null}
 
         <h3>Dwelling Information</h3>
         <FormField 
@@ -273,14 +280,14 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
           onChange={(newValues) => setHousehold({ ...household, food_production: newValues })}
         />
 
-        <hr style={{ margin: '2rem 0' }} />
+        <hr className="form-divider" />
 
         <h3>Household Members</h3>
-        
+
         {members.map((member, index) => (
-          <div key={index} style={{ border: '1px solid #e5e7eb', padding: '1rem', marginBottom: '1rem', borderRadius: '8px' }}>
-            <h4 style={{ margin: '0 0 1rem 0' }}>Member {index + 1} {member.is_household_head ? '(Head)' : ''}</h4>
-            
+          <div key={index} className="member-card">
+            <h4>Member {index + 1} {member.is_household_head ? '(Head)' : ''}</h4>
+
             <div className="field-row">
               <FormField 
                 label="First Name" 
@@ -350,37 +357,28 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
               hint="Dashes and spaces are fine — only the digits are saved."
             />
 
-            <label style={checkboxLabelStyle}>
-              <input
-                type="checkbox"
+            <div className="choice-list">
+              <MemberChoice
+                label="This person is a household head"
                 checked={member.is_household_head ?? false}
-                onChange={(e) => updateMember(index, 'is_household_head', e.target.checked)}
+                onChange={(next) => updateMember(index, 'is_household_head', next)}
               />
-              This person is a Household Head
-            </label>
-
-            <label style={checkboxLabelStyle}>
-              <input
-                type="checkbox"
+              <MemberChoice
+                label="Out-of-school youth"
                 checked={member.is_out_of_school_youth ?? false}
-                onChange={(e) => updateMember(index, 'is_out_of_school_youth', e.target.checked)}
+                onChange={(next) => updateMember(index, 'is_out_of_school_youth', next)}
               />
-              Out-of-school youth
-            </label>
-
-            <label style={checkboxLabelStyle}>
-              <input
-                type="checkbox"
+              <MemberChoice
+                label="Pregnant, nursing, or using family planning"
                 checked={member.is_pregnant_nursing_fp ?? false}
-                onChange={(e) => updateMember(index, 'is_pregnant_nursing_fp', e.target.checked)}
+                onChange={(next) => updateMember(index, 'is_pregnant_nursing_fp', next)}
               />
-              Pregnant, nursing, or using family planning
-            </label>
+            </div>
           </div>
         ))}
 
-        <Button type="button" onClick={addMember} style={{ width: 'fit-content', alignSelf: 'flex-start', marginTop: '0.5rem' }}>
-          + Add Another Member
+        <Button type="button" variant="ghost" className="add-member-action" onClick={addMember}>
+          Add another member
         </Button>
 
         <FormActions>
