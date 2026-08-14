@@ -145,6 +145,15 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           />
         </div>
         <BmiRail bmi={bmi} status={nutritionStatus} />
+        {/* The bands above are adult BMI. DOH/NNC classifies children by
+            weight-for-age, height-for-age and weight-for-height z-scores instead,
+            which this form does not compute — it never reads the resident's
+            birthday. Until it does, say so on screen rather than let the verdict
+            read as clinical. */}
+        <p className="form-hint">
+          This result uses adult BMI standards. It is not valid for children, teenagers, or pregnant women — check the
+          DOH growth chart for them before acting on it.
+        </p>
         <FormActions>
           {/* Prevent saving if no resident is selected */}
           <Button type="submit" disabled={saving || !hasIndividuals || !residentId}>

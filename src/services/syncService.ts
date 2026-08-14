@@ -121,14 +121,14 @@ function entityKey(table: LocalTableName, id: string): EntityKey {
 }
 
 /** The record this entry writes, or null if the payload carries no usable primary key. */
-function ownEntityKey(entry: SyncQueueEntry): EntityKey | null {
+export function ownEntityKey(entry: SyncQueueEntry): EntityKey | null {
   const payload = entry.payload as Record<string, unknown>;
   const value = payload[primaryKeys[entry.target_table]];
   return typeof value === 'string' ? entityKey(entry.target_table, value) : null;
 }
 
 /** The records this entry's foreign keys point at. */
-function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
+export function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
   const payload = entry.payload as Record<string, unknown>;
 
   const reference = (column: string, parentTable: LocalTableName): EntityKey[] => {
@@ -153,7 +153,7 @@ function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
  * Exponential backoff from the attempt count already recorded against the entry.
  * 30s, 1m, 2m, 4m, then quarantine at MAX_SYNC_ATTEMPTS.
  */
-function nextAttemptTimestamp(attempts: number): string {
+export function nextAttemptTimestamp(attempts: number): string {
   const delay = Math.min(RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1), RETRY_MAX_DELAY_MS);
   return new Date(Date.now() + delay).toISOString();
 }
