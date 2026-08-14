@@ -10,7 +10,6 @@ type LoginPageProps = {
   onEmailChange: (email: string) => void;
   onPasswordChange: (password: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  onDemoAccess: (target: 'bhw' | 'admin') => void;
 };
 
 export function LoginPage({
@@ -21,7 +20,6 @@ export function LoginPage({
   onEmailChange,
   onPasswordChange,
   onSubmit,
-  onDemoAccess,
 }: LoginPageProps) {
   return (
     <main className="mobile-shell auth-shell">
@@ -66,26 +64,7 @@ export function LoginPage({
           </Button>
         </form>
 
-        <div className="login-footnote">
-          <span>Offline-first BHW workflow</span>
-          <span>Supabase sync ready</span>
-        </div>
 
-        <div className="demo-access">
-          <div>
-            <p className="eyebrow">Demo access</p>
-            <strong>UI testing only</strong>
-            <span>Temporary shortcuts for reviewing BHW and Admin screens without signing in.</span>
-          </div>
-          <div className="demo-actions">
-            <Button variant="secondary" onClick={() => onDemoAccess('bhw')}>
-              Enter as BHW
-            </Button>
-            <Button variant="ghost" onClick={() => onDemoAccess('admin')}>
-              Enter as Admin
-            </Button>
-          </div>
-        </div>
       </section>
     </main>
   );

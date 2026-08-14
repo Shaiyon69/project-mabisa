@@ -11,7 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Secrets. `.env.example` is the committed template.
 .env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -23,3 +27,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+claude.md
+.mcp.json
+docs
