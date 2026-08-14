@@ -182,7 +182,108 @@
   font-weight: 700;
 }
 
-input,
+/* Choice controls
+   A checkbox is a target before it is a control. The whole row toggles, not a
+   12px box, and it is tall enough to hit with a thumb without looking. The
+   native input stays — it behaves the way every other app on this phone has
+   already taught the person using it, which a custom control would undo. */
+
+.choice-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-group legend {
+  margin-bottom: 10px;
+  padding: 0;
+  color: var(--text-h);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choice {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-h);
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  transition:
+    border-color 300ms ease,
+    background 300ms ease;
+}
+
+.choice input {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* Selection is carried by the whole row, not by the tick alone — at arm's length
+   in daylight the 26px mark is the first thing to disappear. */
+.choice.is-checked {
+  border-color: var(--primary);
+  background: var(--muted-surface);
+}
+
+.member-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 15px;
+  padding: 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--field-soft);
+}
+
+.member-card h4 {
+  margin: 0;
+  color: var(--text-h);
+  font-family: var(--display);
+  font-size: 18px;
+  font-variation-settings: 'SOFT' 50;
+  font-weight: 700;
+}
+
+/* Fades out at both ends rather than ruling a hard line across the form. */
+.form-divider {
+  width: 100%;
+  height: 1px;
+  /* The forms are column flex containers, which would otherwise shrink 1px to 0. */
+  flex: 0 0 auto;
+  margin: 6px 0;
+  border: 0;
+  background: linear-gradient(90deg, transparent, var(--border) 18%, var(--border) 82%, transparent);
+}
+
+.add-member-action {
+  width: 100%;
+}
+
+/* Checkboxes and radios are excluded: this rule was stretching every one of them
+   to full width and 52px tall, which is what made the household checkboxes fight
+   their own labels. They are sized as controls in the .choice block below. */
+input:not([type='checkbox'], [type='radio']),
 select,
 textarea {
   width: 100%;
@@ -206,7 +307,7 @@ textarea::placeholder {
   color: #9a968a;
 }
 
-input:hover,
+input:not([type='checkbox'], [type='radio']):hover,
 select:hover,
 textarea:hover {
   background: #fffaf1;
@@ -343,6 +444,77 @@ button:active,
     var(--panel);
 }
 
+.sync-alert {
+  margin-top: 16px;
+}
+
+.sync-actions {
+  margin-top: 20px;
+}
+
+.sync-quarantine {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--secondary);
+  border-radius: var(--radius-md);
+  background: var(--field);
+}
+
+.sync-quarantine-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sync-quarantine-heading strong {
+  color: var(--text-h);
+  font-family: var(--display);
+  font-size: 17px;
+}
+
+.sync-quarantine .muted {
+  margin: 0;
+  font-size: 13px;
+}
+
+.sync-quarantine-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sync-quarantine-list li {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.sync-quarantine-list span {
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sync-quarantine-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sync-quarantine-error {
+  overflow-wrap: anywhere;
+  color: var(--danger);
+}
+
 .status-strip,
 .metric-grid,
 .activity-grid,
@@ -474,30 +646,6 @@ button:active,
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.computed-panel {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 9px 12px;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--field-soft);
-  text-align: left;
-}
-
-.computed-panel strong {
-  color: var(--primary);
-  font-family: var(--display);
-  font-size: 32px;
-  line-height: 1;
-}
-
-.computed-panel .status-pill {
-  grid-column: 1 / -1;
-  justify-self: start;
 }
 
 .status-pill {
@@ -659,8 +807,7 @@ tbody tr:hover {
   width: 100%;
 }
 
-.login-footnote,
-.demo-actions {
+.login-footnote {
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
@@ -676,34 +823,6 @@ tbody tr:hover {
   border-radius: 999px;
   padding: 7px 10px;
   background: var(--field-soft);
-}
-
-.demo-access {
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-  border: 1px dashed var(--secondary);
-  border-radius: var(--radius-md);
-  background: rgb(230 220 205 / 0.34);
-}
-
-.demo-access strong {
-  display: block;
-  color: var(--text-h);
-  font-weight: 900;
-}
-
-.demo-access span {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.demo-actions .primary-button,
-.demo-actions .secondary-button,
-.demo-actions .ghost-button {
-  flex: 1 1 150px;
 }
 
 /* Admin web */
@@ -828,7 +947,7 @@ tbody tr:hover {
   gap: 10px;
 }
 
-.bhw-mobile-shell input,
+.bhw-mobile-shell input:not([type='checkbox'], [type='radio']),
 .bhw-mobile-shell select,
 .bhw-mobile-shell textarea,
 .bhw-mobile-shell button {
@@ -1035,7 +1154,7 @@ tbody tr:hover {
     max-height: min(920px, calc(100svh - 36px));
     overflow-y: auto;
     border: 1px solid rgb(222 216 207 / 0.95);
-    border-radius: 34px;
+    border-radius: var(--radius-lg);
     box-shadow:
       0 24px 70px rgb(44 44 36 / 0.16),
       inset 0 0 0 8px rgb(255 253 247 / 0.62);
@@ -1047,5 +1166,393 @@ tbody tr:hover {
   .bhw-mobile-shell .field-row,
   .bhw-mobile-shell .status-strip {
     grid-template-columns: 1fr;
+  }
+}
+
+/* BHW mobile — Organic / Natural
+   ---------------------------------------------------------------------------
+   The design system, read for a phone held one-handed on a doorstep by a BHW
+   who is likely middle-aged and not a heavy app user. The palette, Fraunces and
+   Nunito, the grain, the tinted shadows, the blob shapes and the gentle motion
+   all land as specified. Four component rules are deliberately overridden here,
+   each marked below: pill-shaped inputs, small field text, translucent surfaces,
+   and muted grey for anything that carries a value. Those four make the system
+   look right in a mockup and cost a 50-year-old accuracy on a bright street.
+
+   The expressive devices — blobs, asymmetric corners — live on the dashboard.
+   Forms stay on a steady rhythm: a person entering twenty fields needs the next
+   field to look exactly like the last one. */
+
+.bhw-preview-shell {
+  /* rounded-2xl / rounded-3xl / rounded-[2rem] from the design system. */
+  --radius-sm: 16px;
+  --radius-md: 24px;
+  --radius-lg: 32px;
+
+  position: relative;
+  /* clip, not hidden: `overflow: hidden` would make this a scroll container and
+     the sticky rail and bottom nav would stick to it instead of the viewport. */
+  overflow: clip;
+}
+
+/* Ambient blobs: large, blurred, no straight lines. They sit behind the shell
+   and show through the gaps between cards. */
+.bhw-preview-shell::before,
+.bhw-preview-shell::after {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(70px);
+  content: '';
+}
+
+.bhw-preview-shell::before {
+  top: -6rem;
+  left: -7rem;
+  width: 22rem;
+  height: 22rem;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  background: rgb(93 112 82 / 0.3);
+}
+
+.bhw-preview-shell::after {
+  right: -8rem;
+  bottom: -4rem;
+  width: 24rem;
+  height: 24rem;
+  border-radius: 40% 60% 70% 30% / 40% 70% 30% 60%;
+  background: rgb(193 140 93 / 0.26);
+}
+
+.bhw-mobile-shell {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* Everything a BHW must read, sized for eyes that are past 40. The system's
+   text-sm would be right for a marketing page and wrong on a doorstep. */
+
+.bhw-mobile-shell {
+  font-size: 17px;
+}
+
+.bhw-mobile-shell .header-copy,
+.bhw-mobile-shell .muted,
+.bhw-mobile-shell .form-hint {
+  font-size: 15px;
+}
+
+.bhw-mobile-shell .eyebrow {
+  font-size: 13px;
+}
+
+.bhw-mobile-shell .ui-field {
+  gap: 10px;
+  font-size: 15px;
+}
+
+.bhw-mobile-shell .ui-field small {
+  font-size: 14px;
+}
+
+.bhw-mobile-shell .status-card span,
+.bhw-mobile-shell .metric span,
+.bhw-mobile-shell .stock-card span,
+.bhw-mobile-shell .metric small,
+.bhw-mobile-shell .stock-card small,
+.bhw-mobile-shell .compact-list small {
+  font-size: 14px;
+}
+
+.bhw-mobile-shell .status-pill {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* Inputs. The system asks for rounded-full at text-sm over a translucent white;
+   a pill reads as a button, and a see-through field competes with the grain
+   behind it. Same timber border and moss focus glow, on an opaque field that
+   is unmistakably somewhere to type. */
+.bhw-mobile-shell input:not([type='checkbox'], [type='radio']),
+.bhw-mobile-shell select,
+.bhw-mobile-shell textarea {
+  min-height: 60px;
+  border-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  background: var(--panel);
+  font-size: 17px;
+}
+
+/* Choices grow with the rest of the BHW form. */
+.bhw-mobile-shell .choice {
+  min-height: 66px;
+  font-size: 17px;
+}
+
+.bhw-mobile-shell .choice input {
+  width: 28px;
+  height: 28px;
+}
+
+.bhw-mobile-shell .choice-group legend {
+  font-size: 16px;
+}
+
+.bhw-mobile-shell input::placeholder,
+.bhw-mobile-shell textarea::placeholder {
+  color: #7a7568;
+}
+
+/* Buttons keep the system's pill exactly. A pill is right for a button — it is
+   only wrong for a field. */
+.bhw-mobile-shell button {
+  min-height: 60px;
+  padding: 14px 28px;
+  font-size: 17px;
+  transition:
+    background 300ms ease,
+    box-shadow 300ms ease,
+    transform 300ms ease;
+}
+
+.bhw-mobile-shell button:active {
+  transform: scale(0.95);
+}
+
+.bhw-mobile-shell .sticky-actions {
+  background: var(--panel);
+  backdrop-filter: none;
+}
+
+/* Corners are uniform on purpose, and come only from --radius-sm/md/lg.
+   The design system asks for asymmetric card radii (§5), and that was built and
+   then removed: varied corners read as rhythm on a marketing page with a dozen
+   cards, and as a rendering fault on a phone showing three. Nesting carries the
+   hierarchy instead — panel 32px, card inside it 24px, row inside that 16px —
+   which is what keeps stacked boxes from looking like they bulge. The dashboard
+   still gets the system's expressive layer from the ambient blobs above.
+
+   If you reintroduce asymmetry, do not select on :nth-child of .dashboard-grid.
+   Its second child is the .metric-grid section rather than a .screen-panel, so a
+   3n cycle silently lands two identical panels and one rule that never matches. */
+
+.bhw-mobile-shell .metric strong {
+  font-size: 34px;
+}
+
+/* Record safety, on every screen. For someone who does not think in terms of
+   queues and servers, the one question that matters is whether this morning's
+   work is still only on this phone — so it is answered in plain words, always,
+   without opening anything. */
+
+.field-rail {
+  position: sticky;
+  z-index: 6;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 2px;
+  padding: 13px 20px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.field-rail::before {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  background: currentcolor;
+  content: '';
+}
+
+/* The resting state is not news. On a phone that syncs normally it is what is on
+   screen almost all of the time, and a pill that says the same thing every day
+   stops being read — which would take the two states that need acting on down
+   with it. So it keeps its place at the top, where its absence is never the
+   signal, but it stops floating and stops dressing like an alert. */
+
+.field-rail-clear {
+  position: static;
+  gap: 9px;
+  margin: 0;
+  padding: 2px 4px;
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary-strong);
+}
+
+.field-rail-clear::before {
+  width: 9px;
+  height: 9px;
+}
+
+.field-rail-hold {
+  color: #8a5a2e;
+  background: #fbf3e9;
+}
+
+.field-rail-alert {
+  color: var(--danger);
+  background: #f9ece9;
+}
+
+/* The BMI rail. A reading placed on the scale that produced it, so the answer
+   arrives as a position before it arrives as a number — which is the whole
+   reason it earns its space with this user. The marker is a river stone. */
+
+.bmi-rail {
+  display: grid;
+  gap: 22px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  /* A panel inside a panel, so it takes the same step down as .member-card. */
+  border-radius: var(--radius-md);
+  background: var(--field-soft);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.bmi-readout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  align-items: baseline;
+}
+
+.bmi-readout .eyebrow {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.bmi-readout strong {
+  color: var(--text-h);
+  font-family: var(--display);
+  font-size: 50px;
+  font-variation-settings: 'SOFT' 50;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.bmi-verdict {
+  color: var(--muted);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+/* Three of the four bands are the system's own moss, clay and burnt sienna.
+   Underweight takes the river stone its colour psychology already names, so
+   that "too little" never reads as the same warning as "too much". */
+.bmi-verdict-underweight {
+  color: #63737d;
+}
+
+.bmi-verdict-normal {
+  color: var(--primary-strong);
+}
+
+/* Clay darkened: --secondary-strong lands at 3.4:1 on the stone panel, which is
+   under AA for 17px bold. */
+.bmi-verdict-overweight {
+  color: #8a5a2e;
+}
+
+.bmi-verdict-obese {
+  color: var(--danger);
+}
+
+.bmi-scale {
+  position: relative;
+  padding-bottom: 28px;
+}
+
+.bmi-bands {
+  display: flex;
+  overflow: hidden;
+  height: 18px;
+  border-radius: 999px;
+}
+
+.bmi-band {
+  opacity: 0.26;
+  transition: opacity 400ms ease;
+}
+
+.bmi-band.is-active {
+  opacity: 1;
+}
+
+.bmi-band-underweight {
+  background: #7d8c96;
+}
+
+.bmi-band-normal {
+  background: var(--primary);
+}
+
+.bmi-band-overweight {
+  background: var(--secondary);
+}
+
+.bmi-band-obese {
+  background: var(--danger);
+}
+
+.bmi-marker {
+  position: absolute;
+  top: -6px;
+  width: 30px;
+  height: 30px;
+  margin-left: -15px;
+  border: 3px solid var(--panel);
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  background: var(--text-h);
+  box-shadow: var(--shadow-clay);
+  transition: left 500ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.bmi-tick {
+  position: absolute;
+  top: 26px;
+  /* Cut-points are values on the scale, not hints, so they take ink not grey. */
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  transform: translateX(-50%);
+}
+
+/* Navigation keeps the system's floating pill. It loses only the frosted glass:
+   translucency over a grain texture is the least legible thing on the screen,
+   and this bar is how a BHW moves between every task. */
+
+.bhw-mobile-shell .bhw-bottom-nav {
+  background: var(--panel);
+  backdrop-filter: none;
+}
+
+.bhw-mobile-shell .bhw-bottom-nav a {
+  min-height: 58px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.bhw-mobile-shell .bhw-bottom-nav a.active {
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bmi-marker,
+  .bmi-band {
+    transition: none;
   }
 }

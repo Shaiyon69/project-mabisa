@@ -15,7 +15,6 @@ type LoginState = {
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
-  const [demoAccess, setDemoAccess] = useState<'bhw' | 'admin' | null>(null);
   const [loginState, setLoginState] = useState<LoginState>({
     email: '',
     password: '',
@@ -24,7 +23,6 @@ export function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
-  const activeBhwId = bhwId ?? (demoAccess ? 'demo-ui-testing-bhw' : null);
 
   useEffect(() => {
     supabase.auth
@@ -72,18 +70,10 @@ export function App() {
   }
 
   async function handleLogout() {
-    setDemoAccess(null);
     await supabase.auth.signOut();
   }
 
-  // Temporary demo entry points for UI review only.
-  // Keep the real Supabase login flow intact for production authentication.
-  function handleDemoAccess(target: 'bhw' | 'admin') {
-    window.history.pushState({}, '', target === 'admin' ? '/admin' : '/bhw');
-    setDemoAccess(target);
-  }
-
-  if (!activeBhwId) {
+  if (!bhwId) {
     return (
       <LoginPage
         email={loginState.email}
@@ -103,14 +93,13 @@ export function App() {
           }))
         }
         onSubmit={handleLogin}
-        onDemoAccess={handleDemoAccess}
       />
     );
   }
 
   return (
     <BrowserRouter>
-      <MabisaDataProvider bhwId={activeBhwId}>
+      <MabisaDataProvider bhwId={bhwId}>
         <AppRoutes logout={handleLogout} />
       </MabisaDataProvider>
     </BrowserRouter>
