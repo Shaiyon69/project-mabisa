@@ -64,10 +64,6 @@ export function LoginPage({
           </Button>
         </form>
 
-        <div className="login-footnote">
-          <span>Offline-first BHW workflow</span>
-          <span>Supabase sync ready</span>
-        </div>
 
       </section>
     </main>
