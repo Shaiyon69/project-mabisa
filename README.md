@@ -55,6 +55,15 @@ Build with Node 20.19 or newer:
 npm run build
 ```
 
+Run the tests:
+
+```bash
+npm test
+```
+
+The suite covers the BMI and nutrition-status calculations and the sync queue's retry
+backoff and dependency ordering. The sync loop itself is not yet covered.
+
 ## Android Build
 
 The app is distributed as a sideloaded APK, not through Google Play.
@@ -145,5 +154,13 @@ These are current and deliberate, not oversights waiting to be discovered:
 - **The admin portal reads only what its own browser has synced.** Health assessments
   and supply disbursements are pushed to the server but never pulled back, so an LGU
   workstation does not see records collected on other devices.
+- **Recording a household again creates a duplicate.** Registration is the only path
+  there is: the form mints a new id on every submit and never looks for an existing
+  record, so a repeat visit writes a second household and a second set of members.
+  Re-recording should update the household in place instead, and that work is blocked on
+  deciding what makes two records the same household — `household_number` is free text,
+  and no address or location is stored to disambiguate it.
+- **Nothing can be edited or deleted after it is recorded.** A misspelled name or a wrong
+  birthday is permanent through the app. No table has a DELETE policy, by design.
 - **The app has not been run on a physical Android device.** The APK builds, but the
   native SQLite path has so far only been exercised through the browser emulator.
