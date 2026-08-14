@@ -313,7 +313,9 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   }
 
   await applyColumnUpgrades(database);
-  await verifyIndividualColumnMap(database);
+  await householdUpsert.verify(database);
+  await individualUpsert.verify(database);
+  await inventoryUpsert.verify(database);
 
   localDatabase = database;
   return database;
@@ -493,30 +495,87 @@ export async function requeueDeadLetterEntries(): Promise<number> {
 }
 
 // -----------------------------------------------------------------------------
-// Individual Column Map
+// Column Maps
 // -----------------------------------------------------------------------------
-// `individuals` is written from two directions — the device's own forms and the
-// server pull — and each direction used to carry its own hand-maintained column
-// list. They drifted: the pull was missing occupation, educational_attainment and
-// philhealth_number, so a resident downloaded from Supabase arrived with those
-// blank, and because the conflict clause did not mention them either, no later
-// pull ever repaired it.
+// Every parent table is written from two directions — the device's own forms and
+// the server pull — and each direction used to carry its own hand-maintained
+// column list. They drifted: the `individuals` pull was missing occupation,
+// educational_attainment and philhealth_number, so a resident downloaded from
+// Supabase arrived with those blank, and because the conflict clause did not
+// mention them either, no later pull ever repaired it.
 //
-// Both statements and the value array are now generated from this one list, so a
-// column added here reaches every path or none of them.
+// Both statements and the value array are now generated from one list per table,
+// so a column added here reaches every path or none of them.
+//
+// Leaf tables (health_assessments, supply_disbursements) deliberately keep
+// `insert or replace`: nothing references them, so REPLACE destroys nothing and a
+// column map would prevent no defect.
 
-type IndividualColumn = {
+type ColumnDescriptor<TRow> = {
   name: string;
-  value: (individual: Individual) => SqlValue;
+  value: (row: TRow) => SqlValue;
   /**
-   * Refreshed from the server row when a pull lands on a resident this device
-   * already knows. Identity and first-seen stamps are not: resident_id is the
+   * Refreshed from the server row when a pull lands on a record this device
+   * already knows. Identity and first-seen stamps are not: the primary key is the
    * conflict target, and created_at records when this device first saw the row.
    */
   mutableOnConflict: boolean;
 };
 
-const individualColumns: IndividualColumn[] = [
+/**
+ * Builds the single upsert used by every write to a table, local or pulled.
+ *
+ * Deliberately not `insert or replace`: with `pragma foreign_keys = on`, REPLACE
+ * deletes the existing row before reinserting it, and the child tables declare
+ * `on delete cascade` — so re-saving a household would silently take its members
+ * and their health assessments with it, two levels deep. Where a child instead
+ * has a plain FK (supply_disbursements), the cascade is *blocked* and the
+ * statement throws a constraint error. `on conflict do update` edits in place and
+ * leaves children untouched, which is neither.
+ */
+function buildUpsert<TRow>(
+  table: MigratableTableName,
+  conflictColumn: string,
+  columns: ColumnDescriptor<TRow>[],
+) {
+  const statement = `insert into ${table} (${columns.map((column) => column.name).join(', ')})
+   values (${columns.map(() => '?').join(', ')})
+   on conflict(${conflictColumn}) do update set ${columns
+     .filter((column) => column.mutableOnConflict)
+     .map((column) => `${column.name} = excluded.${column.name}`)
+     .join(', ')}`;
+
+  return {
+    statement,
+    /** Row values in the exact order `statement` binds them. */
+    values: (row: TRow): SqlValue[] => columns.map((column) => column.value(row)),
+    /**
+     * DEV-only check that the map still describes the real table.
+     *
+     * There is no test suite, so this is what catches a column added to the schema
+     * but not to the map, or the reverse — the exact drift that left the individuals
+     * pull silently dropping three columns for as long as it did.
+     */
+    verify: async (database: SQLiteDBConnection): Promise<void> => {
+      if (!import.meta.env.DEV) {
+        return;
+      }
+
+      const info = await database.query(`pragma table_info(${table})`);
+      const tableColumns = new Set((info.values ?? []).map((row) => String(row.name)));
+      const mappedColumns = new Set(columns.map((column) => column.name));
+
+      const missingFromMap = [...tableColumns].filter((name) => !mappedColumns.has(name));
+      const missingFromTable = [...mappedColumns].filter((name) => !tableColumns.has(name));
+
+      if (missingFromMap.length > 0 || missingFromTable.length > 0) {
+        logDev(`${table} column map is out of sync with the table`, { missingFromMap, missingFromTable });
+      }
+    },
+  };
+}
+
+const individualColumns: ColumnDescriptor<Individual>[] = [
   { name: 'resident_id', value: (individual) => individual.resident_id, mutableOnConflict: false },
   // Mutable on purpose: a resident who transfers household on the server has to
   // be refiled here too, which the previous conflict clause never did.
@@ -549,50 +608,43 @@ const individualColumns: IndividualColumn[] = [
   { name: 'updated_at', value: (individual) => individual.updated_at, mutableOnConflict: true },
 ];
 
-/**
- * The single upsert used by every write to `individuals`, local or pulled.
- *
- * Deliberately not `insert or replace`: with `pragma foreign_keys = on`, REPLACE
- * deletes the existing row before reinserting it, and health_assessments declares
- * `on delete cascade` on resident_id — so re-saving a resident would silently take
- * their assessments with it. `on conflict do update` edits in place instead and
- * leaves children untouched.
- */
-const individualUpsertStatement = `insert into individuals (${individualColumns.map((column) => column.name).join(', ')})
-   values (${individualColumns.map(() => '?').join(', ')})
-   on conflict(resident_id) do update set ${individualColumns
-     .filter((column) => column.mutableOnConflict)
-     .map((column) => `${column.name} = excluded.${column.name}`)
-     .join(', ')}`;
+const individualUpsert = buildUpsert('individuals', 'resident_id', individualColumns);
 
-/** Row values in the exact order `individualUpsertStatement` binds them. */
-function individualValues(individual: Individual): SqlValue[] {
-  return individualColumns.map((column) => column.value(individual));
-}
+// SQLite has no array type, so these three columns hold JSON strings. The `?? []`
+// matters: JSON.stringify(undefined) returns undefined rather than a string, and
+// every one of these columns is `not null` — a missing array was a runtime
+// constraint failure that TypeScript could not see, because JSON.stringify is
+// typed as returning string. The pull path already guarded it; the save path did not.
+const householdColumns: ColumnDescriptor<Household>[] = [
+  { name: 'household_id', value: (household) => household.household_id, mutableOnConflict: false },
+  { name: 'household_number', value: (household) => household.household_number, mutableOnConflict: true },
+  { name: 'dwelling_type', value: (household) => household.dwelling_type, mutableOnConflict: true },
+  { name: 'electric_service', value: (household) => household.electric_service, mutableOnConflict: true },
+  { name: 'fuel_used', value: (household) => household.fuel_used, mutableOnConflict: true },
+  { name: 'toilet_type', value: (household) => JSON.stringify(household.toilet_type ?? []), mutableOnConflict: true },
+  { name: 'water_source', value: (household) => JSON.stringify(household.water_source ?? []), mutableOnConflict: true },
+  {
+    name: 'food_production',
+    value: (household) => JSON.stringify(household.food_production ?? []),
+    mutableOnConflict: true,
+  },
+  { name: 'health_status_notes', value: (household) => household.health_status_notes ?? null, mutableOnConflict: true },
+  { name: 'created_at', value: (household) => household.created_at, mutableOnConflict: false },
+  { name: 'updated_at', value: (household) => household.updated_at, mutableOnConflict: true },
+];
 
-/**
- * DEV-only check that the column map still describes the real table.
- *
- * There is no test suite, so this is what catches a column added to the schema
- * but not to the map, or the reverse — the exact drift that left the pull path
- * silently dropping three columns for as long as it did.
- */
-async function verifyIndividualColumnMap(database: SQLiteDBConnection): Promise<void> {
-  if (!import.meta.env.DEV) {
-    return;
-  }
+const householdUpsert = buildUpsert('households', 'household_id', householdColumns);
 
-  const info = await database.query('pragma table_info(individuals)');
-  const tableColumns = new Set((info.values ?? []).map((row) => String(row.name)));
-  const mappedColumns = new Set(individualColumns.map((column) => column.name));
+const inventoryColumns: ColumnDescriptor<InventoryItem>[] = [
+  { name: 'item_id', value: (item) => item.item_id, mutableOnConflict: false },
+  { name: 'item_name', value: (item) => item.item_name, mutableOnConflict: true },
+  { name: 'type', value: (item) => item.type, mutableOnConflict: true },
+  { name: 'current_stock', value: (item) => item.current_stock, mutableOnConflict: true },
+  { name: 'created_at', value: (item) => item.created_at, mutableOnConflict: false },
+  { name: 'updated_at', value: (item) => item.updated_at, mutableOnConflict: true },
+];
 
-  const missingFromMap = [...tableColumns].filter((name) => !mappedColumns.has(name));
-  const missingFromTable = [...mappedColumns].filter((name) => !tableColumns.has(name));
-
-  if (missingFromMap.length > 0 || missingFromTable.length > 0) {
-    logDev('individuals column map is out of sync with the table', { missingFromMap, missingFromTable });
-  }
-}
+const inventoryUpsert = buildUpsert('inventory_items', 'item_id', inventoryColumns);
 
 // -----------------------------------------------------------------------------
 // Write Operations (The "Double-Write" Pattern)
@@ -603,25 +655,8 @@ async function verifyIndividualColumnMap(database: SQLiteDBConnection): Promise<
  */
 export async function saveHouseholdLocally(household: Household, operationType: SyncOperationType = 'INSERT'): Promise<void> {
   const database = await getLocalDatabase();
-  await database.run(
-    `insert or replace into households
-     (household_id, household_number, dwelling_type, electric_service, fuel_used, toilet_type, water_source, food_production, health_status_notes, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      household.household_id,
-      household.household_number,
-      household.dwelling_type,
-      household.electric_service,
-      household.fuel_used,
-      JSON.stringify(household.toilet_type), // Convert array to JSON string for SQLite
-      JSON.stringify(household.water_source), // Convert array to JSON string for SQLite
-      JSON.stringify(household.food_production), // Convert array to JSON string for SQLite
-      household.health_status_notes ?? null,
-      household.created_at,
-      household.updated_at,
-    ],
-  );
-  
+  await database.run(householdUpsert.statement, householdUpsert.values(household));
+
   // Note: We queue the raw 'household' object here, NOT the stringified version.
   // This ensures Supabase receives actual arrays when the payload is processed.
   await enqueueSyncOperation('households', operationType, household);
@@ -633,7 +668,7 @@ export async function saveHouseholdLocally(household: Household, operationType: 
  */
 export async function saveIndividualLocally(individual: Individual, operationType: SyncOperationType = 'INSERT'): Promise<void> {
   const database = await getLocalDatabase();
-  await database.run(individualUpsertStatement, individualValues(individual));
+  await database.run(individualUpsert.statement, individualUpsert.values(individual));
 
   // Queue the raw object so Supabase receives actual booleans
   await enqueueSyncOperation('individuals', operationType, individual);
@@ -667,12 +702,7 @@ export async function saveHealthAssessmentLocally(
 
 export async function saveInventoryItemLocally(item: InventoryItem, operationType: SyncOperationType = 'INSERT'): Promise<void> {
   const database = await getLocalDatabase();
-  await database.run(
-    `insert or replace into inventory_items
-     (item_id, item_name, type, current_stock, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?)`,
-    [item.item_id, item.item_name, item.type, item.current_stock, item.created_at, item.updated_at],
-  );
+  await database.run(inventoryUpsert.statement, inventoryUpsert.values(item));
   await enqueueSyncOperation('inventory_items', operationType, item);
   await persistLocalDatabase();
 }
@@ -926,29 +956,13 @@ export function toSqlValue(value: string | number | null | undefined): SqlValue 
 export async function pullInventoryFromServer(cloudItems: InventoryItem[]): Promise<void> {
   if (!cloudItems.length) return; // Skip if nothing to pull
   const db = await initializeLocalDatabase();
-  
-  const statement = `
-    INSERT INTO inventory_items (item_id, item_name, type, current_stock, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(item_id) DO UPDATE SET 
-    item_name = excluded.item_name,
-    type = excluded.type,
-    current_stock = excluded.current_stock,
-    updated_at = excluded.updated_at;
-  `;
 
-  // Map the array of objects into an array of arrays for the batch executor
-  const values = cloudItems.map(item => [
-    item.item_id,
-    item.item_name,
-    item.type,
-    item.current_stock,
-    item.created_at,
-    item.updated_at,
-  ]);
+  // Same statement and same value order as the local write path — see the column
+  // maps above for why these are no longer written out twice.
+  const values = cloudItems.map((item) => inventoryUpsert.values(item));
 
   try {
-    await db.executeSet([{ statement, values }]);
+    await db.executeSet([{ statement: inventoryUpsert.statement, values }]);
     await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull inventory into SQLite:', error);
@@ -960,37 +974,12 @@ export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Pr
   if (!cloudHouseholds.length) return;
   const db = await initializeLocalDatabase();
   
-  const statement = `
-    INSERT INTO households (household_id, household_number, dwelling_type, electric_service, fuel_used, toilet_type, water_source, food_production, health_status_notes, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(household_id) DO UPDATE SET 
-    household_number = excluded.household_number,
-    dwelling_type = excluded.dwelling_type,
-    electric_service = excluded.electric_service,
-    fuel_used = excluded.fuel_used,
-    toilet_type = excluded.toilet_type,
-    water_source = excluded.water_source,
-    food_production = excluded.food_production,
-    health_status_notes = excluded.health_status_notes,
-    updated_at = excluded.updated_at;
-  `;
-
-  const values = cloudHouseholds.map(h => [
-    h.household_id,
-    h.household_number,
-    h.dwelling_type,
-    h.electric_service,
-    h.fuel_used,
-    JSON.stringify(h.toilet_type || []),
-    JSON.stringify(h.water_source || []),
-    JSON.stringify(h.food_production || []),
-    h.health_status_notes || null,
-    h.created_at,
-    h.updated_at,
-  ]);
+  // Same statement and same value order as the local write path — see the column
+  // maps above for why these are no longer written out twice.
+  const values = cloudHouseholds.map((household) => householdUpsert.values(household));
 
   try {
-    await db.executeSet([{ statement, values }]);
+    await db.executeSet([{ statement: householdUpsert.statement, values }]);
     await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull households into SQLite:', error);
@@ -1002,12 +991,12 @@ export async function pullIndividualsFromServer(cloudIndividuals: Individual[]):
   if (!cloudIndividuals.length) return;
   const db = await initializeLocalDatabase();
 
-  // Same statement and same value order as the local write path — see the
-  // individual column map above for why these are no longer written out twice.
-  const values = cloudIndividuals.map((individual) => individualValues(individual));
+  // Same statement and same value order as the local write path — see the column
+  // maps above for why these are no longer written out twice.
+  const values = cloudIndividuals.map((individual) => individualUpsert.values(individual));
 
   try {
-    await db.executeSet([{ statement: individualUpsertStatement, values }]);
+    await db.executeSet([{ statement: individualUpsert.statement, values }]);
     await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull individuals into SQLite:', error);
