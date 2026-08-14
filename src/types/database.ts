@@ -153,12 +153,6 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
-      is_bhw_for_resident: {
-        Args: {
-          target_resident_id: string;
-        };
-        Returns: boolean;
-      };
     };
     Enums: {
       user_role: UserRole;

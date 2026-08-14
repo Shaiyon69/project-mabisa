@@ -32,3 +32,4 @@ claude.md
 .mcp.json
 docs
 user_roles.sql
+data_policies.sql
