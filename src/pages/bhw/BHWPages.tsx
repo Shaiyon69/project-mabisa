@@ -64,7 +64,9 @@ export function SupplyDisbursementPage() {
       inventoryItems={snapshot.inventoryItems}
       onSaved={async () => {
         await refreshLocalData();
-        setMessage('Pending Sync. Supply release was saved and inventory stock was updated locally.');
+        // Deliberately does not claim a stock update: saveSupplyDisbursementLocally
+        // writes the log row only. Nothing decrements inventory_items.current_stock yet.
+        setMessage('Pending Sync. Supply release was saved on this device.');
         navigate('/bhw');
       }}
     />
