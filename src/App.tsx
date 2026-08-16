@@ -32,7 +32,7 @@ function readCachedRole(): CachedRole | null {
     const parsed = JSON.parse(localStorage.getItem(ROLE_CACHE_KEY) ?? 'null');
     const role: unknown = parsed?.role;
 
-    if (typeof parsed?.userId !== 'string' || (role !== 'admin' && role !== 'lgu' && role !== 'bhw')) {
+    if (typeof parsed?.userId !== 'string' || (role !== 'admin' && role !== 'bhw')) {
       return null;
     }
 
@@ -76,9 +76,11 @@ export function App() {
     };
   }, []);
 
-  // auth.users carries no role, so it lives in a public.users profile row keyed by
-  // the auth id. A failed lookup — offline, or no profile row yet — leaves the
-  // session on the BHW surface, which is the safe direction to fail.
+  // auth.users carries no role, so it lives in a public.profiles row keyed by the
+  // auth id — the same table every RLS helper reads, so the surface a session
+  // lands on and the rows it can actually touch are decided by one column.
+  // A failed lookup — offline, or no profile row yet — leaves the session on the
+  // BHW surface, which is the safe direction to fail.
   useEffect(() => {
     if (!bhwId) {
       return;
@@ -87,8 +89,8 @@ export function App() {
     let cancelled = false;
 
     supabase
-      .from('users')
-      .select('role')
+      .from('profiles')
+      .select('role, is_active')
       .eq('user_id', bhwId)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -104,7 +106,12 @@ export function App() {
 
         // No cast needed: the Supabase client carries the <Database> generic, so
         // `role` arrives typed as UserRole rather than any.
-        const nextRole = data?.role ?? null;
+        //
+        // A deactivated profile resolves to no role, which lands on the BHW
+        // surface. That is cosmetic, not the enforcement: every RLS helper
+        // starts from current_profile_is_active(), so a disabled account reads
+        // nothing whichever surface it is looking at.
+        const nextRole = data?.is_active ? data.role : null;
         const next = nextRole ? { userId: bhwId, role: nextRole } : null;
 
         localStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(next));

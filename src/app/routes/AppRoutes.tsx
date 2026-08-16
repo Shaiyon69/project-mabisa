@@ -14,7 +14,10 @@ export function AppRoutes({ logout, role }: AppRoutesProps) {
   // Both surfaces are gated, and on the same flag rather than one test per role: an
   // unknown role has to land somewhere, and giving each surface its own predicate
   // would leave a null role rejected by both and bouncing between them forever.
-  const isAdmin = role === 'admin' || role === 'lgu';
+  //
+  // One value to test, because public.app_role has exactly two members. An LGU
+  // official is an `admin` row in public.profiles.
+  const isAdmin = role === 'admin';
   const home = isAdmin ? '/admin' : '/bhw';
 
   return (
