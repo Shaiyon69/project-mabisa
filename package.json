@@ -8,10 +8,14 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
-    "preview": "vite preview"
+    "test": "vitest run",
+    "preview": "vite preview",
+    "sync:android": "npm run build && cap sync android",
+    "open:android": "cap open android"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^7.0.2",
+    "@capacitor/android": "^7.6.8",
     "@capacitor/core": "^7.4.4",
     "@capacitor/network": "^7.0.2",
     "@fontsource-variable/fraunces": "^5.3.0",
@@ -24,6 +28,7 @@
     "sql.js": "1.11.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.6.8",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^24.12.3",
@@ -39,6 +44,7 @@
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^4.1.10"
   }
 }

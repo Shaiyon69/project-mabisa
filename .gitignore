@@ -36,3 +36,6 @@ service-account*.json
 # Internal working notes and local schema drafts, kept out of the repo.
 /docs/
 /supabase/
+.mcp.json
+user_roles.sql
+data_policies.sql
