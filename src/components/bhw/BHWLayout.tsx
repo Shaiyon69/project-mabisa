@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
-import { Badge } from '../common/Badge';
+import type { SyncStatus } from '../../services/syncService';
 import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
@@ -19,14 +19,52 @@ type BHWLayoutProps = {
   logout: () => Promise<void>;
 };
 
+// A BHW should never have to open a screen to learn whether the last hour of
+// encoding is still only on this phone, so record safety rides on a rail that
+// is present on every screen rather than a badge on one of them.
+function recordRail(
+  isOnline: boolean,
+  syncStatus: SyncStatus,
+  pendingQueueCount: number,
+  setAsideCount: number,
+): { tone: 'clear' | 'hold' | 'alert'; label: string } {
+  const records = (count: number) => `${count} record${count === 1 ? '' : 's'}`;
+
+  if (setAsideCount > 0) {
+    return { tone: 'alert', label: `${records(setAsideCount)} need review` };
+  }
+
+  if (syncStatus === 'failed') {
+    return { tone: 'alert', label: 'Sync failed — open Status' };
+  }
+
+  if (!isOnline) {
+    return {
+      tone: 'hold',
+      label: pendingQueueCount ? `Offline — ${records(pendingQueueCount)} held here` : 'Offline — records save here',
+    };
+  }
+
+  if (pendingQueueCount > 0) {
+    return { tone: 'hold', label: `${records(pendingQueueCount)} waiting to send` };
+  }
+
+  return { tone: 'clear', label: 'All records sent' };
+}
+
 export function BHWLayout({ logout }: BHWLayoutProps) {
-  return <BhwLanguageProvider><BHWLayoutContent logout={logout} /></BhwLanguageProvider>;
+  return (
+    <BhwLanguageProvider>
+      <BHWLayoutContent logout={logout} />
+    </BhwLanguageProvider>
+  );
 }
 
 function BHWLayoutContent({ logout }: BHWLayoutProps) {
-  const { isOnline, message } = useMabisaData();
+  const { isOnline, message, syncStatus, snapshot } = useMabisaData();
   const { language, setLanguage, t } = useBhwLanguage();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
 
   async function handleLogout() {
     setConfirmingLogout(false);
@@ -37,17 +75,24 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
   return (
     <main className="bhw-preview-shell">
       <section className="bhw-mobile-shell" aria-label="BHW mobile app preview">
+        <p className={`field-rail field-rail-${rail.tone}`} role="status">
+          {rail.label}
+        </p>
+
         <PageHeader
           eyebrow={t('Project MABISA')}
           title={t('BHW Mobile')}
-          description={t('Resident profiling, health assessment, supply logging, and offline sync.')}
           actions={
+            // Connection state lives on the rail above, so it is not repeated here.
             <>
               <div className="language-toggle" role="group" aria-label="English or Filipino language">
-                <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
-                <button type="button" className={language === 'fil' ? 'active' : ''} onClick={() => setLanguage('fil')}>FIL</button>
+                <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>
+                  EN
+                </button>
+                <button type="button" className={language === 'fil' ? 'active' : ''} onClick={() => setLanguage('fil')}>
+                  FIL
+                </button>
               </div>
-              <Badge label={t(isOnline ? 'Online' : 'Offline')} tone={isOnline ? 'success' : 'warning'} />
               <Button variant="danger" className="logout-button" onClick={() => setConfirmingLogout(true)}>
                 <Icon name="logout" size={17} />
                 {t('Logout')}

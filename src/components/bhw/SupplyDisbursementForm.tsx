@@ -5,7 +5,8 @@ import { saveSupplyDisbursementLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { FormActions, FormField, SelectField } from '../common/FormField';
+import { FormActions, FormField } from '../common/FormField';
+import { Combobox } from '../common/Combobox';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
 import { useBhwLanguage } from '../../app/BhwLanguageContext';
@@ -83,32 +84,31 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
           <p className="eyebrow">{t('Inventory')}</p>
           <h2>{t('Disburse Supplies')}</h2>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="header-actions">
           <Badge label={t(hasIndividuals ? 'Residents Ready' : 'Needs Profile')} tone={hasIndividuals ? 'success' : 'warning'} />
           <Badge label={t(hasInventory ? 'Stock Available' : 'Empty Stock')} tone={hasInventory ? 'success' : 'danger'} />
         </div>
       </div>
 
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="form-alert"><Icon name="warning" size={18} />{formError}</p> : null}
+        {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
         <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? t('Select a resident.') : undefined} />
         {!hasIndividuals ? <p className="form-hint">{t('Register a household before disbursing supplies.')}</p> : null}
 
-        <SelectField 
+        <Combobox
           label={t('Item')}
-          value={itemId} 
-          onChange={(event) => setItemId(event.target.value)} 
-          required
+          value={itemId}
+          options={inventoryItems.map((item) => ({
+            value: item.item_id,
+            label: `${item.item_name} (${item.current_stock} ${isFilipino ? 'natitira' : 'in stock'})`,
+          }))}
+          onChange={setItemId}
+          placeholder={t('Search item...')}
           disabled={!hasInventory}
           error={showValidation && !itemId ? t('Select an inventory item.') : undefined}
-        >
-          {inventoryItems.map((item) => (
-            <option key={item.item_id} value={item.item_id}>
-              {item.item_name} ({item.current_stock} in stock)
-            </option>
-          ))}
-        </SelectField>
+          emptyText={t('No item found')}
+        />
         {!hasInventory ? <p className="form-hint">{t('Admin must sync inventory items before disbursement.')}</p> : null}
 
         <div className="field-row">

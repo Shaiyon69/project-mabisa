@@ -7,7 +7,7 @@ type FieldShellProps = {
   children: ReactNode;
 };
 
-function FieldShell({ label, hint, error, children }: FieldShellProps) {
+export function FieldShell({ label, hint, error, children }: FieldShellProps) {
   return (
     <label className={`ui-field${error ? ' has-error' : ''}`}>
       <span>{label}{error ? <b className="required-mark"> *</b> : null}</span>
