@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { HealthAssessment } from '../../types/database';
+import type { HealthAssessment, NutritionStatus } from '../../types/database';
 import { calculateBmi, createId, getNutritionStatus, titleCase, today } from '../../lib/utils';
 import { saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
@@ -9,6 +9,36 @@ import { FormActions, FormField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
 import { useBhwLanguage } from '../../app/BhwLanguageContext';
+
+// The rail draws roughly the range a field BMI lands in; readings outside it
+// still resolve to a band, the marker just parks at the end of the scale.
+const BMI_MIN = 12;
+const BMI_MAX = 40;
+
+// The cut-points are getNutritionStatus() written out, which is the whole point
+// of the rail: the BHW sees the rule that produced the verdict.
+const BMI_BANDS = [
+  { status: 'underweight', from: BMI_MIN, to: 18.5 },
+  { status: 'normal', from: 18.5, to: 25 },
+  { status: 'overweight', from: 25, to: 30 },
+  { status: 'obese', from: 30, to: BMI_MAX },
+] as const satisfies readonly { status: NutritionStatus; from: number; to: number }[];
+
+const BMI_TICKS = [18.5, 25, 30];
+
+if (import.meta.env.DEV) {
+  // Cheap guard against the rail drifting away from the function it illustrates.
+  for (const band of BMI_BANDS) {
+    console.assert(
+      getNutritionStatus((band.from + band.to) / 2) === band.status,
+      `BMI rail band "${band.status}" no longer matches getNutritionStatus()`,
+    );
+  }
+}
+
+function railPercent(bmi: number): number {
+  return ((Math.min(Math.max(bmi, BMI_MIN), BMI_MAX) - BMI_MIN) / (BMI_MAX - BMI_MIN)) * 100;
+}
 
 type HealthAssessmentFormProps = {
   individualCount: number;
@@ -84,7 +114,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
         <Badge label={t(hasIndividuals ? 'Ready' : 'Needs Profile')} tone={hasIndividuals ? 'success' : 'warning'} />
       </div>
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="form-alert"><Icon name="warning" size={18} />{formError}</p> : null}
+        {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
         
         <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? t('Select a resident.') : undefined} />
         
@@ -123,11 +153,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             error={showValidation && (!height || Number(height) < 30 || Number(height) > 250) ? t('Enter a height from 30 to 250 cm.') : undefined}
           />
         </div>
-        <div className="computed-panel">
-          <span>BMI</span>
-          <strong>{bmi ? bmi.toFixed(2) : '0.00'}</strong>
-          <Badge label={nutritionStatus ? titleCase(nutritionStatus) : t('Waiting for measurements')} tone={nutritionStatus === 'normal' ? 'success' : nutritionStatus ? 'warning' : 'info'} />
-        </div>
+        <BmiRail bmi={bmi} status={nutritionStatus} />
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
@@ -136,5 +162,44 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
         </FormActions>
       </form>
     </Card>
+  );
+}
+
+// The reading, on the scale that produced it. The numeric readout is the
+// authoritative answer; the scale is a second, faster way to reach the same one,
+// which is what makes it safe to hide from screen readers.
+function BmiRail({ bmi, status }: { bmi: number | null; status: NutritionStatus | null }) {
+  const { t } = useBhwLanguage();
+
+  return (
+    <section className="bmi-rail">
+      <div className="bmi-readout">
+        <p className="eyebrow">{t('Body mass index')}</p>
+        <strong>{bmi ? bmi.toFixed(1) : '--'}</strong>
+        <output className={`bmi-verdict${status ? ` bmi-verdict-${status}` : ''}`}>
+          {status ? titleCase(status) : t('Enter weight and height')}
+        </output>
+      </div>
+
+      <div className="bmi-scale" aria-hidden="true">
+        <div className="bmi-bands">
+          {BMI_BANDS.map((band) => (
+            <span
+              key={band.status}
+              className={`bmi-band bmi-band-${band.status}${status === band.status ? ' is-active' : ''}`}
+              style={{ width: `${railPercent(band.to) - railPercent(band.from)}%` }}
+            />
+          ))}
+        </div>
+
+        {bmi ? <span className="bmi-marker" style={{ left: `${railPercent(bmi)}%` }} /> : null}
+
+        {BMI_TICKS.map((tick) => (
+          <span key={tick} className="bmi-tick" style={{ left: `${railPercent(tick)}%` }}>
+            {tick}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }

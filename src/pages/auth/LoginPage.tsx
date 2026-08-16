@@ -10,7 +10,6 @@ type LoginPageProps = {
   onEmailChange: (email: string) => void;
   onPasswordChange: (password: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  onDemoAccess: (target: 'bhw' | 'admin') => void;
 };
 
 export function LoginPage({
@@ -21,7 +20,6 @@ export function LoginPage({
   onEmailChange,
   onPasswordChange,
   onSubmit,
-  onDemoAccess,
 }: LoginPageProps) {
   const isAdminPortal = window.location.pathname.startsWith('/admin');
   const portalName = isAdminPortal ? 'MABISA Admin Portal' : 'MABISA BHW Mobile';
@@ -73,20 +71,6 @@ export function LoginPage({
           </Button>
         </form>
 
-        <div className="login-footnote">
-          {isAdminPortal ? (
-            <>
-              <span>Administrator access</span>
-              <span>Web management portal</span>
-            </>
-          ) : (
-            <>
-              <span>Offline-first BHW workflow</span>
-              <span>Mobile field access</span>
-            </>
-          )}
-        </div>
-
         <p className="portal-switch">
           {isAdminPortal ? 'Are you a Barangay Health Worker?' : 'Are you an administrator?'}{' '}
           <a href={isAdminPortal ? '/bhw' : '/admin'}>
@@ -94,18 +78,6 @@ export function LoginPage({
           </a>
         </p>
 
-        <div className="demo-access">
-          <div>
-            <p className="eyebrow">Demo access</p>
-            <strong>UI testing only</strong>
-            <span>Temporary shortcut for reviewing this portal without signing in.</span>
-          </div>
-          <div className="demo-actions">
-            <Button variant="secondary" onClick={() => onDemoAccess(isAdminPortal ? 'admin' : 'bhw')}>
-              Enter as {isAdminPortal ? 'Admin' : 'BHW'}
-            </Button>
-          </div>
-        </div>
       </section>
     </main>
   );

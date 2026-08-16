@@ -8,17 +8,29 @@ import { EmptyState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
 import { readLocalIndividuals } from '../../services/localDatabase';
 import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import type { SyncStatus } from '../../services/syncService';
 
 type BHWDashboardProps = {
   snapshot: LocalSnapshot;
   isOnline: boolean;
-  syncStatus: string;
+  syncStatus: SyncStatus;
+  syncError: string | null;
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
+  onRetryDeadLetters: () => Promise<void>;
 };
 
-export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, onManualSync }: BHWDashboardProps) {
+export function BHWDashboard({
+  snapshot,
+  isOnline,
+  syncStatus,
+  syncError,
+  syncingManually,
+  onManualSync,
+  onRetryDeadLetters,
+}: BHWDashboardProps) {
   const { t } = useBhwLanguage();
+  // 1. Replaced the useMemo slice with a local state for our SQLite query
   const [latestIndividuals, setLatestIndividuals] = useState<Individual[]>([]);
 
   useEffect(() => {
@@ -34,9 +46,12 @@ export function BHWDashboard({ snapshot, isOnline, syncStatus, syncingManually, 
       <SyncStatusCard
         isOnline={isOnline}
         syncStatus={syncStatus}
+        syncError={syncError}
         pendingQueueCount={snapshot.pendingQueueCount}
+        deadLetterEntries={snapshot.deadLetterEntries}
         syncingManually={syncingManually}
         onManualSync={onManualSync}
+        onRetryDeadLetters={onRetryDeadLetters}
       />
 
       <section className="metric-grid" aria-label="BHW metrics">

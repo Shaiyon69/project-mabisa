@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from '@capacitor-community/sqlite';
+import { logDev } from '../lib/utils';
 import type {
   HealthAssessment,
   HealthAssessmentInsert,
@@ -35,6 +36,13 @@ export type LocalTableName =
   | 'health_assessments'
   | 'inventory_items'
   | 'supply_disbursements';
+
+// Device-local bookkeeping tables. These mirror no Supabase table and are never
+// pushed, so they are deliberately kept out of LocalTableName — but they still
+// need to be reachable by the column-upgrade machinery.
+export type LocalBookkeepingTableName = 'sync_queue' | 'sync_dead_letter';
+
+type MigratableTableName = LocalTableName | LocalBookkeepingTableName;
 
 export type SyncOperationType = 'INSERT' | 'UPDATE';
 
@@ -73,6 +81,25 @@ export type SyncQueueEntry<TTable extends LocalTableName = LocalTableName> = {
   created_at: string;
   attempts: number; // Tracks retry counts if the network fails
   last_error: string | null;
+  // Earliest ISO timestamp at which this entry may be retried. Null means "now".
+  // Persisted rather than held in memory because the app is killed constantly in
+  // the field — in-memory backoff would reset on every cold start.
+  next_attempt_at: string | null;
+};
+
+// A queue entry that exhausted its retries and was set aside so the rest of the
+// queue can keep draining. Nothing is deleted: the payload is preserved in full
+// so a BHW or admin can requeue it once the underlying cause is fixed.
+export type DeadLetterEntry<TTable extends LocalTableName = LocalTableName> = {
+  dead_letter_id: number;
+  original_queue_id: number;
+  operation_type: SyncOperationType;
+  target_table: TTable;
+  payload: LocalInsertPayloadByTable[TTable] | LocalUpdatePayloadByTable[TTable];
+  created_at: string;
+  attempts: number;
+  last_error: string | null;
+  failed_at: string;
 };
 
 type SqlValue = string | number | null;
@@ -82,7 +109,9 @@ type SqlValue = string | number | null;
 // -----------------------------------------------------------------------------
 
 const sqlite = new SQLiteConnection(CapacitorSQLite);
+const isWebPlatform = Capacitor.getPlatform() === 'web';
 let localDatabase: SQLiteDBConnection | null = null;
+let localDatabaseSetup: Promise<SQLiteDBConnection> | null = null;
 
 // The schema definitions for the local offline database.
 const migrations = [
@@ -109,8 +138,8 @@ const migrations = [
   `create table if not exists individuals (
     resident_id text primary key,
     household_id text not null,
-    first_name text not null,\
-    middle_name TEXT,
+    first_name text not null,
+    middle_name text,
     last_name text not null,
     sex text not null check (sex in ('male', 'female')),
     birthday text not null,
@@ -171,9 +200,25 @@ const migrations = [
     payload text not null,
     created_at text not null,
     attempts integer not null default 0,
-    last_error text
+    last_error text,
+    next_attempt_at text
   )`,
-  
+
+  // Sync Dead Letter Table
+  // Entries that exhausted their retries, moved aside so the main queue keeps
+  // draining. Health records are never discarded — only quarantined for review.
+  `create table if not exists sync_dead_letter (
+    dead_letter_id integer primary key autoincrement,
+    original_queue_id integer not null,
+    operation_type text not null check (operation_type in ('INSERT', 'UPDATE')),
+    target_table text not null check (target_table in ('households', 'individuals', 'health_assessments', 'inventory_items', 'supply_disbursements')),
+    payload text not null,
+    created_at text not null,
+    attempts integer not null default 0,
+    last_error text,
+    failed_at text not null
+  )`,
+
   // Performance Indices for faster lookups and table joins
   'create index if not exists local_individuals_household_id_idx on individuals(household_id)',
   'create index if not exists local_health_assessments_resident_id_idx on health_assessments(resident_id)',
@@ -181,37 +226,77 @@ const migrations = [
   'create index if not exists local_supply_disbursements_item_id_idx on supply_disbursements(item_id)',
   'create index if not exists local_supply_disbursements_resident_id_idx on supply_disbursements(resident_id)',
   'create index if not exists local_sync_queue_created_at_idx on sync_queue(created_at)',
+  'create index if not exists local_sync_dead_letter_failed_at_idx on sync_dead_letter(failed_at)',
 ];
+
+// Columns introduced after the first release. Every migration above is
+// `create table if not exists`, so a device that installed earlier keeps its original
+// schema forever — each later column has to be added explicitly when it is missing.
+const columnUpgrades: { table: MigratableTableName; column: string; definition: string }[] = [
+  { table: 'individuals', column: 'middle_name', definition: 'text' },
+  // Retry backoff. Devices installed before the resilience work have a sync_queue
+  // without this column, and `create table if not exists` will never add it.
+  { table: 'sync_queue', column: 'next_attempt_at', definition: 'text' },
+];
+
+/**
+ * Adds any post-release column that this device's database predates.
+ * Idempotent: `pragma table_info` is checked first, so re-running is a no-op.
+ */
+async function applyColumnUpgrades(database: SQLiteDBConnection): Promise<void> {
+  for (const upgrade of columnUpgrades) {
+    const info = await database.query(`pragma table_info(${upgrade.table})`);
+    const hasColumn = (info.values ?? []).some((row) => row.name === upgrade.column);
+
+    if (!hasColumn) {
+      await database.execute(`alter table ${upgrade.table} add column ${upgrade.column} ${upgrade.definition}`);
+    }
+  }
+}
 
 /**
  * Bootstraps the local SQLite connection and runs all migrations.
  * This is called automatically when the app starts.
  */
 export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
-  // 1. If connection already exists, return it immediately
   if (localDatabase) {
     return localDatabase;
   }
 
+  // Cache the in-flight promise, not just the resolved connection. refreshLocalData()
+  // fans out several accessors at once and useBackgroundSync initializes in parallel,
+  // so without this every concurrent caller clears the check above and opens its own
+  // connection to `mabisa_local`, re-running the migrations on each one.
+  if (!localDatabaseSetup) {
+    localDatabaseSetup = openLocalDatabase().catch((error: unknown) => {
+      localDatabaseSetup = null; // allow a later call to retry after a failed open
+      throw error;
+    });
+  }
+
+  return localDatabaseSetup;
+}
+
+async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   // 2. THE WEB POLYFILL
   // This block ONLY runs in the browser. It ensures the emulator is injected
   // exactly when needed, preventing Vite HMR race conditions.
-  if (Capacitor.getPlatform() === 'web') {
+  if (isWebPlatform) {
     try {
       let jeepEl = document.querySelector('jeep-sqlite');
-      
+
       if (!jeepEl) {
         jeepEl = document.createElement('jeep-sqlite');
         document.body.appendChild(jeepEl);
       }
-      
+
       // Force the app to wait until the browser fully registers the element
       await customElements.whenDefined('jeep-sqlite');
-      
+
       // Initialize the web store via the sqlite wrapper, not the raw Capacitor instance
       await sqlite.initWebStore();
-      
-    } catch (error: any) {
+
+    } catch (error) {
       // If Vite Hot-Reloads, initWebStore might throw an "already initialized" error.
       // We catch it here so it doesn't crash your React app.
       console.warn('SQLite Web Store warning (safe to ignore during dev):', error);
@@ -227,6 +312,9 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
     await database.execute(statement);
   }
 
+  await applyColumnUpgrades(database);
+  await verifyIndividualColumnMap(database);
+
   localDatabase = database;
   return database;
 }
@@ -236,6 +324,21 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
  */
 export async function getLocalDatabase(): Promise<SQLiteDBConnection> {
   return initializeLocalDatabase();
+}
+
+/**
+ * Flushes the database to durable storage.
+ *
+ * Web builds hold the whole database in memory and write nothing to IndexedDB until
+ * the store is saved explicitly, so without this every record is lost on reload.
+ * Native platforms persist on write, where this is a no-op.
+ */
+export async function persistLocalDatabase(): Promise<void> {
+  if (!isWebPlatform) {
+    return;
+  }
+
+  await sqlite.saveToStore('mabisa_local');
 }
 
 // -----------------------------------------------------------------------------
@@ -266,7 +369,7 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
 export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
   const database = await getLocalDatabase();
   const result = await database.query(
-    `select queue_id, operation_type, target_table, payload, created_at, attempts, last_error
+    `select queue_id, operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at
      from sync_queue
      order by queue_id asc`,
   );
@@ -278,7 +381,8 @@ export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
     payload: JSON.parse(String(row.payload)), // Parse the raw string back into a JS object
     created_at: String(row.created_at),
     attempts: Number(row.attempts),
-    last_error: row.last_error === null || row.last_error === undefined ? null : String(row.last_error),
+    last_error: nullableText(row.last_error),
+    next_attempt_at: nullableText(row.next_attempt_at),
   }));
 }
 
@@ -291,14 +395,203 @@ export async function removeSyncQueueEntry(queueId: number): Promise<void> {
 }
 
 /**
- * Increments the attempt counter and logs the error. Called when a Supabase upsert fails.
+ * Increments the attempt counter, logs the error, and schedules the next retry.
+ *
+ * `nextAttemptAt` is what stops a failing entry from being hammered on every
+ * single network-status change — the sync loop skips entries whose retry time
+ * has not arrived yet.
  */
-export async function markSyncQueueEntryFailed(queueId: number, errorMessage: string): Promise<void> {
+export async function markSyncQueueEntryFailed(
+  queueId: number,
+  errorMessage: string,
+  nextAttemptAt: string | null = null,
+): Promise<void> {
   const database = await getLocalDatabase();
   await database.run(
-    'update sync_queue set attempts = attempts + 1, last_error = ? where queue_id = ?',
-    [errorMessage, queueId],
+    'update sync_queue set attempts = attempts + 1, last_error = ?, next_attempt_at = ? where queue_id = ?',
+    [errorMessage, nextAttemptAt, queueId],
   );
+}
+
+/**
+ * Moves an entry out of the live queue and into quarantine, preserving its
+ * payload verbatim. Called once an entry has exhausted its retries, or when it
+ * depends on a record that is itself quarantined.
+ *
+ * This is the whole point of the dead-letter design: the main queue can always
+ * drain, and no health record is ever silently dropped.
+ */
+export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, errorMessage: string): Promise<void> {
+  const database = await getLocalDatabase();
+  await database.run(
+    `insert into sync_dead_letter
+     (original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.queue_id,
+      entry.operation_type,
+      entry.target_table,
+      JSON.stringify(entry.payload),
+      entry.created_at,
+      entry.attempts,
+      errorMessage,
+      new Date().toISOString(),
+    ],
+  );
+  await database.run('delete from sync_queue where queue_id = ?', [entry.queue_id]);
+}
+
+export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
+  const database = await getLocalDatabase();
+  const result = await database.query(
+    `select dead_letter_id, original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at
+     from sync_dead_letter
+     order by original_queue_id asc`,
+  );
+
+  return (result.values ?? []).map((row) => ({
+    dead_letter_id: Number(row.dead_letter_id),
+    original_queue_id: Number(row.original_queue_id),
+    operation_type: parseOperationType(String(row.operation_type)),
+    target_table: parseLocalTableName(String(row.target_table)),
+    payload: JSON.parse(String(row.payload)),
+    created_at: String(row.created_at),
+    attempts: Number(row.attempts),
+    last_error: nullableText(row.last_error),
+    failed_at: String(row.failed_at),
+  }));
+}
+
+export async function countDeadLetterEntries(): Promise<number> {
+  const database = await getLocalDatabase();
+  const result = await database.query('select count(*) as total from sync_dead_letter');
+  return Number(result.values?.[0]?.total ?? 0);
+}
+
+/**
+ * Puts every quarantined entry back on the live queue with a fresh attempt count.
+ *
+ * Entries are reinserted in their original queue order so parents are pushed
+ * before their children again — requeueing an individual ahead of its household
+ * would just recreate the orphan the quarantine existed to prevent.
+ */
+export async function requeueDeadLetterEntries(): Promise<number> {
+  const database = await getLocalDatabase();
+  const entries = await readDeadLetterEntries();
+
+  for (const entry of entries) {
+    await database.run(
+      `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at)
+       values (?, ?, ?, ?, 0, null, null)`,
+      [entry.operation_type, entry.target_table, JSON.stringify(entry.payload), entry.created_at],
+    );
+    await database.run('delete from sync_dead_letter where dead_letter_id = ?', [entry.dead_letter_id]);
+  }
+
+  await persistLocalDatabase();
+  return entries.length;
+}
+
+// -----------------------------------------------------------------------------
+// Individual Column Map
+// -----------------------------------------------------------------------------
+// `individuals` is written from two directions — the device's own forms and the
+// server pull — and each direction used to carry its own hand-maintained column
+// list. They drifted: the pull was missing occupation, educational_attainment and
+// philhealth_number, so a resident downloaded from Supabase arrived with those
+// blank, and because the conflict clause did not mention them either, no later
+// pull ever repaired it.
+//
+// Both statements and the value array are now generated from this one list, so a
+// column added here reaches every path or none of them.
+
+type IndividualColumn = {
+  name: string;
+  value: (individual: Individual) => SqlValue;
+  /**
+   * Refreshed from the server row when a pull lands on a resident this device
+   * already knows. Identity and first-seen stamps are not: resident_id is the
+   * conflict target, and created_at records when this device first saw the row.
+   */
+  mutableOnConflict: boolean;
+};
+
+const individualColumns: IndividualColumn[] = [
+  { name: 'resident_id', value: (individual) => individual.resident_id, mutableOnConflict: false },
+  // Mutable on purpose: a resident who transfers household on the server has to
+  // be refiled here too, which the previous conflict clause never did.
+  { name: 'household_id', value: (individual) => individual.household_id, mutableOnConflict: true },
+  { name: 'first_name', value: (individual) => individual.first_name, mutableOnConflict: true },
+  { name: 'middle_name', value: (individual) => individual.middle_name ?? null, mutableOnConflict: true },
+  { name: 'last_name', value: (individual) => individual.last_name, mutableOnConflict: true },
+  { name: 'sex', value: (individual) => individual.sex, mutableOnConflict: true },
+  { name: 'birthday', value: (individual) => individual.birthday, mutableOnConflict: true },
+  // SQLite has no boolean type; the table stores 0/1 under a check constraint.
+  { name: 'is_household_head', value: (individual) => (individual.is_household_head ? 1 : 0), mutableOnConflict: true },
+  { name: 'occupation', value: (individual) => individual.occupation ?? null, mutableOnConflict: true },
+  {
+    name: 'educational_attainment',
+    value: (individual) => individual.educational_attainment ?? null,
+    mutableOnConflict: true,
+  },
+  {
+    name: 'is_out_of_school_youth',
+    value: (individual) => (individual.is_out_of_school_youth ? 1 : 0),
+    mutableOnConflict: true,
+  },
+  {
+    name: 'is_pregnant_nursing_fp',
+    value: (individual) => (individual.is_pregnant_nursing_fp ? 1 : 0),
+    mutableOnConflict: true,
+  },
+  { name: 'philhealth_number', value: (individual) => individual.philhealth_number ?? null, mutableOnConflict: true },
+  { name: 'created_at', value: (individual) => individual.created_at, mutableOnConflict: false },
+  { name: 'updated_at', value: (individual) => individual.updated_at, mutableOnConflict: true },
+];
+
+/**
+ * The single upsert used by every write to `individuals`, local or pulled.
+ *
+ * Deliberately not `insert or replace`: with `pragma foreign_keys = on`, REPLACE
+ * deletes the existing row before reinserting it, and health_assessments declares
+ * `on delete cascade` on resident_id — so re-saving a resident would silently take
+ * their assessments with it. `on conflict do update` edits in place instead and
+ * leaves children untouched.
+ */
+const individualUpsertStatement = `insert into individuals (${individualColumns.map((column) => column.name).join(', ')})
+   values (${individualColumns.map(() => '?').join(', ')})
+   on conflict(resident_id) do update set ${individualColumns
+     .filter((column) => column.mutableOnConflict)
+     .map((column) => `${column.name} = excluded.${column.name}`)
+     .join(', ')}`;
+
+/** Row values in the exact order `individualUpsertStatement` binds them. */
+function individualValues(individual: Individual): SqlValue[] {
+  return individualColumns.map((column) => column.value(individual));
+}
+
+/**
+ * DEV-only check that the column map still describes the real table.
+ *
+ * There is no test suite, so this is what catches a column added to the schema
+ * but not to the map, or the reverse — the exact drift that left the pull path
+ * silently dropping three columns for as long as it did.
+ */
+async function verifyIndividualColumnMap(database: SQLiteDBConnection): Promise<void> {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  const info = await database.query('pragma table_info(individuals)');
+  const tableColumns = new Set((info.values ?? []).map((row) => String(row.name)));
+  const mappedColumns = new Set(individualColumns.map((column) => column.name));
+
+  const missingFromMap = [...tableColumns].filter((name) => !mappedColumns.has(name));
+  const missingFromTable = [...mappedColumns].filter((name) => !tableColumns.has(name));
+
+  if (missingFromMap.length > 0 || missingFromTable.length > 0) {
+    logDev('individuals column map is out of sync with the table', { missingFromMap, missingFromTable });
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -332,6 +625,7 @@ export async function saveHouseholdLocally(household: Household, operationType: 
   // Note: We queue the raw 'household' object here, NOT the stringified version.
   // This ensures Supabase receives actual arrays when the payload is processed.
   await enqueueSyncOperation('households', operationType, household);
+  await persistLocalDatabase();
 }
 
 /**
@@ -339,30 +633,11 @@ export async function saveHouseholdLocally(household: Household, operationType: 
  */
 export async function saveIndividualLocally(individual: Individual, operationType: SyncOperationType = 'INSERT'): Promise<void> {
   const database = await getLocalDatabase();
-  await database.run(
-    `insert or replace into individuals
-     (resident_id, household_id, first_name, last_name, sex, birthday, is_household_head, occupation, educational_attainment, is_out_of_school_youth, is_pregnant_nursing_fp, philhealth_number, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      individual.resident_id,
-      individual.household_id,
-      individual.first_name,
-      individual.last_name,
-      individual.sex,
-      individual.birthday,
-      individual.is_household_head ? 1 : 0, // Convert boolean to integer for SQLite
-      individual.occupation ?? null,
-      individual.educational_attainment ?? null,
-      individual.is_out_of_school_youth ? 1 : 0, // Convert boolean to integer
-      individual.is_pregnant_nursing_fp ? 1 : 0, // Convert boolean to integer
-      individual.philhealth_number ?? null,
-      individual.created_at,
-      individual.updated_at,
-    ],
-  );
-  
+  await database.run(individualUpsertStatement, individualValues(individual));
+
   // Queue the raw object so Supabase receives actual booleans
   await enqueueSyncOperation('individuals', operationType, individual);
+  await persistLocalDatabase();
 }
 
 export async function saveHealthAssessmentLocally(
@@ -387,6 +662,7 @@ export async function saveHealthAssessmentLocally(
     ],
   );
   await enqueueSyncOperation('health_assessments', operationType, assessment);
+  await persistLocalDatabase();
 }
 
 export async function saveInventoryItemLocally(item: InventoryItem, operationType: SyncOperationType = 'INSERT'): Promise<void> {
@@ -398,6 +674,7 @@ export async function saveInventoryItemLocally(item: InventoryItem, operationTyp
     [item.item_id, item.item_name, item.type, item.current_stock, item.created_at, item.updated_at],
   );
   await enqueueSyncOperation('inventory_items', operationType, item);
+  await persistLocalDatabase();
 }
 
 export async function saveSupplyDisbursementLocally(
@@ -420,6 +697,7 @@ export async function saveSupplyDisbursementLocally(
     ],
   );
   await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
+  await persistLocalDatabase();
 }
 
 
@@ -429,42 +707,70 @@ export async function getHouseholdCount(): Promise<number> {
   return result.values?.[0]?.total || 0;
 }
 
-export async function getIndividualCount(): Promise<number> {
+export async function getIndividualCount(options?: Pick<PaginatedQuery, 'searchQuery'>): Promise<number> {
   const db = await initializeLocalDatabase();
-  const result = await db.query('SELECT COUNT(*) as total FROM individuals');
+  const search = buildIndividualSearch(options?.searchQuery);
+
+  // Mirrors the FROM/WHERE of readLocalIndividuals so a filtered count always
+  // matches the rows that query would return.
+  const result = await db.query(
+    `SELECT COUNT(*) as total
+     FROM individuals i
+     LEFT JOIN households h ON i.household_id = h.household_id${search.clause}`,
+    search.params,
+  );
+
   return result.values?.[0]?.total || 0;
 }
+
+/**
+ * Builds the shared search predicate for individual lookups.
+ * Kept in one place so the row query and the count query cannot drift apart —
+ * if they do, the pager offers pages the filtered result set does not have.
+ */
+function buildIndividualSearch(searchQuery?: string): { clause: string; params: SqlValue[] } {
+  const term = searchQuery?.trim();
+
+  if (!term) {
+    return { clause: '', params: [] };
+  }
+
+  // Escape LIKE wildcards so a typed % or _ matches literally instead of
+  // silently widening the search.
+  const pattern = `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+
+  return {
+    clause: ` WHERE (i.first_name LIKE ? ESCAPE '\\'
+                  OR i.middle_name LIKE ? ESCAPE '\\'
+                  OR i.last_name LIKE ? ESCAPE '\\'
+                  OR h.household_number LIKE ? ESCAPE '\\')`,
+    params: [pattern, pattern, pattern, pattern],
+  };
+}
+
 // -----------------------------------------------------------------------------
 // Read Operations (Loading data into the React UI)
 // -----------------------------------------------------------------------------
 
 export async function readLocalIndividuals(options?: PaginatedQuery): Promise<Individual[]> {
   const db = await initializeLocalDatabase();
-  
-  // Use a LEFT JOIN to pull the readable household_number alongside the individual's data
-  let query = `
-    SELECT i.*, h.household_number 
-    FROM individuals i
-    LEFT JOIN households h ON i.household_id = h.household_id
-  `;
-  const params: any[] = [];
 
-  if (options?.searchQuery) {
-    const searchTerm = `%${options.searchQuery.trim()}%`;
-    // Added table prefixes (i. and h.) to prevent ambiguous column errors, 
-    // and added the ability to search for residents by their HH number!
-    query += ` WHERE i.first_name LIKE ? 
-                  OR i.last_name LIKE ? 
-                  OR i.middle_name LIKE ? 
-                  OR h.household_number LIKE ?`;
-    params.push(searchTerm, searchTerm, searchTerm, searchTerm);
-  }
+  // Use a LEFT JOIN to pull the readable household_number alongside the individual's data
+  const search = buildIndividualSearch(options?.searchQuery);
+  let query = `
+    SELECT i.*, h.household_number
+    FROM individuals i
+    LEFT JOIN households h ON i.household_id = h.household_id${search.clause}
+  `;
+  const params: SqlValue[] = [...search.params];
 
   query += ' ORDER BY i.last_name ASC, i.first_name ASC';
 
-  if (options?.limit !== undefined) {
+  // SQLite rejects OFFSET without LIMIT, so an offset-only call needs a limit
+  // supplied for it (-1 means "no limit" in SQLite).
+  if (options?.limit !== undefined || options?.offset !== undefined) {
     query += ' LIMIT ?';
-    params.push(options.limit);
+    params.push(options.limit ?? -1);
   }
   if (options?.offset !== undefined) {
     query += ' OFFSET ?';
@@ -484,7 +790,7 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
 export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Household[]> {
   const db = await initializeLocalDatabase();
   let query = 'SELECT * FROM households';
-  const params: any[] = [];
+  const params: SqlValue[] = [];
 
   if (options?.searchQuery) {
     const searchTerm = `%${options.searchQuery.trim()}%`;
@@ -494,9 +800,10 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
 
   query += ' ORDER BY created_at DESC';
 
-  if (options?.limit !== undefined) {
+  // As above: SQLite rejects OFFSET without a preceding LIMIT.
+  if (options?.limit !== undefined || options?.offset !== undefined) {
     query += ' LIMIT ?';
-    params.push(options.limit);
+    params.push(options.limit ?? -1);
   }
   if (options?.offset !== undefined) {
     query += ' OFFSET ?';
@@ -569,6 +876,15 @@ export async function readLocalSupplyDisbursements(residentId?: string): Promise
 // -----------------------------------------------------------------------------
 
 /**
+ * Normalizes a nullable SQLite text column into `string | null`.
+ * A column added by `alter table` reads back as undefined on rows written before
+ * the upgrade, so undefined has to collapse to null alongside a real NULL.
+ */
+function nullableText(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value);
+}
+
+/**
  * Validates that an untyped string is a legitimate SyncOperationType.
  */
 function parseOperationType(value: string): SyncOperationType {
@@ -633,6 +949,7 @@ export async function pullInventoryFromServer(cloudItems: InventoryItem[]): Prom
 
   try {
     await db.executeSet([{ statement, values }]);
+    await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull inventory into SQLite:', error);
     throw error;
@@ -674,6 +991,7 @@ export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Pr
 
   try {
     await db.executeSet([{ statement, values }]);
+    await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull households into SQLite:', error);
     throw error;
@@ -683,39 +1001,14 @@ export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Pr
 export async function pullIndividualsFromServer(cloudIndividuals: Individual[]): Promise<void> {
   if (!cloudIndividuals.length) return;
   const db = await initializeLocalDatabase();
-  
-  const statement = `
-    INSERT INTO individuals (resident_id, household_id, first_name, middle_name, last_name, sex, birthday, is_household_head, is_out_of_school_youth, is_pregnant_nursing_fp, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(resident_id) DO UPDATE SET 
-    first_name = excluded.first_name,
-    middle_name = excluded.middle_name,
-    last_name = excluded.last_name,
-    sex = excluded.sex,
-    birthday = excluded.birthday,
-    is_household_head = excluded.is_household_head,
-    is_out_of_school_youth = excluded.is_out_of_school_youth,
-    is_pregnant_nursing_fp = excluded.is_pregnant_nursing_fp,
-    updated_at = excluded.updated_at;
-  `;
 
-  const values = cloudIndividuals.map(ind => [
-    ind.resident_id,
-    ind.household_id,
-    ind.first_name,
-    ind.middle_name || null,
-    ind.last_name,
-    ind.sex,
-    ind.birthday,
-    ind.is_household_head ? 1 : 0,
-    ind.is_out_of_school_youth ? 1 : 0,
-    ind.is_pregnant_nursing_fp ? 1 : 0,
-    ind.created_at,
-    ind.updated_at,
-  ]);
+  // Same statement and same value order as the local write path — see the
+  // individual column map above for why these are no longer written out twice.
+  const values = cloudIndividuals.map((individual) => individualValues(individual));
 
   try {
-    await db.executeSet([{ statement, values }]);
+    await db.executeSet([{ statement: individualUpsertStatement, values }]);
+    await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull individuals into SQLite:', error);
     throw error;

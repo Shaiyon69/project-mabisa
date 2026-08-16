@@ -11,23 +11,51 @@ import { supabase } from '../lib/supabase';
 import {
   initializeLocalDatabase,
   markSyncQueueEntryFailed,
+  moveSyncQueueEntryToDeadLetter,
+  persistLocalDatabase,
+  readDeadLetterEntries,
   readSyncQueue,
   removeSyncQueueEntry,
   type LocalTableName,
   type SyncQueueEntry,
-  pullInventoryFromServer, 
-  pullHouseholdsFromServer, 
+  pullInventoryFromServer,
+  pullHouseholdsFromServer,
   pullIndividualsFromServer
 } from './localDatabase';
 
-export type SyncStatus = 'idle' | 'offline' | 'syncing' | 'synced' | 'failed';
+/**
+ * `deferred` is a normal outcome, not a failure: entries are waiting out a retry
+ * backoff, or held back behind one that is. Kept distinct from `failed` so a
+ * 30-second wait does not raise the same alarm as a quarantined record.
+ */
+export type SyncStatus =
+  | 'idle'
+  | 'offline'
+  | 'unauthenticated'
+  | 'syncing'
+  | 'synced'
+  | 'deferred'
+  | 'failed';
 
 export type SyncResult = {
   status: SyncStatus;
   processed: number;
+  /** Entries left on the queue for a later pass — waiting out a retry backoff, or held back behind one that is. */
+  deferred: number;
+  /** Entries moved to the dead-letter table during this pass. */
+  deadLettered: number;
   failedQueueId: number | null;
   errorMessage: string | null;
 };
+
+/** Retries before an entry is quarantined instead of retried forever. */
+const MAX_SYNC_ATTEMPTS = 5;
+
+/** First retry waits this long; each further failure doubles it. */
+const RETRY_BASE_DELAY_MS = 30_000;
+
+/** Upper bound on the backoff, so a long-failing entry still retries a few times a day. */
+const RETRY_MAX_DELAY_MS = 15 * 60_000;
 
 // -----------------------------------------------------------------------------
 // Primary Key Mappings
@@ -65,94 +93,292 @@ export async function isNetworkConnected(): Promise<boolean> {
   return status.connected;
 }
 
+// -----------------------------------------------------------------------------
+// Dependency Tracking
+// -----------------------------------------------------------------------------
+// The queue is ordered so parents reach Supabase before their children. Once an
+// entry is held back, everything referencing it has to be held back too —
+// otherwise we push rows whose foreign key does not exist remotely, which is
+// either a second failure or a silent orphan.
+//
+//   households      <- individuals            (household_id)
+//   individuals     <- health_assessments     (resident_id)
+//   individuals     <- supply_disbursements   (resident_id)
+//   inventory_items <- supply_disbursements   (item_id)
+
+/** `table:primary_key` — identifies the record an entry writes or depends on. */
+type EntityKey = string;
+
+/**
+ * Why a record is being held back. A transient failure defers its dependants to
+ * the next pass; a quarantined record takes its dependants into quarantine with
+ * it, so they stay together and can be requeued as one consistent set.
+ */
+type HoldReason = 'deferred' | 'quarantined';
+
+function entityKey(table: LocalTableName, id: string): EntityKey {
+  return `${table}:${id}`;
+}
+
+/** The record this entry writes, or null if the payload carries no usable primary key. */
+function ownEntityKey(entry: SyncQueueEntry): EntityKey | null {
+  const payload = entry.payload as Record<string, unknown>;
+  const value = payload[primaryKeys[entry.target_table]];
+  return typeof value === 'string' ? entityKey(entry.target_table, value) : null;
+}
+
+/** The records this entry's foreign keys point at. */
+function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
+  const payload = entry.payload as Record<string, unknown>;
+
+  const reference = (column: string, parentTable: LocalTableName): EntityKey[] => {
+    const value = payload[column];
+    return typeof value === 'string' ? [entityKey(parentTable, value)] : [];
+  };
+
+  switch (entry.target_table) {
+    case 'households':
+    case 'inventory_items':
+      return [];
+    case 'individuals':
+      return reference('household_id', 'households');
+    case 'health_assessments':
+      return reference('resident_id', 'individuals');
+    case 'supply_disbursements':
+      return [...reference('resident_id', 'individuals'), ...reference('item_id', 'inventory_items')];
+  }
+}
+
+/**
+ * Exponential backoff from the attempt count already recorded against the entry.
+ * 30s, 1m, 2m, 4m, then quarantine at MAX_SYNC_ATTEMPTS.
+ */
+function nextAttemptTimestamp(attempts: number): string {
+  const delay = Math.min(RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1), RETRY_MAX_DELAY_MS);
+  return new Date(Date.now() + delay).toISOString();
+}
+
 /**
  * The main background loop that reads the local SQLite queue and pushes 
  * pending operations to the Supabase PostgreSQL database.
  */
 export async function syncPendingQueue(): Promise<SyncResult> {
-  // 1. Check for concurrency lock
+  // 1. Claim the concurrency lock. This has to happen before the first await,
+  // not after the checks below: every one of them yields, so a second trigger
+  // landing in that window (a network flap alongside the mount pass, or the
+  // manual button alongside either) would clear the same check and run a
+  // parallel loop. Remote writes survive that — every push is an upsert — but
+  // both passes increment `attempts` on the same entries, so they quarantine at
+  // roughly half the intended retry budget.
   if (syncInProgress) {
-    return {
-      status: 'syncing',
-      processed: 0,
-      failedQueueId: null,
-      errorMessage: null,
-    };
-  }
-
-  await initializeLocalDatabase();
-
-  // 2. Hardware network check before attempting any API calls
-  const connected = await isNetworkConnected();
-  if (!connected) {
-    return {
-      status: 'offline',
-      processed: 0,
-      failedQueueId: null,
-      errorMessage: null,
-    };
+    return idleResult('syncing');
   }
 
   syncInProgress = true;
   let processed = 0;
+  let deferred = 0;
+  let deadLettered = 0;
+  let firstFailedQueueId: number | null = null;
+  let firstErrorMessage: string | null = null;
 
   try {
-    // 3. Fetch all pending jobs in exact chronological order
-    const queue = await readSyncQueue();
+    await initializeLocalDatabase();
 
-    // 4. Process sequentially to maintain relational integrity
+    // 2. Hardware network check before attempting any API calls
+    const connected = await isNetworkConnected();
+    if (!connected) {
+      return idleResult('offline');
+    }
+
+    // 3. Auth check. Row-level security denies every write from an anonymous
+    // client, so pushing without a session burns retry attempts on failures that
+    // are guaranteed. Defer instead — nothing is lost, the queue is durable.
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      return {
+        ...idleResult('unauthenticated'),
+        errorMessage: 'Not signed in. Records stay saved on this device until you sign in again.',
+      };
+    }
+
+    // 4. Fetch all pending jobs in exact chronological order
+    const queue = await readSyncQueue();
+    const now = Date.now();
+
+    // Records that must not be pushed this pass, and why.
+    const heldBack = new Map<EntityKey, HoldReason>();
+
+    const hold = (key: EntityKey | null, reason: HoldReason) => {
+      if (key) {
+        heldBack.set(key, reason);
+      }
+    };
+
+    // 5. Process sequentially to maintain relational integrity
     // (e.g., Household must be inserted before its Individuals)
     for (const entry of queue) {
+      const own = ownEntityKey(entry);
+
+      // 5a. Held back behind an earlier entry? Either because a parent record is
+      // held back, or because an earlier operation on this same record is.
+      const blockingKey = [...parentEntityKeys(entry), ...(own ? [own] : [])].find((key) => heldBack.has(key));
+
+      if (blockingKey) {
+        if (heldBack.get(blockingKey) === 'quarantined') {
+          // Follow the parent into quarantine so the set stays consistent and can
+          // be requeued together once the underlying cause is fixed.
+          await moveSyncQueueEntryToDeadLetter(
+            entry,
+            `Quarantined alongside ${blockingKey}, which could not be synced.`,
+          );
+          deadLettered += 1;
+          hold(own, 'quarantined');
+        } else {
+          deferred += 1;
+          hold(own, 'deferred');
+        }
+        continue;
+      }
+
+      // 5b. Still inside its retry backoff window.
+      if (entry.next_attempt_at && Date.parse(entry.next_attempt_at) > now) {
+        deferred += 1;
+        hold(own, 'deferred');
+        continue;
+      }
+
       try {
         await pushQueueEntry(entry);
-        
+
         // If the API call succeeds, safely delete it from the local device
         await removeSyncQueueEntry(entry.queue_id);
         processed += 1;
       } catch (error) {
-        // If an API call fails (e.g., Supabase validation error), log it locally,
-        // increment the attempt counter, and halt the entire sync process.
+        // A failure no longer halts the pass. The entry is held back along with
+        // anything downstream of it, and the rest of the queue keeps draining.
         const errorMessage = error instanceof Error ? error.message : 'Sync failed';
+        const attempts = entry.attempts + 1;
+
         logDev('Offline sync queue entry failed', {
           queueId: entry.queue_id,
           table: entry.target_table,
           operation: entry.operation_type,
+          attempts,
           errorMessage,
         });
-        await markSyncQueueEntryFailed(entry.queue_id, errorMessage);
 
+        if (firstFailedQueueId === null) {
+          firstFailedQueueId = entry.queue_id;
+          firstErrorMessage = errorMessage;
+        }
+
+        if (attempts >= MAX_SYNC_ATTEMPTS) {
+          await moveSyncQueueEntryToDeadLetter({ ...entry, attempts }, errorMessage);
+          deadLettered += 1;
+          hold(own, 'quarantined');
+        } else {
+          await markSyncQueueEntryFailed(entry.queue_id, errorMessage, nextAttemptTimestamp(attempts));
+          deferred += 1;
+          hold(own, 'deferred');
+        }
+      }
+    }
+
+    // Flush the queue deletions once rather than per entry — saving the web store
+    // serializes the whole database, so doing it inside the loop would be O(n) rewrites.
+    // A crash before this point simply replays the entries, which is safe because
+    // every push is an upsert.
+    await persistLocalDatabase();
+
+    // 6. Pull only once the queue has actually drained. Entries still waiting on a
+    // retry mean the remote copy is behind the device, and overwriting local rows
+    // with stale server data would undo edits that have not shipped yet.
+    // Quarantined entries do not block this — they are out of the queue by design.
+    if (deferred === 0) {
+      try {
+        await pullRemoteUpdates();
+      } catch (pullError) {
+        // If the pull fails, we still want to acknowledge the push succeeded,
+        // but we warn the user that they might not have the latest inventory.
+        const errorMessage = pullError instanceof Error ? pullError.message : 'Pull failed';
         return {
-          status: 'failed',
+          status: 'failed', // Triggers the red UI state so the BHW knows to try again
           processed,
-          failedQueueId: entry.queue_id,
-          errorMessage,
+          deferred,
+          deadLettered,
+          failedQueueId: null,
+          errorMessage: `Push succeeded, but downloading new inventory failed: ${errorMessage}`,
         };
       }
     }
-    try {
-      await pullRemoteUpdates();
-    } catch (pullError) {
-      // If the pull fails, we still want to acknowledge the push succeeded,
-      // but we warn the user that they might not have the latest inventory.
-      const errorMessage = pullError instanceof Error ? pullError.message : 'Pull failed';
+
+    // Quarantine is the only outcome here that needs a human: those changes have
+    // left the queue and will not retry on their own. Entries merely waiting out
+    // a backoff report as `deferred`, which the UI treats as a normal state.
+    if (deadLettered > 0) {
       return {
-        status: 'failed', // Triggers the red UI state so the BHW knows to try again
+        status: 'failed',
         processed,
-        failedQueueId: null,
-        errorMessage: `Push succeeded, but downloading new inventory failed: ${errorMessage}`,
+        deferred,
+        deadLettered,
+        failedQueueId: firstFailedQueueId,
+        errorMessage: describeIncompletePass(deferred, deadLettered, firstErrorMessage),
+      };
+    }
+
+    if (deferred > 0) {
+      return {
+        status: 'deferred',
+        processed,
+        deferred,
+        deadLettered,
+        failedQueueId: firstFailedQueueId,
+        errorMessage: describeIncompletePass(deferred, deadLettered, firstErrorMessage),
       };
     }
 
     return {
       status: 'synced',
       processed,
+      deferred,
+      deadLettered,
       failedQueueId: null,
       errorMessage: null,
     };
   } finally {
-    // 5. Release the concurrency lock regardless of success or failure
+    // 7. Release the concurrency lock regardless of success or failure
     syncInProgress = false;
   }
+}
+
+function idleResult(status: SyncStatus): SyncResult {
+  return {
+    status,
+    processed: 0,
+    deferred: 0,
+    deadLettered: 0,
+    failedQueueId: null,
+    errorMessage: null,
+  };
+}
+
+/**
+ * Turns the pass counters into something a BHW can act on, rather than a raw
+ * Postgres error string.
+ */
+function describeIncompletePass(deferred: number, deadLettered: number, firstError: string | null): string {
+  const parts: string[] = [];
+
+  if (deferred > 0) {
+    parts.push(`${deferred} change(s) will retry automatically`);
+  }
+
+  if (deadLettered > 0) {
+    parts.push(`${deadLettered} change(s) were set aside after repeated failures and need review`);
+  }
+
+  const summary = parts.join('; ');
+  return firstError ? `${summary}. First error: ${firstError}` : `${summary}.`;
 }
 
 // -----------------------------------------------------------------------------
@@ -273,10 +499,38 @@ function withoutPrimaryKey<T extends Record<string, unknown>, K extends keyof T>
 // Pull Remote Updates Logic
 // -----------------------------------------------------------------------------
 
+/**
+ * Primary keys of the records sitting in the dead letter, grouped by table.
+ *
+ * The pull only runs once `deferred === 0`, which means the live queue has fully
+ * drained — but quarantined entries deliberately do not block it. Those are the
+ * only records where the device copy can still be ahead of the server, so they
+ * are also the only ones a server row must not overwrite: doing so would discard
+ * the very edit the quarantine was holding on to.
+ */
+async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> {
+  const quarantined = new Map<LocalTableName, Set<string>>();
+
+  for (const entry of await readDeadLetterEntries()) {
+    const payload = entry.payload as Record<string, unknown>;
+    const value = payload[primaryKeys[entry.target_table]];
+
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const keys = quarantined.get(entry.target_table) ?? new Set<string>();
+    keys.add(value);
+    quarantined.set(entry.target_table, keys);
+  }
+
+  return quarantined;
+}
+
 export async function pullRemoteUpdates(): Promise<void> {
   try {
     // 1. Fetch tables sequentially to respect foreign key constraints
-    
+
     // Fetch Households
     const { data: cloudHouseholds, error: hError } = await supabase.from('households').select('*');
     if (hError) throw new Error(`Household Pull Error: ${hError.message}`);
@@ -289,20 +543,37 @@ export async function pullRemoteUpdates(): Promise<void> {
     const { data: cloudInventory, error: invError } = await supabase.from('inventory_items').select('*');
     if (invError) throw new Error(`Inventory Pull Error: ${invError.message}`);
 
-    // 2. Upsert data into local SQLite in the exact order of their dependencies
-    if (cloudHouseholds && cloudHouseholds.length > 0) {
-      await pullHouseholdsFromServer(cloudHouseholds);
-    }
-    
-    if (cloudIndividuals && cloudIndividuals.length > 0) {
-      await pullIndividualsFromServer(cloudIndividuals);
-    }
-    
-    if (cloudInventory && cloudInventory.length > 0) {
-      await pullInventoryFromServer(cloudInventory);
-    }
+    // 2. Drop any row whose local copy is quarantined. The server's version of it
+    // is stale by definition — the edit that would have updated it is the one that
+    // failed to push.
+    const quarantined = await readQuarantinedKeys();
 
-    console.log('Successfully pulled all updates from the cloud.');
+    const withoutQuarantined = <TRow>(table: LocalTableName, rows: TRow[] | null): TRow[] => {
+      const held = quarantined.get(table);
+
+      if (!rows?.length || !held?.size) {
+        return rows ?? [];
+      }
+
+      const primaryKey = primaryKeys[table];
+      const kept = rows.filter((row) => !held.has(String((row as Record<string, unknown>)[primaryKey])));
+
+      if (kept.length !== rows.length) {
+        logDev('Held back server rows with quarantined local edits', {
+          table,
+          skipped: rows.length - kept.length,
+        });
+      }
+
+      return kept;
+    };
+
+    // 3. Upsert data into local SQLite in the exact order of their dependencies
+    await pullHouseholdsFromServer(withoutQuarantined('households', cloudHouseholds));
+    await pullIndividualsFromServer(withoutQuarantined('individuals', cloudIndividuals));
+    await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
+
+    logDev('Successfully pulled all updates from the cloud.');
 
   } catch (error) {
     console.error('Failed to pull remote updates:', error);
