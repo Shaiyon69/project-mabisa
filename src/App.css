@@ -1100,7 +1100,9 @@ tbody tr:hover {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px 14px 12px;
+  /* viewport-fit=cover lets the webview paint under the status bar and the gesture
+     handle, so the shell pays that back itself; env() is 0 on a browser. */
+  padding: calc(16px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
   background: var(--bg);
   font-size: 16px;
 }
