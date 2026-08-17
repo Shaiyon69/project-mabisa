@@ -2,6 +2,7 @@ import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { formatDate } from '../../lib/utils';
+import { useBhwLanguage } from '../../app/BhwLanguageContext';
 import type { DeadLetterEntry, LocalTableName } from '../../services/localDatabase';
 import type { SyncStatus } from '../../services/syncService';
 
@@ -48,6 +49,7 @@ export function SyncStatusCard({
   onManualSync,
   onRetryDeadLetters,
 }: SyncStatusCardProps) {
+  const { t } = useBhwLanguage();
 
   // Was a substring match on the status text, which meant a change of wording
   // silently changed the UI — and painted the whole card red for a `deferred`
@@ -57,7 +59,7 @@ export function SyncStatusCard({
   const setAsideCount = deadLetterEntries.length;
   const hasSetAside = setAsideCount > 0;
 
-  const syncedLabel = isError ? 'Sync Failed' : hasSetAside ? 'Needs Review' : isPending ? 'Pending Sync' : 'Synced';
+  const syncedLabel = t(isError ? 'Sync Failed' : hasSetAside ? 'Needs Review' : isPending ? 'Pending Sync' : 'Synced');
   const badgeTone = isError ? 'danger' : (!isOnline || isPending || hasSetAside) ? 'warning' : 'success';
 
   // FIX: The button is now ONLY disabled if the app is actively syncing,
@@ -69,25 +71,25 @@ export function SyncStatusCard({
     <Card className="sync-hero">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Device status</p>
-          <h2>{isOnline ? 'Ready to sync records' : 'Encoding works offline'}</h2>
+          <p className="eyebrow">{t('Device status')}</p>
+          <h2>{t(isOnline ? 'Ready to sync records' : 'Encoding works offline')}</h2>
         </div>
         <Badge label={syncedLabel} tone={badgeTone} />
       </div>
 
       <div className="status-strip">
         <StatusCard
-          label="Connection"
-          value={isOnline ? 'Online' : 'Offline'}
+          label={t('Connection')}
+          value={t(isOnline ? 'Online' : 'Offline')}
           tone={isOnline ? 'success' : 'warning'}
         />
         <StatusCard
-          label="Sync status"
-          value={statusLabels[syncStatus]}
+          label={t('Sync status')}
+          value={t(statusLabels[syncStatus])}
           tone={isError ? 'danger' : 'info'}
         />
         <StatusCard
-          label="Queue"
+          label={t('Queue')}
           value={`${pendingQueueCount}`}
           tone={isPending ? 'warning' : 'success'}
         />
@@ -95,7 +97,7 @@ export function SyncStatusCard({
 
       {isError && (
         <p className="alert sync-alert">
-          <strong>Action Required:</strong> {syncError ?? 'Sync failed. Try again.'}
+          <strong>{t('Action Required:')}</strong> {syncError ?? t('Sync failed. Try again.')}
         </p>
       )}
 
@@ -138,14 +140,14 @@ export function SyncStatusCard({
         <Button onClick={onManualSync} disabled={isButtonDisabled}>
           {/* Dynamic Button Text explains exactly what the click will do */}
           {syncingManually
-            ? 'Syncing...'
+            ? t('Syncing...')
             : !isOnline
-              ? 'Offline'
+              ? t('Offline')
               : isError
-                ? 'Retry Sync'
+                ? t('Retry Sync')
                 : isPending
-                  ? 'Push Local Changes'
-                  : 'Check for Updates'}
+                  ? t('Push Local Changes')
+                  : t('Check for Updates')}
         </Button>
       </div>
     </Card>

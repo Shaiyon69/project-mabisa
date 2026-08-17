@@ -1,17 +1,25 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
 import type { SyncStatus } from '../../services/syncService';
-import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
+import { Icon } from '../common/Icon';
+import { BhwLanguageProvider, useBhwLanguage } from '../../app/BhwLanguageContext';
 
 const bhwNavItems = [
-  { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', end: true },
-  { to: '/bhw/register-resident', label: 'Register Resident', shortLabel: 'Resident' },
-  { to: '/bhw/health-assessment', label: 'Health Assessment', shortLabel: 'Health' },
-  { to: '/bhw/supply-disbursement', label: 'Supply Release', shortLabel: 'Supply' },
+  { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', icon: 'home' as const, end: true },
+  { to: '/bhw/register-resident', label: 'Register Resident', shortLabel: 'Resident', icon: 'user' as const },
+  { to: '/bhw/health-assessment', label: 'Health Assessment', shortLabel: 'Health', icon: 'heart' as const },
+  { to: '/bhw/supply-disbursement', label: 'Supply Release', shortLabel: 'Supply', icon: 'package' as const },
+  { to: '/bhw/profile', label: 'Profile', shortLabel: 'Profile', icon: 'profile' as const },
 ];
 
 type BHWLayoutProps = {
+  logout: () => Promise<void>;
+};
+
+/** Logout is handed to the profile screen through the outlet rather than a prop
+    chain, because it is the only route that uses it. */
+export type BhwOutletContext = {
   logout: () => Promise<void>;
 };
 
@@ -49,7 +57,16 @@ function recordRail(
 }
 
 export function BHWLayout({ logout }: BHWLayoutProps) {
+  return (
+    <BhwLanguageProvider>
+      <BHWLayoutContent logout={logout} />
+    </BhwLanguageProvider>
+  );
+}
+
+function BHWLayoutContent({ logout }: BHWLayoutProps) {
   const { isOnline, message, syncStatus, snapshot } = useMabisaData();
+  const { t } = useBhwLanguage();
   const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
 
   // BHW uses a phone-sized shell because this interface is packaged with Capacitor.
@@ -60,27 +77,22 @@ export function BHWLayout({ logout }: BHWLayoutProps) {
           {rail.label}
         </p>
 
-        <PageHeader
-          eyebrow="Project MABISA"
-          title="BHW Mobile"
-          actions={
-            // Connection state lives on the rail above, so it is not repeated here.
-            <Button variant="ghost" onClick={logout}>
-              Logout
-            </Button>
-          }
-        />
+        {/* No header actions: connection state lives on the rail above, and theme
+            and logout now live on the Profile tab so the top of every screen is
+            content rather than controls. */}
+        <PageHeader eyebrow={t('Project MABISA')} title={t('BHW Mobile')} />
         {message ? <p className="notice">{message}</p> : null}
 
         <div className="bhw-mobile-content">
-          <Outlet />
+          <Outlet context={{ logout } satisfies BhwOutletContext} />
         </div>
 
         <nav className="bhw-bottom-nav" aria-label="BHW mobile sections">
           {bhwNavItems.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end}>
+              <Icon name={item.icon} size={19} />
               <span className="nav-full">{item.label}</span>
-              <span className="nav-short">{item.shortLabel}</span>
+              <span className="nav-short">{t(item.shortLabel)}</span>
             </NavLink>
           ))}
         </nav>

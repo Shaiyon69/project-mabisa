@@ -4,8 +4,8 @@ import type { DeadLetterEntry } from '../services/localDatabase';
 import type { SyncStatus } from '../services/syncService';
 
 export type LocalSnapshot = {
-  householdCount: number;  // Replaced households: Household[]
-  individualCount: number; // Replaced individuals: Individual[]
+  householdCount: number;
+  individualCount: number;
   assessments: HealthAssessment[];
   inventoryItems: InventoryItem[];
   disbursements: SupplyDisbursement[];

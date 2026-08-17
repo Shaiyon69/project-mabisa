@@ -1,15 +1,15 @@
-// Goal: Decouple the form from massive data arrays by utilizing the 
-// SQLite-backed IndividualSearch component, strictly adhering to the existing DB schema.
-
 import { useState } from 'react';
 import type { InventoryItem, SupplyDisbursement } from '../../types/database'; 
-import { createId, today } from '../../lib/utils';
+import { createId, scrollToFirstError, today } from '../../lib/utils';
 import { saveSupplyDisbursementLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { FormActions, FormField, SelectField } from '../common/FormField';
+import { FormActions, FormField } from '../common/FormField';
+import { Combobox } from '../common/Combobox';
 import { IndividualSearch } from './IndividualSearch';
+import { Icon } from '../common/Icon';
+import { useBhwLanguage } from '../../app/BhwLanguageContext';
 
 type SupplyDisbursementFormProps = {
   individualCount: number; 
@@ -18,6 +18,7 @@ type SupplyDisbursementFormProps = {
 };
 
 export function SupplyDisbursementForm({ individualCount, inventoryItems, onSaved }: SupplyDisbursementFormProps) {
+  const { t, isFilipino } = useBhwLanguage();
   const [residentId, setResidentId] = useState('');
   const [itemId, setItemId] = useState(inventoryItems[0]?.item_id || '');
   const [quantity, setQuantity] = useState('1');
@@ -25,23 +26,36 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
   
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
 
   const hasIndividuals = individualCount > 0;
   const hasInventory = inventoryItems.length > 0;
+  const selectedItem = inventoryItems.find((item) => item.item_id === itemId);
+  const requestedQuantity = Number(quantity);
+  const missingRequirements = [
+    !hasIndividuals && 'registered resident',
+    !residentId && 'selected resident',
+    !hasInventory && 'available inventory',
+    !itemId && 'selected item',
+    (!requestedQuantity || requestedQuantity < 1) && 'valid quantity',
+    selectedItem && requestedQuantity > selectedItem.current_stock && 'quantity within available stock',
+    !disbursementDate && 'disbursement date',
+  ].filter(Boolean) as string[];
+  const isFormReady = missingRequirements.length === 0;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setShowValidation(true);
+    setFormError(null);
     
-    if (!residentId || !itemId) {
-      setFormError('Please select both a resident and an inventory item.');
+    if (!isFormReady) {
+      scrollToFirstError();
       return;
     }
 
     setSaving(true);
-    setFormError(null);
     const timestamp = new Date().toISOString();
 
-    // Removed the hallucinated 'notes' property to fix TS(2353)
     const disbursement: SupplyDisbursement = {
       log_id: createId(),
       resident_id: residentId,
@@ -59,6 +73,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
       await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Supply disbursement was not saved.');
+      scrollToFirstError();
     } finally {
       setSaving(false);
     }
@@ -68,59 +83,62 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Inventory</p>
-          <h2>Disburse Supplies</h2>
+          <p className="eyebrow">{t('Inventory')}</p>
+          <h2>{t('Disburse Supplies')}</h2>
         </div>
         <div className="header-actions">
-          <Badge label={hasIndividuals ? 'Residents Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
-          <Badge label={hasInventory ? 'Stock Available' : 'Empty Stock'} tone={hasInventory ? 'success' : 'danger'} />
+          <Badge label={t(hasIndividuals ? 'Residents Ready' : 'Needs Profile')} tone={hasIndividuals ? 'success' : 'warning'} />
+          <Badge label={t(hasInventory ? 'Stock Available' : 'Empty Stock')} tone={hasInventory ? 'success' : 'danger'} />
         </div>
       </div>
 
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="alert" role="alert">{formError}</p> : null}
+        {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
-        <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} />
-        {!hasIndividuals ? <p className="form-hint">Register a household before disbursing supplies.</p> : null}
+        <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? t('Select a resident.') : undefined} />
+        {!hasIndividuals ? <p className="form-hint">{t('Register a household before disbursing supplies.')}</p> : null}
 
-        <SelectField 
-          label="Item" 
-          value={itemId} 
-          onChange={(event) => setItemId(event.target.value)} 
-          required
+        <Combobox
+          label={t('Item')}
+          value={itemId}
+          options={inventoryItems.map((item) => ({
+            value: item.item_id,
+            label: `${item.item_name} (${item.current_stock} ${isFilipino ? 'natitira' : 'in stock'})`,
+          }))}
+          onChange={setItemId}
+          placeholder={t('Search item...')}
           disabled={!hasInventory}
-        >
-          {inventoryItems.map((item) => (
-            <option key={item.item_id} value={item.item_id}>
-              {item.item_name} ({item.current_stock} in stock)
-            </option>
-          ))}
-        </SelectField>
-        {!hasInventory ? <p className="form-hint">Admin must sync inventory items before disbursement.</p> : null}
+          error={showValidation && !itemId ? t('Select an inventory item.') : undefined}
+          emptyText={t('No item found')}
+        />
+        {!hasInventory ? <p className="form-hint">{t('Admin must sync inventory items before disbursement.')}</p> : null}
 
         <div className="field-row">
           <FormField 
-            label="Quantity" 
+            label={t('Quantity')}
             type="number" 
             min="1" 
             max="1000"
             value={quantity} 
             onChange={(event) => setQuantity(event.target.value)} 
             required 
+            error={showValidation && (!requestedQuantity || requestedQuantity < 1 || Boolean(selectedItem && requestedQuantity > selectedItem.current_stock)) ? selectedItem && requestedQuantity > selectedItem.current_stock ? isFilipino ? `${selectedItem.current_stock} aytem lamang ang available.` : `Only ${selectedItem.current_stock} item(s) are available.` : t('Enter a quantity of at least 1.') : undefined}
           />
           <FormField 
-            label="Date" 
+            label={t('Date')}
             type="date" 
             max={today()}
             value={disbursementDate} 
             onChange={(event) => setDisbursementDate(event.target.value)} 
             required 
+            error={showValidation && !disbursementDate ? t('Disbursement date is required.') : undefined}
           />
         </div>
 
         <FormActions>
-          <Button type="submit" disabled={saving || !hasIndividuals || !hasInventory || !residentId}>
-            {saving ? 'Saving Offline...' : 'Save Disbursement'}
+          <Button type="submit" disabled={saving}>
+            <Icon name="save" size={18} />
+            {t(saving ? 'Saving Offline...' : 'Save Disbursement')}
           </Button>
         </FormActions>
       </form>

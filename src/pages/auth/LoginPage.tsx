@@ -21,8 +21,11 @@ export function LoginPage({
   onPasswordChange,
   onSubmit,
 }: LoginPageProps) {
+  const isAdminPortal = window.location.pathname.startsWith('/admin');
+  const portalName = isAdminPortal ? 'MABISA Admin Portal' : 'MABISA BHW Mobile';
+
   return (
-    <main className="mobile-shell auth-shell">
+    <main className={`mobile-shell auth-shell ${isAdminPortal ? 'admin-auth' : 'bhw-auth'}`}>
       <section className="login-panel">
         <div className="login-hero">
           <span className="brand-mark" aria-hidden="true">
@@ -30,8 +33,12 @@ export function LoginPage({
           </span>
           <div>
             <p className="eyebrow">Project MABISA</p>
-            <h1>Barangay Health Access</h1>
-            <p className="muted">Sign in once while online, then continue resident profiling and supply logging on the device.</p>
+            <h1>{portalName}</h1>
+            <p className="muted">
+              {isAdminPortal
+                ? 'Sign in with your authorized administrator account to manage MABISA operations.'
+                : 'For Barangay Health Workers. Sign in once while online, then continue field work on your device.'}
+            </p>
           </div>
         </div>
 
@@ -42,7 +49,7 @@ export function LoginPage({
             inputMode="email"
             type="email"
             value={email}
-            placeholder="bhw@mabisa.local"
+            placeholder={isAdminPortal ? 'admin@mabisa.local' : 'bhw@mabisa.local'}
             onChange={(event) => onEmailChange(event.target.value)}
             required
           />
@@ -60,10 +67,16 @@ export function LoginPage({
           {authMessage ? <p className="alert">{authMessage}</p> : null}
 
           <Button type="submit" disabled={authLoading}>
-            {authLoading ? 'Checking Access' : 'Login to MABISA'}
+            {authLoading ? 'Checking Access' : isAdminPortal ? 'Sign in as Admin' : 'Sign in as BHW'}
           </Button>
         </form>
 
+        <p className="portal-switch">
+          {isAdminPortal ? 'Are you a Barangay Health Worker?' : 'Are you an administrator?'}{' '}
+          <a href={isAdminPortal ? '/bhw' : '/admin'}>
+            Open the {isAdminPortal ? 'BHW mobile login' : 'Admin Portal'}
+          </a>
+        </p>
 
       </section>
     </main>

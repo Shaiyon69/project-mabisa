@@ -1,15 +1,22 @@
-// Goal: Update the HealthAssessmentForm to rely on the new optimized 
-// SQLite-backed IndividualSearch, removing dependencies on massive data arrays.
-
 import { useState } from 'react';
-import type { HealthAssessment, NutritionStatus } from '../../types/database'; // Removed Individual import
-import { calculateBmi, createId, getNutritionStatus, titleCase, today } from '../../lib/utils';
+import type { HealthAssessment, Individual, NutritionStatus } from '../../types/database';
+import {
+  ageInYears,
+  calculateBmi,
+  createId,
+  getNutritionStatus,
+  scrollToFirstError,
+  titleCase,
+  today,
+} from '../../lib/utils';
 import { saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { FormActions, FormField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
+import { Icon } from '../common/Icon';
+import { useBhwLanguage } from '../../app/BhwLanguageContext';
 
 // The rail draws roughly the range a field BMI lands in; readings outside it
 // still resolve to a band, the marker just parks at the end of the scale.
@@ -27,6 +34,38 @@ const BMI_BANDS = [
 
 const BMI_TICKS = [18.5, 25, 30];
 
+// WHO reads 5-19 year olds off BMI-for-age z-scores, not these fixed cut-points,
+// and BMI is not a nutrition measure at all during pregnancy or nursing. The form
+// still records the reading in both cases — a number on file beats a blank — but
+// the person entering it has to know the verdict beside it does not apply.
+const ADULT_BMI_MIN_AGE = 20;
+
+// Both lines carry the resident's own age, which the flat en/fil dictionary cannot
+// express, so they are written per language here the way other interpolated BHW
+// copy is.
+function bmiCaveats(person: Individual | null, isFilipino: boolean): string[] {
+  if (!person) {
+    return [];
+  }
+
+  const age = ageInYears(person.birthday);
+
+  return [
+    age !== null &&
+      age < ADULT_BMI_MIN_AGE &&
+      (isFilipino
+        ? `${age} taong gulang ang residenteng ito. Hindi umaabot sa wastong pagsusuri ang adult BMI sa wala pang ${ADULT_BMI_MIN_AGE} — gamitin ang growth chart ng DOH/WHO.`
+        : `This resident is ${age} years old. Adult BMI does not classify anyone under ${ADULT_BMI_MIN_AGE} — read the result against the DOH/WHO growth chart instead.`),
+    // One column carries pregnant, nursing and family planning together, so the
+    // copy cannot claim which of the three this is. Only the first two invalidate
+    // the reading; say that rather than assert something the data does not hold.
+    person.is_pregnant_nursing_fp &&
+      (isFilipino
+        ? 'Nakatala ang residenteng ito bilang buntis, nagpapasuso, o gumagamit ng family planning. Kung buntis o nagpapasuso, hindi sinusukat ng BMI ang kanyang nutrition status.'
+        : 'This resident is flagged pregnant, nursing, or on family planning. If pregnant or nursing, BMI does not measure their nutrition status.'),
+  ].filter(Boolean) as string[];
+}
+
 if (import.meta.env.DEV) {
   // Cheap guard against the rail drifting away from the function it illustrates.
   for (const band of BMI_BANDS) {
@@ -42,33 +81,44 @@ function railPercent(bmi: number): number {
 }
 
 type HealthAssessmentFormProps = {
-  individualCount: number; // Swapped individuals array for a lightweight count
+  individualCount: number;
   onSaved: () => Promise<void>;
 };
 
 export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessmentFormProps) {
+  const { t, isFilipino } = useBhwLanguage();
   const [residentId, setResidentId] = useState('');
+  const [resident, setResident] = useState<Individual | null>(null);
   const [assessmentDate, setAssessmentDate] = useState(today());
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
   
-  // Calculate dynamic metrics
   const bmi = calculateBmi(Number(weight), Number(height));
   const nutritionStatus = getNutritionStatus(bmi);
   const hasIndividuals = individualCount > 0;
+  const missingRequirements = [
+    !hasIndividuals && 'registered resident',
+    !residentId && 'selected resident',
+    !assessmentDate && 'assessment date',
+    (!weight || !height || !bmi || !nutritionStatus) && 'valid weight and height',
+  ].filter(Boolean) as string[];
+  const isFormReady = missingRequirements.length === 0;
+  const caveats = bmiCaveats(resident, isFilipino);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setShowValidation(true);
+    setFormError(null);
 
-    if (!bmi || !nutritionStatus || !residentId) {
-      setFormError('Please select a resident and fill out all fields.');
+    if (!isFormReady || !bmi || !nutritionStatus) {
+      scrollToFirstError();
       return;
     }
 
     setSaving(true);
-    setFormError(null);
     const timestamp = new Date().toISOString();
     
     const assessment: HealthAssessment = {
@@ -88,10 +138,12 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       setWeight('');
       setHeight('');
       setAssessmentDate(today());
-      setResidentId(''); // Clear selection after successful save
+      setResidentId('');
+      setResident(null);
       await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Health assessment was not saved.');
+      scrollToFirstError();
     } finally {
       setSaving(false);
     }
@@ -101,30 +153,37 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Assessment</p>
-          <h2>Health Assessment</h2>
+          <p className="eyebrow">{t('Assessment')}</p>
+          <h2>{t('Health Assessment')}</h2>
         </div>
-        <Badge label={hasIndividuals ? 'Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
+        <Badge label={t(hasIndividuals ? 'Ready' : 'Needs Profile')} tone={hasIndividuals ? 'success' : 'warning'} />
       </div>
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="alert" role="alert">{formError}</p> : null}
+        {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
         
-        {/* The TS Error is fixed: We no longer pass the individuals prop */}
-        <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} />
+        <IndividualSearch
+          selectedResidentId={residentId}
+          onChange={(nextId, person) => {
+            setResidentId(nextId);
+            setResident(person);
+          }}
+          error={showValidation && !residentId ? t('Select a resident.') : undefined}
+        />
         
-        {!hasIndividuals ? <p className="form-hint">Register a household before recording a health assessment.</p> : null}
+        {!hasIndividuals ? <p className="form-hint">{t('Register a household before recording a health assessment.')}</p> : null}
         
         <FormField 
-          label="Assessment Date" 
+          label={t('Assessment Date')}
           type="date" 
           max={today()} 
           value={assessmentDate} 
           onChange={(event) => setAssessmentDate(event.target.value)} 
           required 
+          error={showValidation && !assessmentDate ? t('Assessment date is required.') : undefined}
         />
         <div className="field-row">
           <FormField 
-            label="Weight (kg)" 
+            label={t('Weight (kg)')}
             type="number" 
             min="1" 
             max="300" 
@@ -132,9 +191,10 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             value={weight} 
             onChange={(event) => setWeight(event.target.value)} 
             required 
+            error={showValidation && (!weight || Number(weight) < 1 || Number(weight) > 300) ? t('Enter a weight from 1 to 300 kg.') : undefined}
           />
           <FormField 
-            label="Height (cm)" 
+            label={t('Height (cm)')}
             type="number" 
             min="30"  
             max="250" 
@@ -142,13 +202,23 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             value={height} 
             onChange={(event) => setHeight(event.target.value)} 
             required 
+            error={showValidation && (!height || Number(height) < 30 || Number(height) > 250) ? t('Enter a height from 30 to 250 cm.') : undefined}
           />
         </div>
         <BmiRail bmi={bmi} status={nutritionStatus} />
+        {/* Shown against the selected resident rather than on every assessment: a
+            caveat that is always on screen is read as decoration by the second
+            week, and this is the only standing warning the BHW surface has. */}
+        {caveats.map((caveat) => (
+          <p key={caveat} className="form-alert tone-warning" role="note">
+            <Icon name="warning" size={18} />
+            {caveat}
+          </p>
+        ))}
         <FormActions>
-          {/* Prevent saving if no resident is selected */}
-          <Button type="submit" disabled={saving || !hasIndividuals || !residentId}>
-            {saving ? 'Saving Offline...' : 'Save Assessment'}
+          <Button type="submit" disabled={saving}>
+            <Icon name="save" size={18} />
+            {t(saving ? 'Saving Offline...' : 'Save Assessment')}
           </Button>
         </FormActions>
       </form>
@@ -160,13 +230,15 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
 // authoritative answer; the scale is a second, faster way to reach the same one,
 // which is what makes it safe to hide from screen readers.
 function BmiRail({ bmi, status }: { bmi: number | null; status: NutritionStatus | null }) {
+  const { t } = useBhwLanguage();
+
   return (
     <section className="bmi-rail">
       <div className="bmi-readout">
-        <p className="eyebrow">Body mass index</p>
+        <p className="eyebrow">{t('Body mass index')}</p>
         <strong>{bmi ? bmi.toFixed(1) : '--'}</strong>
         <output className={`bmi-verdict${status ? ` bmi-verdict-${status}` : ''}`}>
-          {status ? titleCase(status) : 'Enter weight and height'}
+          {status ? titleCase(status) : t('Enter weight and height')}
         </output>
       </div>
 

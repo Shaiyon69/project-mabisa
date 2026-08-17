@@ -17,13 +17,40 @@
   --danger: #a85448;
   --success: #5d7052;
   --warning: #c18c5d;
-  /* shadow-soft and shadow-float, at the design system's exact values. */
-  --shadow: 0 4px 20px -2px rgb(93 112 82 / 0.15);
-  --shadow-clay: 0 10px 40px -10px rgb(193 140 93 / 0.2);
-  /* Moss ring with an offset, so focus reads as a soft glow rather than an outline. */
+  /* Alert tones as three tokens each rather than a hex per rule: dark mode has to
+     restate them all, and App.css was repeating the same nine values by hand. */
+  --danger-ink: #7c352d;
+  --danger-surface: #f7e7e2;
+  --danger-line: #e1c2bb;
+  --warning-ink: #75512f;
+  --warning-surface: #f7eadc;
+  --warning-line: #e9caa9;
+  --success-ink: #40533a;
+  --success-surface: #edf2e9;
+  --success-line: #cfdbc8;
+  --danger-strong: #963e36;
+  --danger-foreground: #ffffff;
+  --secondary-foreground: #3b2d21;
+  /* Underweight is drawn in slate, not in a warning colour — see .bmi-band rules. */
+  --bmi-low: #7d8c96;
+  --bmi-low-ink: #63737d;
+  /* Two surfaces are still drawn with an alpha and so need their colour as channels:
+     the modal scrim and the tonal fill on a selected choice. CSS cannot take an alpha
+     off a hex token without relative colour syntax, which the older Android WebViews
+     in the field do not all have. Everything else is a flat token. */
+  --primary-rgb: 93 112 82;
+  --ink-rgb: 44 44 36;
+  /* Elevation is neutral and tight, the way Material draws it. The old tokens were
+     wide, tinted washes (moss under resting cards, clay under floating ones) and a
+     tinted shadow under a coloured surface reads as a glow, not as height.
+     --shadow is a resting surface, --shadow-float is something over the page. */
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  --shadow-clay: 0 3px 8px rgb(0 0 0 / 0.16);
+  /* Focus is a hard two-tone ring: a gap in the page colour, then a solid line.
+     No alpha — a translucent ring is the first thing to wash out in sunlight. */
   --ring:
     0 0 0 2px var(--bg),
-    0 0 0 5px rgb(93 112 82 / 0.55);
+    0 0 0 4px var(--primary);
   --radius-sm: 14px;
   --radius-md: 20px;
   --radius-lg: 28px;
@@ -38,6 +65,65 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Dark theme. Only the palette moves — every rule elsewhere reads these tokens, so
+   there is one place to keep the two themes in step. The hues are the same moss
+   and clay, dropped to low-light values rather than swapped for a neutral grey,
+   because the app should still look like itself at night. */
+:root[data-theme='dark'],
+:root[data-theme='oled'] {
+  --bg: #17181a;
+  --text-h: #f0ece4;
+  --text: #d6d2c8;
+  --primary: #8fa682;
+  --primary-strong: #a3b895;
+  --primary-foreground: #1a1c19;
+  --secondary: #d3a273;
+  --secondary-strong: #e0b489;
+  --accent: #2e3033;
+  --muted-surface: #26282b;
+  --muted: #9a978e;
+  --panel: #1f2124;
+  --field: #24262a;
+  --field-soft: #202225;
+  --border: #383b3f;
+  --danger: #e0806f;
+  --success: #8fa682;
+  --warning: #d3a273;
+  --danger-ink: #f0b3a5;
+  --danger-surface: #3a2320;
+  --danger-line: #5c352f;
+  --warning-ink: #e8c39a;
+  --warning-surface: #34281c;
+  --warning-line: #55412c;
+  --success-ink: #b3c9a5;
+  --success-surface: #212c1e;
+  --success-line: #3a4a33;
+  --danger-strong: #eb9483;
+  --danger-foreground: #22110d;
+  --secondary-foreground: #241a12;
+  --bmi-low: #8a99a3;
+  --bmi-low-ink: #a3b2bd;
+  --primary-rgb: 143 166 130;
+  --ink-rgb: 8 9 10;
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+  --shadow-clay: 0 3px 8px rgb(0 0 0 / 0.55);
+  color-scheme: dark;
+}
+
+/* OLED. Same dark palette above, with the surfaces pulled to true black so an OLED
+   panel switches those pixels off — a real battery saving on a field phone. Only the
+   backgrounds and borders move; the moss and clay hues stay put. */
+:root[data-theme='oled'] {
+  --bg: #000000;
+  --panel: #0a0b0c;
+  --accent: #121316;
+  --muted-surface: #0f1012;
+  --field: #101114;
+  --field-soft: #0c0d0f;
+  --border: #2a2d31;
+  --ink-rgb: 0 0 0;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -46,25 +132,16 @@ body {
   position: relative;
   min-width: 320px;
   margin: 0;
-  background:
-    radial-gradient(circle at 12% 8%, rgb(230 220 205 / 0.78), transparent 24rem),
-    radial-gradient(circle at 88% 14%, rgb(193 140 93 / 0.18), transparent 24rem),
-    linear-gradient(180deg, #fffefa 0%, var(--bg) 32rem);
+  background: var(--bg);
+  /* The WebView's own blue tap flash, which lands as a square behind rounded
+     targets like the bottom-nav pills. Every control here already has its own
+     :active and :focus-visible treatment, so the default is redundant. */
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Paper grain. The design system treats this as essential rather than decorative:
-   it is what keeps flat colour from reading as a screen. Generated inline from
-   an SVG turbulence filter, so it costs no request and works offline. */
-body::after {
-  position: fixed;
-  z-index: 9999;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
-  content: '';
-}
+/* The paper grain layer (fixed full-viewport, mix-blend-mode over an SVG
+   turbulence filter) was dropped: it forced the whole page into a composited
+   blend group and repainted on every scroll on low-end Android WebViews. */
 
 button,
 input,

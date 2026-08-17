@@ -3,8 +3,8 @@ import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { logDev } from '../lib/utils';
 import {
   readLocalHealthAssessments,
-  getHouseholdCount,      // Replaced readLocalHouseholds
-  getIndividualCount,     // Replaced readLocalIndividuals
+  getHouseholdCount,
+  getIndividualCount,
   readLocalInventoryItems,
   readLocalSupplyDisbursements,
   readDeadLetterEntries,
@@ -33,10 +33,9 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
         readDeadLetterEntries(),
       ]);
 
-    // 2. Update the snapshot payload
     setSnapshot({
-      householdCount,      // Previously: households
-      individualCount,     // Previously: individuals
+      householdCount,
+      individualCount,
       assessments,
       inventoryItems,
       disbursements,
@@ -56,6 +55,19 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       window.clearTimeout(handle);
     };
   }, [refreshLocalData, backgroundSync.lastResult]);
+
+  // A confirmation is the end of an action, not a permanent part of the screen:
+  // left up, "Saved Offline" is still sitting above the next household an hour
+  // later and stops meaning anything. Nothing is lost when it goes — the rail and
+  // SyncStatusCard carry any state that still needs attention.
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+
+    const handle = window.setTimeout(() => setMessage(null), 6000);
+    return () => window.clearTimeout(handle);
+  }, [message]);
 
   const runManualSync = useCallback(async () => {
     setSyncingManually(true);

@@ -1,6 +1,10 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export type UserRole = 'admin' | 'lgu' | 'bhw';
+// Mirrors public.app_role from the foundation slice, which is the only role
+// enum the database has. There is no separate `lgu` role: an LGU official signs
+// in as `admin`, and every RLS helper (`is_admin()`, `current_app_role()`) tests
+// exactly these two values.
+export type UserRole = 'admin' | 'bhw';
 export type IndividualSex = 'male' | 'female';
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
@@ -8,14 +12,19 @@ export type DwellingType = 'concrete' | 'wood' | 'mixed' | 'makeshift';
 export type ElectricService = 'lamp' | 'gas' | 'iselco' | 'none';
 export type FuelUsed = 'wood' | 'charcoal' | 'lpg' | 'electricity';
 
-export type User = {
+// public.profiles from 202607160001_foundation_slice_a.sql -- the single source
+// of a session's role. Writes go through the admin_* RPCs, never through the
+// table, so there is no Insert/Update variant here.
+export type Profile = {
   user_id: string;
   role: UserRole;
-  name: string;
-  assigned_purok: string | null;
-  password_hashed: string;
+  full_name: string;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
+  created_by: string | null;
+  disabled_at: string | null;
+  disabled_by: string | null;
 };
 
 export type Household = {
@@ -82,11 +91,10 @@ export type SupplyDisbursement = {
   updated_at: string;
 };
 
-export type UserInsert = Omit<User, 'created_at' | 'updated_at'> & {
-  created_at?: string;
-  updated_at?: string;
-};
-export type UserUpdate = Partial<Omit<User, 'user_id'>>;
+// profiles is read-only to the client: `Insert` and `Update` are `never` so a
+// direct `.insert()` on it is a build error, not a runtime RLS rejection.
+export type ProfileInsert = never;
+export type ProfileUpdate = never;
 
 export type HouseholdInsert = Omit<Household, 'household_id' | 'created_at' | 'updated_at'> & {
   household_id?: string;
@@ -136,7 +144,7 @@ type RowDefinition<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
-      users: RowDefinition<User, UserInsert, UserUpdate>;
+      profiles: RowDefinition<Profile, ProfileInsert, ProfileUpdate>;
       households: RowDefinition<Household, HouseholdInsert, HouseholdUpdate>;
       individuals: RowDefinition<Individual, IndividualInsert, IndividualUpdate>;
       health_assessments: RowDefinition<HealthAssessment, HealthAssessmentInsert, HealthAssessmentUpdate>;
@@ -144,24 +152,24 @@ export type Database = {
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
     };
     Views: Record<string, never>;
+    // The helpers the foundation slice actually defines and grants to
+    // `authenticated`. The admin_* RPCs are omitted until a surface calls one.
     Functions: {
-      current_user_role: {
+      current_app_role: {
         Args: Record<string, never>;
         Returns: UserRole | null;
       };
-      is_lgu_staff: {
+      is_admin: {
         Args: Record<string, never>;
         Returns: boolean;
       };
-      is_bhw_for_resident: {
-        Args: {
-          target_resident_id: string;
-        };
-        Returns: boolean;
+      current_bhw_purok_id: {
+        Args: Record<string, never>;
+        Returns: string | null;
       };
     };
     Enums: {
-      user_role: UserRole;
+      app_role: UserRole;
       individual_sex: IndividualSex;
       inventory_item_type: InventoryItemType;
       nutrition_status: NutritionStatus;
