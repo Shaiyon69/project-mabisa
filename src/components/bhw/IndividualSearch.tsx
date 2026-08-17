@@ -6,7 +6,12 @@ import { useBhwLanguage } from '../../app/BhwLanguageContext';
 
 type IndividualSearchProps = {
   selectedResidentId: string;
-  onChange: (residentId: string) => void;
+  /**
+   * The whole row comes back, not just the id: this component has already read
+   * the person out of SQLite, so a caller that needs their age or flags should
+   * not go back to the database for a row that is sitting right here.
+   */
+  onChange: (residentId: string, person: Individual | null) => void;
   error?: string;
 };
 
@@ -58,8 +63,9 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
       value={selectedResidentId}
       options={options}
       onChange={(residentId) => {
-        setSelected(searchResults.find((person) => person.resident_id === residentId) ?? selected);
-        onChange(residentId);
+        const person = searchResults.find((entry) => entry.resident_id === residentId) ?? selected;
+        setSelected(person);
+        onChange(residentId, person?.resident_id === residentId ? person : null);
       }}
       onQueryChange={setQuery}
       placeholder={t('Search by name...')}
