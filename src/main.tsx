@@ -11,6 +11,10 @@ import './index.css';
 import { Capacitor } from '@capacitor/core';
 import { App } from './App.tsx';
 import { defineCustomElements as jeepSqlite } from 'jeep-sqlite/loader';
+import { applyTheme, readTheme } from './lib/theme';
+
+// Before the first render, so the app never paints light and then correct.
+applyTheme(readTheme());
 
 // jeep-sqlite is the browser emulator for Capacitor SQLite; Android has the real
 // thing. Registering it unconditionally made the native build fetch a 292 kB chunk
