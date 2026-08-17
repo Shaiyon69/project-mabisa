@@ -1,4 +1,4 @@
-export type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark' | 'oled';
 
 const STORAGE_KEY = 'mabisa.theme';
 
@@ -12,7 +12,7 @@ const STORAGE_KEY = 'mabisa.theme';
 export function readTheme(): Theme {
   const stored = localStorage.getItem(STORAGE_KEY);
 
-  if (stored === 'light' || stored === 'dark') {
+  if (stored === 'light' || stored === 'dark' || stored === 'oled') {
     return stored;
   }
 

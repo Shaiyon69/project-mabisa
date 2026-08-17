@@ -69,7 +69,8 @@
    there is one place to keep the two themes in step. The hues are the same moss
    and clay, dropped to low-light values rather than swapped for a neutral grey,
    because the app should still look like itself at night. */
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+:root[data-theme='oled'] {
   --bg: #17181a;
   --text-h: #f0ece4;
   --text: #d6d2c8;
@@ -107,6 +108,20 @@
   --shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --shadow-clay: 0 3px 8px rgb(0 0 0 / 0.55);
   color-scheme: dark;
+}
+
+/* OLED. Same dark palette above, with the surfaces pulled to true black so an OLED
+   panel switches those pixels off — a real battery saving on a field phone. Only the
+   backgrounds and borders move; the moss and clay hues stay put. */
+:root[data-theme='oled'] {
+  --bg: #000000;
+  --panel: #0a0b0c;
+  --accent: #121316;
+  --muted-surface: #0f1012;
+  --field: #101114;
+  --field-soft: #0c0d0f;
+  --border: #2a2d31;
+  --ink-rgb: 0 0 0;
 }
 
 * {
