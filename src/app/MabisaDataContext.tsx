@@ -56,6 +56,19 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     };
   }, [refreshLocalData, backgroundSync.lastResult]);
 
+  // A confirmation is the end of an action, not a permanent part of the screen:
+  // left up, "Saved Offline" is still sitting above the next household an hour
+  // later and stops meaning anything. Nothing is lost when it goes — the rail and
+  // SyncStatusCard carry any state that still needs attention.
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+
+    const handle = window.setTimeout(() => setMessage(null), 6000);
+    return () => window.clearTimeout(handle);
+  }, [message]);
+
   const runManualSync = useCallback(async () => {
     setSyncingManually(true);
     setSyncError(null); 
