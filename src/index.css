@@ -133,6 +133,10 @@ body {
   min-width: 320px;
   margin: 0;
   background: var(--bg);
+  /* The WebView's own blue tap flash, which lands as a square behind rounded
+     targets like the bottom-nav pills. Every control here already has its own
+     :active and :focus-visible treatment, so the default is redundant. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* The paper grain layer (fixed full-viewport, mix-blend-mode over an SVG
