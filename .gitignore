@@ -16,6 +16,11 @@ dist-ssr
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.jks
+*.keystore
+service-account*.json
 
 # Editor directories and files
 .vscode/*
@@ -28,6 +33,9 @@ dist-ssr
 *.sln
 *.sw?
 
-claude.md
+# Internal working notes and local schema drafts, kept out of the repo.
+/docs/
+/supabase/
 .mcp.json
-docs
+user_roles.sql
+data_policies.sql

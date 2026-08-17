@@ -8,11 +8,21 @@ import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/fraunces/soft.css';
 import '@fontsource-variable/nunito/wght.css';
 import './index.css';
+import { Capacitor } from '@capacitor/core';
 import { App } from './App.tsx';
 import { defineCustomElements as jeepSqlite } from 'jeep-sqlite/loader';
+import { applyTheme, readTheme } from './lib/theme';
 
-// Register the web component library (safe for Vite HMR)
-jeepSqlite(window);
+// Before the first render, so the app never paints light and then correct.
+applyTheme(readTheme());
+
+// jeep-sqlite is the browser emulator for Capacitor SQLite; Android has the real
+// thing. Registering it unconditionally made the native build fetch a 292 kB chunk
+// it can never use, so this mirrors the isWebPlatform guard in localDatabase.ts —
+// change one, change the other.
+if (Capacitor.getPlatform() === 'web') {
+  jeepSqlite(window);
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

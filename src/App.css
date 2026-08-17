@@ -30,11 +30,9 @@
 .screen-panel,
 .side-rail,
 .admin-topbar {
-  border: 1px solid rgb(222 216 207 / 0.9);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background:
-    linear-gradient(145deg, rgb(255 254 250 / 0.96), rgb(247 242 234 / 0.72)),
-    var(--panel);
+  background: var(--panel);
   box-shadow: var(--shadow);
 }
 
@@ -44,41 +42,6 @@
   flex-direction: column;
   gap: 20px;
   padding: 20px;
-}
-
-.screen-panel,
-.metric,
-.status-card,
-.compact-list li,
-.stock-card,
-.activity-card,
-.ui-table-wrap {
-  transition:
-    transform 180ms ease,
-    box-shadow 180ms ease,
-    border-color 180ms ease;
-}
-
-.screen-panel:hover,
-.metric:hover,
-.status-card:hover,
-.stock-card:hover,
-.activity-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-clay);
-}
-
-.login-panel {
-  overflow: hidden;
-  position: relative;
-}
-
-.login-panel::before {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 8px;
-  background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent));
-  content: '';
 }
 
 .login-hero,
@@ -101,13 +64,9 @@
   height: 52px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgb(255 255 255 / 0.54);
   border-radius: 22px 16px 24px 18px;
   color: var(--primary-foreground);
-  background:
-    radial-gradient(circle at 30% 25%, rgb(255 255 255 / 0.26), transparent 1.8rem),
-    linear-gradient(135deg, var(--primary), var(--secondary));
-  box-shadow: var(--shadow-clay);
+  background: var(--primary);
   font-family: var(--display);
   font-size: 22px;
   font-weight: 800;
@@ -293,24 +252,22 @@ textarea {
   padding: 12px 14px;
   color: var(--text-h);
   background: var(--field);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.78);
   font-size: 15px;
   transition:
     border-color 160ms ease,
-    box-shadow 160ms ease,
     transform 160ms ease,
     background 160ms ease;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #9a968a;
+  color: var(--muted);
 }
 
 input:not([type='checkbox'], [type='radio']):hover,
 select:hover,
 textarea:hover {
-  background: #fffaf1;
+  background: var(--field-soft);
 }
 
 textarea {
@@ -332,49 +289,150 @@ button,
   transition:
     background 160ms ease,
     border-color 160ms ease,
-    box-shadow 160ms ease,
     transform 160ms ease;
 }
 
-button:hover,
-.mobile-tabs a:hover,
-.admin-nav a:hover,
-.admin-link:hover {
-  transform: translateY(-1px) scale(1.01);
+/* Type-ahead select. The list floats over whatever follows it in the form, so
+   the field keeps its height and the layout does not jump while typing. */
+
+.combobox {
+  position: relative;
 }
+
+/* Same clay panel as .stock-card and friends — the list is a card that floats,
+   not a browser menu: card radius, the panel fill, and the float shadow the
+   other lifted surfaces use. */
+.combobox-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 296px;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-clay);
+  list-style: none;
+}
+
+/* Rows read like .choice: a whole-row target, not a line of text. */
+.combobox-option {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  color: var(--text-h);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.combobox-option:hover,
+.combobox-option.is-active {
+  background: var(--muted-surface);
+}
+
+/* Matches .choice.is-checked: the current pick is carried by the row's fill,
+   which survives daylight better than a tick would. */
+.combobox-option[aria-selected='true'] {
+  color: var(--primary-strong);
+  background: var(--accent);
+}
+
+.combobox-empty {
+  padding: 14px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.required-mark,
+.field-error {
+  color: var(--danger);
+}
+
+.field-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ui-field.has-error input,
+.ui-field.has-error select,
+.ui-field.has-error textarea,
+.check-option.has-error {
+  /* Two-pixel border, not a halo: an error has to be legible in sunlight, where a
+     low-alpha ring is the first thing to wash out. */
+  border: 2px solid var(--danger);
+  background: var(--danger-surface);
+}
+
+button .ui-icon {
+  flex: 0 0 auto;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Buttons are flat filled surfaces. A press is confirmed by the fill going one
+   step darker plus a small scale-in, not by a lift or a coloured halo — a tinted
+   drop-shadow under a coloured button reads as a glow, and the pressed state has
+   to survive direct sunlight, where a shadow is the first thing to disappear. */
 
 button:active,
 .mobile-tabs a:active,
 .admin-nav a:active,
 .admin-link:active {
-  transform: translateY(1px) scale(0.99);
+  transform: scale(0.98);
 }
 
 .primary-button {
   color: var(--primary-foreground);
   background: var(--primary);
-  box-shadow: 0 12px 24px rgb(93 112 82 / 0.2);
 }
 
-.primary-button:hover {
+.primary-button:hover,
+.primary-button:active {
   background: var(--primary-strong);
 }
 
 .ghost-button {
   color: var(--text-h);
-  background: rgb(255 253 247 / 0.78);
+  background: var(--panel);
   border: 1px solid var(--border);
 }
 
-.ghost-button:hover {
-  border-color: var(--secondary);
-  background: var(--accent);
+.ghost-button:hover,
+.ghost-button:active {
+  border-color: var(--primary);
+  background: var(--muted-surface);
 }
 
 .secondary-button {
-  color: #3b2d21;
+  color: var(--secondary-foreground);
   background: var(--secondary);
-  box-shadow: 0 12px 24px rgb(193 140 93 / 0.2);
+}
+
+.secondary-button:hover,
+.secondary-button:active {
+  background: var(--secondary-strong);
 }
 
 /* Auth */
@@ -393,14 +451,13 @@ button:active,
   min-height: 46px;
   padding: 9px 7px;
   color: var(--muted);
-  background: rgb(240 235 229 / 0.64);
+  background: var(--muted-surface);
 }
 
 .mobile-tabs .active,
 .mobile-tabs a.active {
   color: var(--primary-foreground);
   background: var(--primary);
-  box-shadow: 0 10px 22px rgb(93 112 82 / 0.18);
 }
 
 .nav-full {
@@ -421,15 +478,15 @@ button:active,
 }
 
 .notice {
-  color: #40533a;
-  background: #edf2e9;
-  border: 1px solid #cfdbc8;
+  color: var(--success-ink);
+  background: var(--success-surface);
+  border: 1px solid var(--success-line);
 }
 
 .alert {
-  color: #7c352d;
-  background: #f7e7e2;
-  border: 1px solid #e1c2bb;
+  color: var(--danger-ink);
+  background: var(--danger-surface);
+  border: 1px solid var(--danger-line);
 }
 
 .dashboard-grid {
@@ -438,10 +495,7 @@ button:active,
 }
 
 .sync-hero {
-  background:
-    radial-gradient(circle at top right, rgb(193 140 93 / 0.14), transparent 16rem),
-    linear-gradient(135deg, rgb(93 112 82 / 0.1), rgb(230 220 205 / 0.5)),
-    var(--panel);
+  background: var(--panel);
 }
 
 .sync-alert {
@@ -533,6 +587,95 @@ button:active,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.checkbox-group {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.checkbox-group .field-label {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.check-option {
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: var(--field);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.check-option:hover {
+  border-color: var(--primary);
+}
+
+.check-option:focus-within {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.check-option.is-selected {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgb(var(--primary-rgb) / 0.12);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.check-option input[type='checkbox'] {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.check-option span {
+  min-width: 0;
+}
+
+.household-member-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: var(--field-soft);
+}
+
+.household-member-card h4 {
+  margin: 0;
+}
+
+.household-head-option {
+  margin-top: 2px;
+}
+
+.add-member-button {
+  width: fit-content;
+  align-self: flex-start;
+}
+
 .status-card,
 .metric,
 .stock-card,
@@ -543,9 +686,7 @@ button:active,
   gap: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background:
-    linear-gradient(145deg, rgb(255 253 247 / 0.94), rgb(240 235 229 / 0.6)),
-    var(--field);
+  background: var(--field);
 }
 
 .status-card,
@@ -660,28 +801,85 @@ button:active,
   line-height: 1;
   text-transform: capitalize;
   white-space: nowrap;
+  gap: 5px;
+}
+
+.danger-button {
+  color: var(--danger-foreground);
+  background: var(--danger);
+}
+
+.danger-button:hover,
+.danger-button:active {
+  background: var(--danger-strong);
+}
+
+.ui-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.form-alert,
+.form-review {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  color: var(--danger-ink);
+  background: var(--danger-surface);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.form-alert {
+  margin: 0;
+  font-weight: 800;
+}
+
+.form-review div {
+  display: grid;
+  gap: 2px;
+}
+
+.form-review strong,
+.form-review span {
+  display: block;
+}
+
+.form-review.has-warning {
+  color: var(--warning-ink);
+  border-color: var(--warning-line);
+  background: var(--warning-surface);
+}
+
+.form-review.is-ready {
+  color: var(--success-ink);
+  border-color: var(--success-line);
+  background: var(--success-surface);
 }
 
 .tone-success {
-  color: #40533a;
-  background: #edf2e9;
-  border-color: #cfdbc8;
+  color: var(--success-ink);
+  background: var(--success-surface);
+  border-color: var(--success-line);
 }
 
 .tone-warning {
-  color: #75512f;
-  background: #f7eadc;
-  border-color: #e9caa9;
+  color: var(--warning-ink);
+  background: var(--warning-surface);
+  border-color: var(--warning-line);
 }
 
 .tone-danger {
-  color: #7c352d;
-  background: #f7e7e2;
-  border-color: #e1c2bb;
+  color: var(--danger-ink);
+  background: var(--danger-surface);
+  border-color: var(--danger-line);
 }
 
 .tone-info {
-  color: #4c5845;
+  color: var(--text-h);
   background: var(--accent);
   border-color: var(--border);
 }
@@ -717,22 +915,22 @@ button:active,
 }
 
 .ui-state-error {
-  color: #7c352d;
-  background: #f7e7e2;
-  border-color: #e1c2bb;
+  color: var(--danger-ink);
+  background: var(--danger-surface);
+  border-color: var(--danger-line);
 }
 
 .ui-state-offline {
-  color: #75512f;
-  background: #f7eadc;
-  border-color: #e9caa9;
+  color: var(--warning-ink);
+  background: var(--warning-surface);
+  border-color: var(--warning-line);
 }
 
 .ui-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: rgb(255 253 247 / 0.76);
+  background: var(--panel);
 }
 
 .ui-table-stack {
@@ -779,7 +977,7 @@ tr:last-child td {
 }
 
 tbody tr:hover {
-  background: rgb(230 220 205 / 0.28);
+  background: var(--muted-surface);
 }
 
 .stock-card {
@@ -792,15 +990,12 @@ tbody tr:hover {
   grid-column: 1 / -1;
 }
 
+/* Flows with the form, no bar chrome: the panel already frames it, and a second
+   framed strip inside read as a nested box on a phone. */
 .sticky-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  margin: 4px -20px -20px;
-  padding: 12px 20px 20px;
-  border-top: 1px solid var(--border);
-  background: rgb(253 252 248 / 0.9);
-  backdrop-filter: blur(12px);
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 .sticky-actions .primary-button {
@@ -825,10 +1020,23 @@ tbody tr:hover {
   background: var(--field-soft);
 }
 
+.portal-switch {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.portal-switch a {
+  color: var(--primary);
+  font-weight: 800;
+}
+
 /* Admin web */
 
 .admin-layout {
-  width: min(100%, 1320px);
+  width: 100%;
+  max-width: none;
 }
 
 .admin-sidebar {
@@ -847,7 +1055,7 @@ tbody tr:hover {
   align-items: center;
   min-height: 46px;
   color: var(--muted);
-  background: rgb(240 235 229 / 0.64);
+  background: var(--muted-surface);
 }
 
 .admin-nav a.active,
@@ -892,10 +1100,11 @@ tbody tr:hover {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px 14px 12px;
-  background:
-    radial-gradient(circle at top right, rgb(193 140 93 / 0.14), transparent 14rem),
-    var(--bg);
+  /* viewport-fit=cover lets the webview paint under the status bar and the gesture
+     handle, so the shell pays that back itself; env() is 0 on a browser. */
+  padding: calc(16px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  font-size: 16px;
 }
 
 .bhw-mobile-shell .app-header {
@@ -909,14 +1118,43 @@ tbody tr:hover {
   justify-content: space-between;
 }
 
-.bhw-mobile-shell .header-copy {
-  max-width: 100%;
-  font-size: 13px;
+.theme-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--field-soft);
 }
 
+/* Below the 44px minimum on purpose: this is a preference, not a field action,
+   and it sits alone on its row on the profile screen with nothing to mis-hit. */
+.theme-toggle button {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 5px 14px;
+  color: var(--text);
+  background: transparent;
+  font-size: 12px;
+}
+
+.theme-toggle button.active {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.bhw-mobile-shell .header-copy {
+  max-width: 100%;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* No bottom reserve for .bhw-bottom-nav: it is sticky, not fixed, so it keeps its
+   own space at the end of the column. Padding here would be counted twice and
+   leave a dead gap under the last element once the page is scrolled all the way
+   down. */
 .bhw-mobile-content {
   flex: 1;
-  padding-bottom: 92px;
 }
 
 .bhw-mobile-shell .dashboard-grid,
@@ -929,6 +1167,42 @@ tbody tr:hover {
 
 .bhw-mobile-shell .dashboard-grid {
   gap: 14px;
+}
+
+.bhw-mobile-shell .dashboard-grid > * {
+  width: 100%;
+  min-width: 0;
+  grid-column: 1 / -1;
+}
+
+.bhw-mobile-shell .dashboard-grid > .sync-hero,
+.bhw-mobile-shell .dashboard-grid > .metric-grid,
+.bhw-mobile-shell .dashboard-grid > .list-section {
+  grid-column: 1 / -1;
+}
+
+.bhw-mobile-shell .metric-grid {
+  width: 100%;
+  justify-items: stretch;
+}
+
+.bhw-mobile-shell .metric {
+  width: 100%;
+  min-height: 96px;
+  box-sizing: border-box;
+  padding: 18px;
+}
+
+.bhw-mobile-shell .metric span,
+.bhw-mobile-shell .metric small,
+.bhw-mobile-shell .status-card span {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.bhw-mobile-shell .metric strong,
+.bhw-mobile-shell .status-card strong {
+  font-size: 30px;
 }
 
 .bhw-mobile-shell .screen-panel {
@@ -947,17 +1221,115 @@ tbody tr:hover {
   gap: 10px;
 }
 
+.bhw-mobile-shell .panel-heading h2 {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.bhw-mobile-shell .eyebrow {
+  font-size: 13px;
+}
+
+.bhw-mobile-shell .ui-field {
+  gap: 9px;
+  font-size: 15px;
+}
+
+.bhw-mobile-shell .ui-field small,
+.bhw-mobile-shell .field-error {
+  font-size: 13px;
+}
+
+.bhw-mobile-shell .check-option {
+  min-height: 54px;
+  font-size: 16px;
+}
+
 .bhw-mobile-shell input:not([type='checkbox'], [type='radio']),
 .bhw-mobile-shell select,
 .bhw-mobile-shell textarea,
 .bhw-mobile-shell button {
-  min-height: 54px;
+  min-height: 58px;
+  font-size: 16px;
 }
 
-.bhw-mobile-shell .sticky-actions {
-  bottom: 76px;
-  margin: 6px -17px -17px;
-  padding: 12px 17px 17px;
+.bhw-mobile-shell input[type='checkbox'] {
+  min-height: 20px;
+}
+
+/* The shell sizes every button for a gloved thumb; the theme pair is the one
+   control that opts out, so it has to be restated after that rule. */
+.bhw-mobile-shell .theme-toggle button {
+  min-height: 36px;
+  font-size: 12px;
+}
+
+.profile-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+}
+
+.profile-facts dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.profile-facts dd {
+  margin: 3px 0 0;
+  color: var(--text-h);
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.profile-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-h);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+/* Logout is the only destructive action on this screen and the last thing in the
+   column, so it carries the alert colour alone. */
+.profile-logout {
+  width: 100%;
+}
+
+.bhw-mobile-shell .sticky-actions .primary-button,
+.bhw-mobile-shell .add-member-button {
+  width: 100%;
+  min-height: 58px;
+}
+
+.bhw-mobile-shell .modal-actions button {
+  min-width: 120px;
+  min-height: 46px;
+  padding: 10px 16px;
+}
+
+.bhw-mobile-shell .form-panel > .panel-heading {
+  align-items: flex-start;
+}
+
+.bhw-mobile-shell .checkbox-grid {
+  grid-template-columns: 1fr;
+}
+
+.bhw-mobile-shell .household-member-card .field-row {
+  gap: 14px;
+}
+
+.bhw-mobile-shell .add-member-button {
+  width: 100%;
 }
 
 .bhw-bottom-nav {
@@ -965,23 +1337,26 @@ tbody tr:hover {
   z-index: 5;
   bottom: 12px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
   margin-top: auto;
   padding: 8px;
-  border: 1px solid rgb(222 216 207 / 0.9);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgb(255 253 247 / 0.9);
+  /* Opaque, not frosted: backdrop-filter re-samples everything behind the bar on
+     every frame, and this bar is sticky over a scrolling list. */
+  background: var(--panel);
   box-shadow: var(--shadow-clay);
-  backdrop-filter: blur(14px);
 }
 
 .bhw-bottom-nav a {
   display: flex;
   min-width: 0;
-  min-height: 52px;
+  min-height: 58px;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 3px;
   border-radius: 999px;
   color: var(--muted);
   font-size: 13px;
@@ -1008,6 +1383,8 @@ tbody tr:hover {
 
 .bhw-bottom-nav .nav-short {
   display: inline;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .modal-backdrop {
@@ -1017,8 +1394,7 @@ tbody tr:hover {
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgb(44 44 36 / 0.36);
-  backdrop-filter: blur(4px);
+  background: rgb(var(--ink-rgb) / 0.5);
 }
 
 .modal-panel {
@@ -1033,6 +1409,26 @@ tbody tr:hover {
   box-shadow: var(--shadow-clay);
 }
 
+.logout-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--danger-ink);
+  background: var(--danger-surface);
+  line-height: 1.45;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* Utilities */
 
 @keyframes spin {
@@ -1042,6 +1438,15 @@ tbody tr:hover {
 }
 
 @media (max-width: 420px) {
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+
   .mobile-shell {
     padding: 12px;
   }
@@ -1061,15 +1466,15 @@ tbody tr:hover {
     gap: 8px;
   }
 
-  .status-card,
-  .metric {
-    padding: 11px;
+  .bhw-mobile-shell .status-card,
+  .bhw-mobile-shell .metric {
+    padding: 16px;
   }
 
-  .status-card strong,
-  .metric strong,
-  .stock-card strong {
-    font-size: 22px;
+  .bhw-mobile-shell .status-card strong,
+  .bhw-mobile-shell .metric strong,
+  .bhw-mobile-shell .stock-card strong {
+    font-size: 28px;
   }
 }
 
@@ -1153,11 +1558,9 @@ tbody tr:hover {
     min-height: min(860px, calc(100svh - 36px));
     max-height: min(920px, calc(100svh - 36px));
     overflow-y: auto;
-    border: 1px solid rgb(222 216 207 / 0.95);
+    border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow:
-      0 24px 70px rgb(44 44 36 / 0.16),
-      inset 0 0 0 8px rgb(255 253 247 / 0.62);
+    box-shadow: var(--shadow-clay);
   }
 
   .bhw-mobile-shell .dashboard-grid,
@@ -1173,13 +1576,18 @@ tbody tr:hover {
    ---------------------------------------------------------------------------
    The design system, read for a phone held one-handed on a doorstep by a BHW
    who is likely middle-aged and not a heavy app user. The palette, Fraunces and
-   Nunito, the grain, the tinted shadows, the blob shapes and the gentle motion
-   all land as specified. Four component rules are deliberately overridden here,
-   each marked below: pill-shaped inputs, small field text, translucent surfaces,
-   and muted grey for anything that carries a value. Those four make the system
-   look right in a mockup and cost a 50-year-old accuracy on a bright street.
+   Nunito, the tinted shadows and the gentle motion all land as specified. Four
+   component rules are deliberately overridden here, each marked below:
+   pill-shaped inputs, small field text, translucent surfaces, and muted grey for
+   anything that carries a value. Those four make the system look right in a
+   mockup and cost a 50-year-old accuracy on a bright street.
 
-   The expressive devices — blobs, asymmetric corners — live on the dashboard.
+   The design system's decorative layers — paper grain, blurred ambient blobs,
+   frosted glass — are all dropped. Every one of them is a full-area filter or
+   blend pass, and the target device is a low-end Android phone; the organic
+   feel is carried by the palette, the asymmetric corners and the soft shadows,
+   none of which cost a repaint.
+
    Forms stay on a steady rhythm: a person entering twenty fields needs the next
    field to look exactly like the last one. */
 
@@ -1195,39 +1603,14 @@ tbody tr:hover {
   overflow: clip;
 }
 
-/* Ambient blobs: large, blurred, no straight lines. They sit behind the shell
-   and show through the gaps between cards. */
-.bhw-preview-shell::before,
-.bhw-preview-shell::after {
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  filter: blur(70px);
-  content: '';
-}
-
-.bhw-preview-shell::before {
-  top: -6rem;
-  left: -7rem;
-  width: 22rem;
-  height: 22rem;
-  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
-  background: rgb(93 112 82 / 0.3);
-}
-
-.bhw-preview-shell::after {
-  right: -8rem;
-  bottom: -4rem;
-  width: 24rem;
-  height: 24rem;
-  border-radius: 40% 60% 70% 30% / 40% 70% 30% 60%;
-  background: rgb(193 140 93 / 0.26);
-}
+/* The ambient blobs were two 22rem pseudo-elements under `filter: blur(70px)`.
+   A blur that wide over that area is re-rasterised on every paint and is the
+   single most expensive thing a low-end phone GPU sees here. Gone, along with
+   every other tinted gradient wash — surfaces are flat token colours now. */
 
 .bhw-mobile-shell {
   position: relative;
   z-index: 1;
-  background: transparent;
 }
 
 /* Everything a BHW must read, sized for eyes that are past 40. The system's
@@ -1271,8 +1654,8 @@ tbody tr:hover {
 }
 
 /* Inputs. The system asks for rounded-full at text-sm over a translucent white;
-   a pill reads as a button, and a see-through field competes with the grain
-   behind it. Same timber border and moss focus glow, on an opaque field that
+   a pill reads as a button, and a see-through field competes with whatever is
+   behind it. Same timber border and moss focus ring, on an opaque field that
    is unmistakably somewhere to type. */
 .bhw-mobile-shell input:not([type='checkbox'], [type='radio']),
 .bhw-mobile-shell select,
@@ -1302,7 +1685,7 @@ tbody tr:hover {
 
 .bhw-mobile-shell input::placeholder,
 .bhw-mobile-shell textarea::placeholder {
-  color: #7a7568;
+  color: var(--muted);
 }
 
 /* Buttons keep the system's pill exactly. A pill is right for a button — it is
@@ -1313,17 +1696,11 @@ tbody tr:hover {
   font-size: 17px;
   transition:
     background 300ms ease,
-    box-shadow 300ms ease,
     transform 300ms ease;
 }
 
 .bhw-mobile-shell button:active {
   transform: scale(0.95);
-}
-
-.bhw-mobile-shell .sticky-actions {
-  background: var(--panel);
-  backdrop-filter: none;
 }
 
 /* Corners are uniform on purpose, and come only from --radius-sm/md/lg.
@@ -1398,13 +1775,13 @@ tbody tr:hover {
 }
 
 .field-rail-hold {
-  color: #8a5a2e;
-  background: #fbf3e9;
+  color: var(--warning-ink);
+  background: var(--warning-surface);
 }
 
 .field-rail-alert {
   color: var(--danger);
-  background: #f9ece9;
+  background: var(--danger-surface);
 }
 
 /* The BMI rail. A reading placed on the scale that produced it, so the answer
@@ -1454,7 +1831,7 @@ tbody tr:hover {
    Underweight takes the river stone its colour psychology already names, so
    that "too little" never reads as the same warning as "too much". */
 .bmi-verdict-underweight {
-  color: #63737d;
+  color: var(--bmi-low-ink);
 }
 
 .bmi-verdict-normal {
@@ -1464,7 +1841,7 @@ tbody tr:hover {
 /* Clay darkened: --secondary-strong lands at 3.4:1 on the stone panel, which is
    under AA for 17px bold. */
 .bmi-verdict-overweight {
-  color: #8a5a2e;
+  color: var(--warning-ink);
 }
 
 .bmi-verdict-obese {
@@ -1493,7 +1870,7 @@ tbody tr:hover {
 }
 
 .bmi-band-underweight {
-  background: #7d8c96;
+  background: var(--bmi-low);
 }
 
 .bmi-band-normal {
@@ -1531,14 +1908,8 @@ tbody tr:hover {
   transform: translateX(-50%);
 }
 
-/* Navigation keeps the system's floating pill. It loses only the frosted glass:
-   translucency over a grain texture is the least legible thing on the screen,
-   and this bar is how a BHW moves between every task. */
-
-.bhw-mobile-shell .bhw-bottom-nav {
-  background: var(--panel);
-  backdrop-filter: none;
-}
+/* Navigation keeps the system's floating pill, opaque rather than frosted —
+   see .bhw-bottom-nav. */
 
 .bhw-mobile-shell .bhw-bottom-nav a {
   min-height: 58px;
@@ -1551,8 +1922,19 @@ tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bmi-marker,
-  .bmi-band {
-    transition: none;
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The spinner is exempt: it is the only signal that work is still running, and
+     a frozen one reads as a hung screen. Slowed, not stopped. */
+  .ui-state-loading span {
+    animation-duration: 2400ms !important;
+    animation-iteration-count: infinite !important;
   }
 }

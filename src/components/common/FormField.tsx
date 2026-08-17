@@ -3,15 +3,16 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTML
 type FieldShellProps = {
   label: string;
   hint?: string;
+  error?: string;
   children: ReactNode;
 };
 
-function FieldShell({ label, hint, children }: FieldShellProps) {
+export function FieldShell({ label, hint, error, children }: FieldShellProps) {
   return (
-    <label className="ui-field">
-      <span>{label}</span>
+    <label className={`ui-field${error ? ' has-error' : ''}`}>
+      <span>{label}{error ? <b className="required-mark"> *</b> : null}</span>
       {children}
-      {hint ? <small>{hint}</small> : null}
+      {error ? <small className="field-error">{error}</small> : hint ? <small>{hint}</small> : null}
     </label>
   );
 }
@@ -19,12 +20,13 @@ function FieldShell({ label, hint, children }: FieldShellProps) {
 type FormFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   hint?: string;
+  error?: string;
 };
 
-export function FormField({ label, hint, ...props }: FormFieldProps) {
+export function FormField({ label, hint, error, ...props }: FormFieldProps) {
   return (
-    <FieldShell label={label} hint={hint}>
-      <input {...props} />
+    <FieldShell label={label} hint={hint} error={error}>
+      <input aria-invalid={Boolean(error)} {...props} />
     </FieldShell>
   );
 }
@@ -32,13 +34,14 @@ export function FormField({ label, hint, ...props }: FormFieldProps) {
 type SelectFieldProps = SelectHTMLAttributes<HTMLSelectElement> & {
   label: string;
   hint?: string;
+  error?: string;
   children: ReactNode;
 };
 
-export function SelectField({ label, hint, children, ...props }: SelectFieldProps) {
+export function SelectField({ label, hint, error, children, ...props }: SelectFieldProps) {
   return (
-    <FieldShell label={label} hint={hint}>
-      <select {...props}>{children}</select>
+    <FieldShell label={label} hint={hint} error={error}>
+      <select aria-invalid={Boolean(error)} {...props}>{children}</select>
     </FieldShell>
   );
 }
@@ -46,12 +49,13 @@ export function SelectField({ label, hint, children, ...props }: SelectFieldProp
 type TextAreaFieldProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label: string;
   hint?: string;
+  error?: string;
 };
 
-export function TextAreaField({ label, hint, ...props }: TextAreaFieldProps) {
+export function TextAreaField({ label, hint, error, ...props }: TextAreaFieldProps) {
   return (
-    <FieldShell label={label} hint={hint}>
-      <textarea {...props} />
+    <FieldShell label={label} hint={hint} error={error}>
+      <textarea aria-invalid={Boolean(error)} {...props} />
     </FieldShell>
   );
 }

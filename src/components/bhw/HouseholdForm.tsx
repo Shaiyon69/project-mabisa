@@ -1,20 +1,15 @@
 import { useState } from 'react';
-import type {
-  Household,
-  Individual,
-  DwellingType,
-  ElectricService,
-  IndividualSex
-} from '../../types/database';
-import { createId, today } from '../../lib/utils';
+import type { Household, Individual, IndividualSex } from '../../types/database';
+import { createId, scrollToFirstError, today } from '../../lib/utils';
 import { saveHouseholdLocally, saveIndividualLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { FormActions, FormField, SelectField } from '../common/FormField';
 import { CheckboxGroup } from '../common/CheckboxGroup';
+import { Icon } from '../common/Icon';
+import { useBhwLanguage } from '../../app/BhwLanguageContext';
 
-// Pre-defined options for the household arrays
 const WATER_OPTIONS = [
   { label: 'Local Water District', value: 'water_district' },
   { label: 'Deep Well', value: 'deep_well' },
@@ -91,8 +86,15 @@ type HouseholdFormProps = {
 };
 
 export function HouseholdForm({ onSaved }: HouseholdFormProps) {
+  const { t } = useBhwLanguage();
   const [household, setHousehold] = useState<Partial<Household>>({
     household_number: '',
+    // Housing type, electric service and fuel are not health data and are not
+    // asked here. They are still `not null` on the SQLite mirror and the central
+    // table, so a placeholder rides along to satisfy the constraint; a device
+    // installed before any column drop keeps its own schema either way.
+    // TODO: drop the three columns in a migration once the live database can
+    // take it, and remove these placeholders with them.
     dwelling_type: 'concrete',
     electric_service: 'iselco',
     fuel_used: 'wood',
@@ -120,6 +122,16 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
+  const missingRequirements = [
+    !household.household_number?.trim() && 'household number',
+    !household.water_source?.length && 'water source',
+    !household.toilet_type?.length && 'toilet facility',
+    !household.food_production?.length && 'food production',
+    !members.every((member) => member.first_name?.trim() && member.last_name?.trim() && member.birthday) && 'member names and birthdates',
+    !members.some((member) => member.is_household_head) && 'household head',
+  ].filter(Boolean) as string[];
+  const isFormReady = missingRequirements.length === 0;
 
   function updateMember(index: number, field: keyof Individual, value: unknown) {
     const updatedMembers = [...members];
@@ -148,19 +160,32 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setShowValidation(true);
     setSaving(true);
     setFormError(null);
 
+    // Every rejection ends the same way: stop saving, then put the reason on
+    // screen. The form is taller than the phone, so leaving that to the render
+    // alone would show the person nothing.
+    function reject(reason: string | null) {
+      setFormError(reason);
+      setSaving(false);
+      scrollToFirstError();
+    }
+
+    if (!isFormReady) {
+      reject(null);
+      return;
+    }
+
     const hasHead = members.some((member) => member.is_household_head === true);
     if (!hasHead) {
-      setFormError('Cannot save: Please assign at least one person as the Household Head.');
-      setSaving(false);
+      reject('Cannot save: Please assign at least one person as the Household Head.');
       return;
     }
 
     if (members.length === 0) {
-      setFormError('Cannot save: A household must have at least one member.');
-      setSaving(false);
+      reject('Cannot save: A household must have at least one member.');
       return;
     }
 
@@ -171,10 +196,9 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
     );
 
     if (badPhilhealth !== -1) {
-      setFormError(
+      reject(
         `Cannot save: Member ${badPhilhealth + 1}'s PhilHealth number may only contain digits, spaces, and dashes.`,
       );
-      setSaving(false);
       return;
     }
 
@@ -207,6 +231,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
       await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
+      scrollToFirstError();
     } finally {
       setSaving(false);
     }
@@ -216,174 +241,164 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Household Profiling</p>
-          <h2>New Household Registration</h2>
+          <p className="eyebrow">{t('Household Profiling')}</p>
+          <h2>{t('New Household Registration')}</h2>
         </div>
-        <Badge label="Saved Offline" tone="success" />
+        <Badge label={t('Saved Offline')} tone="success" />
       </div>
 
       <form className="stack" onSubmit={handleSubmit}>
-        {formError ? <p className="alert" role="alert">{formError}</p> : null}
+        {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
-        <h3>Dwelling Information</h3>
+        <h3>{t('Household Information')}</h3>
         <FormField 
-          label="Household Number" 
+          label={t('Household Number')}
           value={household.household_number} 
           onChange={(e) => setHousehold({ ...household, household_number: e.target.value })} 
           placeholder="e.g. HH-001" 
           required 
+          error={showValidation && !household.household_number?.trim() ? t('Household number is required.') : undefined}
         />
-        
-        <div className="field-row">
-          <SelectField 
-            label="Dwelling Type" 
-            value={household.dwelling_type} 
-            onChange={(e) => setHousehold({ ...household, dwelling_type: e.target.value as DwellingType })}
-          >
-            <option value="concrete">Concrete</option>
-            <option value="wood">Wood</option>
-            <option value="mixed">Mixed</option>
-            <option value="makeshift">Makeshift</option>
-          </SelectField>
 
-          <SelectField 
-            label="Electric Service" 
-            value={household.electric_service} 
-            onChange={(e) => setHousehold({ ...household, electric_service: e.target.value as ElectricService })}
-          >
-            <option value="iselco">ISELCO</option>
-            <option value="lamp">Lamp</option>
-            <option value="gas">Gas</option>
-            <option value="none">None</option>
-          </SelectField>
-        </div>
-
-        {/* Replaced comma-separated text fields with CheckboxGroups */}
         <CheckboxGroup
-          label="Primary Water Source(s)"
-          options={WATER_OPTIONS}
+          label={t('Primary Water Source(s)')}
+          options={WATER_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
           selectedValues={household.water_source || []}
           onChange={(newValues) => setHousehold({ ...household, water_source: newValues })}
+          error={showValidation && !household.water_source?.length ? t('Select at least one water source.') : undefined}
         />
 
         <CheckboxGroup
-          label="Toilet Facility"
-          options={TOILET_OPTIONS}
+          label={t('Toilet Facility')}
+          options={TOILET_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
           selectedValues={household.toilet_type || []}
           onChange={(newValues) => setHousehold({ ...household, toilet_type: newValues })}
+          error={showValidation && !household.toilet_type?.length ? t('Select at least one toilet facility.') : undefined}
         />
 
         <CheckboxGroup
-          label="Food Production"
-          options={FOOD_OPTIONS}
+          label={t('Food Production')}
+          options={FOOD_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
           selectedValues={household.food_production || []}
           onChange={(newValues) => setHousehold({ ...household, food_production: newValues })}
+          error={showValidation && !household.food_production?.length ? t('Select at least one food-production option.') : undefined}
         />
 
         <hr className="form-divider" />
 
-        <h3>Household Members</h3>
+        <h3>{t('Household Members')}</h3>
 
         {members.map((member, index) => (
           <div key={index} className="member-card">
-            <h4>Member {index + 1} {member.is_household_head ? '(Head)' : ''}</h4>
+            <h4>{t('Member')} {index + 1} {member.is_household_head ? `(${t('Head')})` : ''}</h4>
 
             <div className="field-row">
-              <FormField 
-                label="First Name" 
-                value={member.first_name} 
-                onChange={(e) => updateMember(index, 'first_name', e.target.value)} 
-                required 
+              {/* autoCapitalize is the phone keyboard's own behaviour for a name
+                  field; typing one lowercase surname per household is the kind of
+                  work the app should absorb rather than hand to the BHW. */}
+              <FormField
+                label={t('First Name')}
+                value={member.first_name}
+                onChange={(e) => updateMember(index, 'first_name', e.target.value)}
+                required
+                autoCapitalize="words"
+                error={showValidation && !member.first_name?.trim() ? t('First name is required.') : undefined}
               />
-              <FormField 
-                label="Middle Name" 
-                value={member.middle_name || ''} 
-                onChange={(e) => updateMember(index, 'middle_name', e.target.value)} 
+              <FormField
+                label={t('Middle Name')}
+                value={member.middle_name || ''}
+                onChange={(e) => updateMember(index, 'middle_name', e.target.value)}
                 placeholder="(Optional)"
+                autoCapitalize="words"
               />
-              <FormField 
-                label="Last Name" 
-                value={member.last_name} 
-                onChange={(e) => updateMember(index, 'last_name', e.target.value)} 
-                required 
+              <FormField
+                label={t('Last Name')}
+                value={member.last_name}
+                onChange={(e) => updateMember(index, 'last_name', e.target.value)}
+                required
+                autoCapitalize="words"
+                error={showValidation && !member.last_name?.trim() ? t('Last name is required.') : undefined}
               />
             </div>
 
             <div className="field-row">
               <FormField 
-                label="Birthdate" 
+                label={t('Birthdate')}
                 type="date" 
-                max={today()} // Prevents future dates
+                max={today()}
                 value={member.birthday} 
                 onChange={(e) => updateMember(index, 'birthday', e.target.value)} 
                 required 
+                error={showValidation && !member.birthday ? t('Birthdate is required.') : undefined}
               />
               <SelectField 
-                label="Sex" 
+                label={t('Sex')}
                 value={member.sex} 
                 onChange={(e) => updateMember(index, 'sex', e.target.value as IndividualSex)}
               >
-                <option value="female">Female</option>
-                <option value="male">Male</option>
+                <option value="female">{t('Female')}</option>
+                <option value="male">{t('Male')}</option>
               </SelectField>
             </div>
 
             <div className="field-row">
               <FormField
-                label="Occupation"
+                label={t('Occupation')}
                 value={member.occupation || ''}
                 onChange={(e) => updateMember(index, 'occupation', e.target.value)}
                 placeholder="(Optional)"
               />
               <SelectField
-                label="Educational Attainment"
+                label={t('Educational Attainment')}
                 value={member.educational_attainment || ''}
                 onChange={(e) => updateMember(index, 'educational_attainment', e.target.value)}
               >
                 {EDUCATION_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    {t(option.label)}
                   </option>
                 ))}
               </SelectField>
             </div>
 
             <FormField
-              label="PhilHealth Number"
+              label={t('PhilHealth Number')}
               value={member.philhealth_number || ''}
               onChange={(e) => updateMember(index, 'philhealth_number', e.target.value)}
               placeholder="(Optional) e.g. 12-345678901-2"
               inputMode="numeric"
-              hint="Dashes and spaces are fine — only the digits are saved."
+              hint={t('Dashes and spaces are fine — only the digits are saved.')}
             />
 
             <div className="choice-list">
               <MemberChoice
-                label="This person is a household head"
+                label={t('This person is a household head')}
                 checked={member.is_household_head ?? false}
                 onChange={(next) => updateMember(index, 'is_household_head', next)}
               />
               <MemberChoice
-                label="Out-of-school youth"
+                label={t('Out-of-school youth')}
                 checked={member.is_out_of_school_youth ?? false}
                 onChange={(next) => updateMember(index, 'is_out_of_school_youth', next)}
               />
               <MemberChoice
-                label="Pregnant, nursing, or using family planning"
+                label={t('Pregnant, nursing, or using family planning')}
                 checked={member.is_pregnant_nursing_fp ?? false}
                 onChange={(next) => updateMember(index, 'is_pregnant_nursing_fp', next)}
               />
             </div>
+            {showValidation && !members.some((entry) => entry.is_household_head) ? <small className="field-error"><b className="required-mark">*</b> {t('Assign one household head.')}</small> : null}
           </div>
         ))}
 
         <Button type="button" variant="ghost" className="add-member-action" onClick={addMember}>
-          Add another member
+          {t('Add another member')}
         </Button>
 
         <FormActions>
           <Button type="submit" disabled={saving}>
-            {saving ? 'Saving Offline...' : 'Save Complete Household'}
+            <Icon name="save" size={18} />
+            {t(saving ? 'Saving Offline...' : 'Save Complete Household')}
           </Button>
         </FormActions>
       </form>

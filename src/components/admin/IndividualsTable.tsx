@@ -1,12 +1,9 @@
-// Goal: Implement true SQLite-level pagination using OFFSET and LIMIT 
-// to navigate through large datasets without memory bloat.
-
 import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { titleCase } from '../../lib/utils';
 import { FormField } from '../common/FormField';
 import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
-import { Button } from '../common/Button'; // Assuming you have this from your forms
+import { Button } from '../common/Button';
 import { readLocalIndividuals, getIndividualCount } from '../../services/localDatabase';
 
 type IndividualsTableProps = {
@@ -20,7 +17,6 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
   const [tableRows, setTableRows] = useState<Individual[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   
-  // 1. Add state to track the current page
   const [page, setPage] = useState(1);
 
   const columns: TableColumn<Individual>[] = [
@@ -36,8 +32,8 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
     },
     {
       key: 'household_id',
-      header: 'Household', // Changed header to be cleaner
-      render: (individual) => individual.household_number || 'Unassigned', // Now renders HH-0001
+      header: 'Household',
+      render: (individual) => individual.household_number || 'Unassigned',
     },
     {
       key: 'status',
@@ -53,10 +49,8 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
     setPage(1);
   }
 
-  // 3. Fetch data, re-running whenever the query OR the page changes
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      // Calculate how many rows to skip based on the current page
       const currentOffset = (page - 1) * ITEMS_PER_PAGE;
 
       // The count has to honour the same search term as the rows, otherwise the
@@ -75,7 +69,6 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
     return () => clearTimeout(timeoutId);
   }, [query, page]);
 
-  // Calculate total pages for our button logic
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE) || 1;
 
   return (
@@ -95,7 +88,6 @@ export function IndividualsTable({ pendingQueueCount }: IndividualsTableProps) {
       
       <TableMeta shown={tableRows.length} total={totalCount} label="individual" />
 
-      {/* 4. Add the Pagination Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 0' }}>
         <Button 
           disabled={page === 1} 
