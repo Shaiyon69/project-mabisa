@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import type { HealthAssessment, NutritionStatus } from '../../types/database';
-import { calculateBmi, createId, getNutritionStatus, titleCase, today } from '../../lib/utils';
+import type { HealthAssessment, Individual, NutritionStatus } from '../../types/database';
+import {
+  ageInYears,
+  calculateBmi,
+  createId,
+  getNutritionStatus,
+  scrollToFirstError,
+  titleCase,
+  today,
+} from '../../lib/utils';
 import { saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -26,6 +34,38 @@ const BMI_BANDS = [
 
 const BMI_TICKS = [18.5, 25, 30];
 
+// WHO reads 5-19 year olds off BMI-for-age z-scores, not these fixed cut-points,
+// and BMI is not a nutrition measure at all during pregnancy or nursing. The form
+// still records the reading in both cases — a number on file beats a blank — but
+// the person entering it has to know the verdict beside it does not apply.
+const ADULT_BMI_MIN_AGE = 20;
+
+// Both lines carry the resident's own age, which the flat en/fil dictionary cannot
+// express, so they are written per language here the way other interpolated BHW
+// copy is.
+function bmiCaveats(person: Individual | null, isFilipino: boolean): string[] {
+  if (!person) {
+    return [];
+  }
+
+  const age = ageInYears(person.birthday);
+
+  return [
+    age !== null &&
+      age < ADULT_BMI_MIN_AGE &&
+      (isFilipino
+        ? `${age} taong gulang ang residenteng ito. Hindi umaabot sa wastong pagsusuri ang adult BMI sa wala pang ${ADULT_BMI_MIN_AGE} — gamitin ang growth chart ng DOH/WHO.`
+        : `This resident is ${age} years old. Adult BMI does not classify anyone under ${ADULT_BMI_MIN_AGE} — read the result against the DOH/WHO growth chart instead.`),
+    // One column carries pregnant, nursing and family planning together, so the
+    // copy cannot claim which of the three this is. Only the first two invalidate
+    // the reading; say that rather than assert something the data does not hold.
+    person.is_pregnant_nursing_fp &&
+      (isFilipino
+        ? 'Nakatala ang residenteng ito bilang buntis, nagpapasuso, o gumagamit ng family planning. Kung buntis o nagpapasuso, hindi sinusukat ng BMI ang kanyang nutrition status.'
+        : 'This resident is flagged pregnant, nursing, or on family planning. If pregnant or nursing, BMI does not measure their nutrition status.'),
+  ].filter(Boolean) as string[];
+}
+
 if (import.meta.env.DEV) {
   // Cheap guard against the rail drifting away from the function it illustrates.
   for (const band of BMI_BANDS) {
@@ -46,8 +86,9 @@ type HealthAssessmentFormProps = {
 };
 
 export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessmentFormProps) {
-  const { t } = useBhwLanguage();
+  const { t, isFilipino } = useBhwLanguage();
   const [residentId, setResidentId] = useState('');
+  const [resident, setResident] = useState<Individual | null>(null);
   const [assessmentDate, setAssessmentDate] = useState(today());
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
@@ -65,6 +106,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     (!weight || !height || !bmi || !nutritionStatus) && 'valid weight and height',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
+  const caveats = bmiCaveats(resident, isFilipino);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +114,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     setFormError(null);
 
     if (!isFormReady || !bmi || !nutritionStatus) {
+      scrollToFirstError();
       return;
     }
 
@@ -96,9 +139,11 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       setHeight('');
       setAssessmentDate(today());
       setResidentId('');
+      setResident(null);
       await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Health assessment was not saved.');
+      scrollToFirstError();
     } finally {
       setSaving(false);
     }
@@ -116,7 +161,14 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       <form className="stack" onSubmit={handleSubmit}>
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
         
-        <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? t('Select a resident.') : undefined} />
+        <IndividualSearch
+          selectedResidentId={residentId}
+          onChange={(nextId, person) => {
+            setResidentId(nextId);
+            setResident(person);
+          }}
+          error={showValidation && !residentId ? t('Select a resident.') : undefined}
+        />
         
         {!hasIndividuals ? <p className="form-hint">{t('Register a household before recording a health assessment.')}</p> : null}
         
@@ -154,15 +206,15 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           />
         </div>
         <BmiRail bmi={bmi} status={nutritionStatus} />
-        {/* The bands above are adult BMI. DOH/NNC classifies children by
-            weight-for-age, height-for-age and weight-for-height z-scores instead,
-            which this form does not compute — it never reads the resident's
-            birthday. Until it does, say so on screen rather than let the verdict
-            read as clinical. */}
-        <p className="form-hint">
-          This result uses adult BMI standards. It is not valid for children, teenagers, or pregnant women — check the
-          DOH growth chart for them before acting on it.
-        </p>
+        {/* Shown against the selected resident rather than on every assessment: a
+            caveat that is always on screen is read as decoration by the second
+            week, and this is the only standing warning the BHW surface has. */}
+        {caveats.map((caveat) => (
+          <p key={caveat} className="form-alert tone-warning" role="note">
+            <Icon name="warning" size={18} />
+            {caveat}
+          </p>
+        ))}
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
