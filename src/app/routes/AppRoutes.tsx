@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { BHWLayout } from '../../components/bhw/BHWLayout';
 import { AccountsPage, AdminDashboardPage, InventoryPage, ReportsPage, ResidentsPage } from '../../pages/admin/AdminPages';
-import { BHWHomePage, HealthAssessmentPage, RegisterResidentPage, SupplyDisbursementPage } from '../../pages/bhw/BHWPages';
+import { BHWHomePage, HealthAssessmentPage, ProfilePage, RegisterResidentPage, SupplyDisbursementPage } from '../../pages/bhw/BHWPages';
 import type { UserRole } from '../../types/database';
 
 type AppRoutesProps = {
@@ -28,6 +28,7 @@ export function AppRoutes({ logout, role }: AppRoutesProps) {
         <Route path="register-resident" element={<RegisterResidentPage />} />
         <Route path="health-assessment" element={<HealthAssessmentPage />} />
         <Route path="supply-disbursement" element={<SupplyDisbursementPage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
       <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} /> : <Navigate to="/bhw" replace />}>
         <Route index element={<AdminDashboardPage />} />

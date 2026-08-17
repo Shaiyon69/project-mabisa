@@ -13,6 +13,13 @@ const filipino: Record<string, string> = {
   'Resident': 'Residente',
   'Health': 'Kalusugan',
   'Supply': 'Suplay',
+  'Profile': 'Profile',
+  'Account': 'Account',
+  'Signed in as': 'Naka-sign in bilang',
+  'Role': 'Tungkulin',
+  'Barangay Health Worker': 'Barangay Health Worker',
+  'Records on this device': 'Mga tala sa device na ito',
+  'Appearance': 'Anyo',
   'Log out of MABISA?': 'Mag-logout sa MABISA?',
   'Make sure pending records are synchronized before leaving this device.': 'Tiyaking na-sync ang mga nakabinbing tala bago umalis sa device na ito.',
   'Stay logged in': 'Manatiling naka-login',
@@ -49,14 +56,8 @@ const filipino: Record<string, string> = {
   'Saved health assessments will appear here.': 'Dito makikita ang mga na-save na pagsusuri.',
   'Household Profiling': 'Pagtatala ng Sambahayan',
   'New Household Registration': 'Bagong Rehistro ng Sambahayan',
-  'Dwelling Information': 'Impormasyon ng Tirahan',
+  'Household Information': 'Impormasyon ng Sambahayan',
   'Household Number': 'Numero ng Sambahayan',
-  'Dwelling Type': 'Uri ng Tirahan',
-  'Electric Service': 'Serbisyo ng Kuryente',
-  'Concrete': 'Kongkreto',
-  'Wood': 'Kahoy',
-  'Mixed': 'Halo-halong Materyales',
-  'Makeshift': 'Pansamantala',
   'None': 'Wala',
   'Local Water District': 'Lokal na Water District',
   'Deep Well': 'Malalim na Balon',
@@ -160,10 +161,13 @@ type BhwLanguageValue = {
 const BhwLanguageContext = createContext<BhwLanguageValue | null>(null);
 
 export function BhwLanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const savedLanguage = localStorage.getItem('mabisa-language');
-    return savedLanguage === 'fil' || savedLanguage === 'tl' ? 'fil' : 'en';
-  });
+  // The language switch is withdrawn from the UI while the Filipino copy is
+  // decided on, so the app is English-only for now. The dictionary, `t()` and
+  // `setLanguage` are all still here and still wired — restoring the feature is
+  // reading `mabisa-language` again here and putting the toggle back in
+  // BHWLayout. Ignoring the stored value is deliberate: a device left on 'fil'
+  // would otherwise be stuck there with no control to change it.
+  const [language, setLanguageState] = useState<Language>('en');
 
   const value = useMemo<BhwLanguageValue>(() => ({
     language,

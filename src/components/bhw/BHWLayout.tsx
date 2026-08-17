@@ -1,11 +1,8 @@
-import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
 import type { SyncStatus } from '../../services/syncService';
-import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
-import { Modal } from '../common/Modal';
 import { BhwLanguageProvider, useBhwLanguage } from '../../app/BhwLanguageContext';
 
 const bhwNavItems = [
@@ -13,9 +10,16 @@ const bhwNavItems = [
   { to: '/bhw/register-resident', label: 'Register Resident', shortLabel: 'Resident', icon: 'user' as const },
   { to: '/bhw/health-assessment', label: 'Health Assessment', shortLabel: 'Health', icon: 'heart' as const },
   { to: '/bhw/supply-disbursement', label: 'Supply Release', shortLabel: 'Supply', icon: 'package' as const },
+  { to: '/bhw/profile', label: 'Profile', shortLabel: 'Profile', icon: 'profile' as const },
 ];
 
 type BHWLayoutProps = {
+  logout: () => Promise<void>;
+};
+
+/** Logout is handed to the profile screen through the outlet rather than a prop
+    chain, because it is the only route that uses it. */
+export type BhwOutletContext = {
   logout: () => Promise<void>;
 };
 
@@ -62,14 +66,8 @@ export function BHWLayout({ logout }: BHWLayoutProps) {
 
 function BHWLayoutContent({ logout }: BHWLayoutProps) {
   const { isOnline, message, syncStatus, snapshot } = useMabisaData();
-  const { language, setLanguage, t } = useBhwLanguage();
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const { t } = useBhwLanguage();
   const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
-
-  async function handleLogout() {
-    setConfirmingLogout(false);
-    await logout();
-  }
 
   // BHW uses a phone-sized shell because this interface is packaged with Capacitor.
   return (
@@ -79,31 +77,14 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
           {rail.label}
         </p>
 
-        <PageHeader
-          eyebrow={t('Project MABISA')}
-          title={t('BHW Mobile')}
-          actions={
-            // Connection state lives on the rail above, so it is not repeated here.
-            <>
-              <div className="language-toggle" role="group" aria-label="English or Filipino language">
-                <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>
-                  EN
-                </button>
-                <button type="button" className={language === 'fil' ? 'active' : ''} onClick={() => setLanguage('fil')}>
-                  FIL
-                </button>
-              </div>
-              <Button variant="danger" className="logout-button" onClick={() => setConfirmingLogout(true)}>
-                <Icon name="logout" size={17} />
-                {t('Logout')}
-              </Button>
-            </>
-          }
-        />
+        {/* No header actions: connection state lives on the rail above, and theme
+            and logout now live on the Profile tab so the top of every screen is
+            content rather than controls. */}
+        <PageHeader eyebrow={t('Project MABISA')} title={t('BHW Mobile')} />
         {message ? <p className="notice">{message}</p> : null}
 
         <div className="bhw-mobile-content">
-          <Outlet />
+          <Outlet context={{ logout } satisfies BhwOutletContext} />
         </div>
 
         <nav className="bhw-bottom-nav" aria-label="BHW mobile sections">
@@ -115,13 +96,6 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
             </NavLink>
           ))}
         </nav>
-        <Modal open={confirmingLogout} title={t('Log out of MABISA?')} onClose={() => setConfirmingLogout(false)}>
-          <p className="logout-warning"><Icon name="warning" size={20} />{t('Make sure pending records are synchronized before leaving this device.')}</p>
-          <div className="modal-actions">
-            <Button variant="ghost" onClick={() => setConfirmingLogout(false)}>{t('Stay logged in')}</Button>
-            <Button variant="danger" onClick={() => void handleLogout()}><Icon name="logout" size={17} />{t('Log out')}</Button>
-          </div>
-        </Modal>
       </section>
     </main>
   );
