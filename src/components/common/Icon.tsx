@@ -1,4 +1,4 @@
-type IconName = 'home' | 'user' | 'heart' | 'package' | 'check' | 'warning' | 'wifi' | 'logout' | 'plus' | 'save';
+type IconName = 'home' | 'user' | 'heart' | 'package' | 'check' | 'warning' | 'wifi' | 'logout' | 'plus' | 'save' | 'profile';
 
 type IconProps = {
   name: IconName;
@@ -17,6 +17,8 @@ const paths: Record<IconName, React.ReactNode> = {
   logout: <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M14 3h7v18h-7" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   save: <><path d="M4 3h13l3 3v15H4Z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /></>,
+  // Circled, so it is not read as the plain `user` on the resident tab beside it.
+  profile: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="10" r="3" /><path d="M6.6 18.6a6 6 0 0 1 10.8 0" /></>,
 };
 
 export function Icon({ name, size = 18, className = '' }: IconProps) {
