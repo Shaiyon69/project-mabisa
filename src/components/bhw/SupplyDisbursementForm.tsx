@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { InventoryItem, SupplyDisbursement } from '../../types/database'; 
-import { createId, today } from '../../lib/utils';
+import { createId, scrollToFirstError, today } from '../../lib/utils';
 import { saveSupplyDisbursementLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -49,6 +49,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     setFormError(null);
     
     if (!isFormReady) {
+      scrollToFirstError();
       return;
     }
 
@@ -72,6 +73,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
       await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Supply disbursement was not saved.');
+      scrollToFirstError();
     } finally {
       setSaving(false);
     }
