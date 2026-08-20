@@ -1027,18 +1027,6 @@ tbody tr:hover {
   background: var(--field-soft);
 }
 
-.portal-switch {
-  margin: -4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
-}
-
-.portal-switch a {
-  color: var(--primary);
-  font-weight: 800;
-}
-
 /* Admin web */
 
 .admin-layout {
