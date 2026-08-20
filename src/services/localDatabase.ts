@@ -705,8 +705,18 @@ export async function saveIndividualLocally(individual: Individual, operationTyp
   const database = await getLocalDatabase();
   await database.run(individualUpsert.statement, individualUpsert.values(individual));
 
+  // household_number rides along on every read — readLocalIndividuals joins it so
+  // a list can show a household without a second query — but it is a column on
+  // `households`, not on `individuals`. The local write ignores it because the
+  // column map names its columns explicitly; the queued payload does not, and
+  // Supabase rejects the whole row over one unknown column. Anything editing a
+  // resident read back from SQLite would hit this, so it is dropped here rather
+  // than at each call site.
+  const syncable = { ...individual };
+  delete syncable.household_number;
+
   // Queue the raw object so Supabase receives actual booleans
-  await enqueueSyncOperation('individuals', operationType, individual);
+  await enqueueSyncOperation('individuals', operationType, syncable);
   await persistLocalDatabase();
 }
 
@@ -920,6 +930,34 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
     is_out_of_school_youth: row.is_out_of_school_youth === 1,
     is_pregnant_nursing_fp: row.is_pregnant_nursing_fp === 1,
   })) as Individual[];
+}
+
+/**
+ * One resident by id, or null if this device has never seen them.
+ *
+ * Goes through readLocalIndividuals rather than its own select so the boolean
+ * coercion and the household_number join stay in one place — a second query here
+ * is how the detail screen would end up showing `1` where the list shows `Head`.
+ */
+export async function readLocalIndividual(residentId: string): Promise<Individual | null> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query(
+    `SELECT i.*, h.household_number
+     FROM individuals i
+     LEFT JOIN households h ON i.household_id = h.household_id
+     WHERE i.resident_id = ?`,
+    [residentId],
+  );
+  const row = result.values?.[0];
+
+  return row
+    ? ({
+        ...row,
+        is_household_head: row.is_household_head === 1,
+        is_out_of_school_youth: row.is_out_of_school_youth === 1,
+        is_pregnant_nursing_fp: row.is_pregnant_nursing_fp === 1,
+      } as Individual)
+    : null;
 }
 
 export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Household[]> {

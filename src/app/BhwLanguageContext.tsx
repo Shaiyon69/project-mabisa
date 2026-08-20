@@ -165,6 +165,30 @@ const filipino: Record<string, string> = {
   'Go back and edit': 'Bumalik at baguhin',
   'Not the same person — save': 'Hindi pareho — i-save',
 
+  // Resident registry and detail.
+  'Registry': 'Talaan',
+  'Residents': 'Mga residente',
+  'Search residents': 'Maghanap ng residente',
+  'Back to residents': 'Bumalik sa mga residente',
+  'Opening record...': 'Binubuksan ang tala...',
+  'Resident not on this device': 'Wala sa device na ito ang residente',
+  'They may belong to another purok, or their record has not synced down yet.':
+    'Maaaring nasa ibang purok sila, o hindi pa nakababa ang kanilang tala.',
+  'Household Head': 'Puno ng Sambahayan',
+  'Household': 'Sambahayan',
+  'Age': 'Edad',
+  'years old': 'taong gulang',
+  'Yes': 'Oo',
+  'No': 'Hindi',
+  'Edit profile': 'Baguhin ang profile',
+  'Cancel': 'Kanselahin',
+  'Save changes': 'I-save ang binago',
+  'Saved over a duplicate warning': 'Na-save kahit may babala ng kaparehong tala',
+  'Supplies Released': 'Mga Ipinamahaging Suplay',
+  'No supplies released': 'Walang ipinamahaging suplay',
+  'Supply releases to this resident appear here.': 'Lalabas dito ang mga suplay na ibinigay sa residenteng ito.',
+  'Item not on this device': 'Wala sa device na ito ang aytem',
+
 };
 
 type BhwLanguageValue = {

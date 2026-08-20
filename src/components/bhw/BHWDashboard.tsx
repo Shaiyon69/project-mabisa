@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { LocalSnapshot } from '../../app/mabisaData';
 import type { Individual } from '../../types/database';
 import { formatDate, titleCase } from '../../lib/utils';
 import { Badge } from '../common/Badge';
 import { Card } from '../common/Card';
+import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
 import { readLocalIndividuals } from '../../services/localDatabase';
@@ -59,7 +61,15 @@ export function BHWDashboard({
 
       <section className="metric-grid" aria-label="BHW metrics">
         <Metric label={t('Households')} value={snapshot.householdCount} detail={t('Registered dwellings')} tone="blue" />
-        <Metric label={t('Individuals')} value={snapshot.individualCount} detail={t('Local profiles')} tone="green" />
+        {/* The one metric with somewhere to go. There is no sixth slot on the
+            bottom nav, so the registry is reached from the count of it. */}
+        <Metric
+          label={t('Individuals')}
+          value={snapshot.individualCount}
+          detail={t('Local profiles')}
+          tone="green"
+          to="/bhw/residents"
+        />
         <Metric label={t('Assessments')} value={snapshot.assessments.length} detail={t('Health records')} tone="amber" />
         <Metric label={t('Released')} value={snapshot.disbursements.length} detail={t('Supply logs')} tone="red" />
       </section>
@@ -72,15 +82,18 @@ export function BHWDashboard({
           </div>
           <Badge label={t(snapshot.pendingQueueCount ? 'Pending Sync' : 'Saved Offline')} tone={snapshot.pendingQueueCount ? 'warning' : 'success'} />
         </div>
-        
+
         {latestIndividuals.length ? (
-          <ul className="compact-list">
+          <ul className="compact-list resident-list">
             {latestIndividuals.map((person) => (
               <li key={person.resident_id}>
-                <span>{person.first_name} {person.last_name} {person.is_household_head ? '(Head)' : ''}</span>
-                <small>
-                  {titleCase(person.sex)}
-                </small>
+                <Link to={`/bhw/residents/${person.resident_id}`}>
+                  <span>{person.first_name} {person.last_name} {person.is_household_head ? '(Head)' : ''}</span>
+                  <small>
+                    {titleCase(person.sex)}
+                  </small>
+                  <Icon name="chevron" size={16} />
+                </Link>
               </li>
             ))}
           </ul>
@@ -115,12 +128,34 @@ export function BHWDashboard({
   );
 }
 
-function Metric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: 'blue' | 'green' | 'amber' | 'red' }) {
-  return (
-    <div className={`metric metric-${tone}`}>
+function Metric({
+  label,
+  value,
+  detail,
+  tone,
+  to,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  tone: 'blue' | 'green' | 'amber' | 'red';
+  /** Where the tile leads, when it leads anywhere. A count with no screen behind it stays a plain div. */
+  to?: string;
+}) {
+  const body = (
+    <>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{detail}</small>
-    </div>
+    </>
+  );
+  const className = `metric metric-${tone}${to ? ' metric-link' : ''}`;
+
+  return to ? (
+    <Link className={className} to={to}>
+      {body}
+    </Link>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }
