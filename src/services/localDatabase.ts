@@ -237,6 +237,17 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   // Retry backoff. Devices installed before the resilience work have a sync_queue
   // without this column, and `create table if not exists` will never add it.
   { table: 'sync_queue', column: 'next_attempt_at', definition: 'text' },
+  // Who last wrote the row, so an authorized correction to a saved profile is
+  // attributable. `updated_at` already carries the when.
+  { table: 'individuals', column: 'updated_by', definition: 'text' },
+  // Duplicate-override provenance — see 202608200001. Deliberately carries no
+  // foreign key: the record a BHW was warned about is usually one this device
+  // pulled rather than wrote, and a device that has not pulled it yet must still
+  // be able to save the override rather than fail on a constraint.
+  { table: 'individuals', column: 'duplicate_override_of', definition: 'text' },
+  { table: 'individuals', column: 'duplicate_override_reason', definition: 'text' },
+  { table: 'individuals', column: 'duplicate_override_by', definition: 'text' },
+  { table: 'individuals', column: 'duplicate_override_at', definition: 'text' },
 ];
 
 /**
@@ -606,6 +617,30 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
   { name: 'philhealth_number', value: (individual) => individual.philhealth_number ?? null, mutableOnConflict: true },
   { name: 'created_at', value: (individual) => individual.created_at, mutableOnConflict: false },
   { name: 'updated_at', value: (individual) => individual.updated_at, mutableOnConflict: true },
+  { name: 'updated_by', value: (individual) => individual.updated_by ?? null, mutableOnConflict: true },
+  // Mutable like any other column: the central row is the one the admin portal
+  // will eventually merge from, so a pull must be able to bring an override
+  // recorded on another device down to this one.
+  {
+    name: 'duplicate_override_of',
+    value: (individual) => individual.duplicate_override_of ?? null,
+    mutableOnConflict: true,
+  },
+  {
+    name: 'duplicate_override_reason',
+    value: (individual) => individual.duplicate_override_reason ?? null,
+    mutableOnConflict: true,
+  },
+  {
+    name: 'duplicate_override_by',
+    value: (individual) => individual.duplicate_override_by ?? null,
+    mutableOnConflict: true,
+  },
+  {
+    name: 'duplicate_override_at',
+    value: (individual) => individual.duplicate_override_at ?? null,
+    mutableOnConflict: true,
+  },
 ];
 
 const individualUpsert = buildUpsert('individuals', 'resident_id', individualColumns);

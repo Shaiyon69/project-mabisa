@@ -65,6 +65,14 @@ describe('parentEntityKeys', () => {
       .toEqual(['households:h1']);
   });
 
+  it('points a resident saved over a duplicate warning at the record they were warned about', () => {
+    expect(
+      parentEntityKeys(
+        entry('individuals', { resident_id: 'r2', household_id: 'h1', duplicate_override_of: 'r1' }),
+      ),
+    ).toEqual(['households:h1', 'individuals:r1']);
+  });
+
   it('points an assessment at its resident', () => {
     expect(parentEntityKeys(entry('health_assessments', { assessment_id: 'a1', resident_id: 'r1' })))
       .toEqual(['individuals:r1']);

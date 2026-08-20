@@ -58,6 +58,17 @@ export type Individual = {
   philhealth_number: string | null;
   created_at: string;
   updated_at: string;
+  // The account behind the most recent write, so an authorized correction to a
+  // saved profile is attributable. Null on every row written before the column.
+  updated_by?: string | null;
+  // Duplicate-override provenance. MABISA only ever warns about a likely
+  // duplicate — the BHW confirms identity in person — so when they say it is a
+  // different person, these four record which record they were shown, why they
+  // overrode it, who they were, and when.
+  duplicate_override_of?: string | null;
+  duplicate_override_reason?: string | null;
+  duplicate_override_by?: string | null;
+  duplicate_override_at?: string | null;
 };
 
 export type HealthAssessment = {
