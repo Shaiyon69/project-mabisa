@@ -37,6 +37,8 @@ const filipino: Record<string, string> = {
   'Push Local Changes': 'I-sync ang mga Tala',
   'Retry Sync': 'Subukang Muli',
   'Syncing...': 'Nagsi-sync...',
+  'Last synced': 'Huling na-sync',
+  'This device has not completed a sync yet.': 'Wala pang natatapos na sync ang device na ito.',
   'Households': 'Mga Sambahayan',
   'Registered dwellings': 'Rehistradong tirahan',
   'Individuals': 'Mga Residente',

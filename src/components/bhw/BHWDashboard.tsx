@@ -15,6 +15,7 @@ type BHWDashboardProps = {
   isOnline: boolean;
   syncStatus: SyncStatus;
   syncError: string | null;
+  lastSyncAt: string | null;
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
   onRetryDeadLetters: () => Promise<void>;
@@ -25,6 +26,7 @@ export function BHWDashboard({
   isOnline,
   syncStatus,
   syncError,
+  lastSyncAt,
   syncingManually,
   onManualSync,
   onRetryDeadLetters,
@@ -47,6 +49,7 @@ export function BHWDashboard({
         isOnline={isOnline}
         syncStatus={syncStatus}
         syncError={syncError}
+        lastSyncAt={lastSyncAt}
         pendingQueueCount={snapshot.pendingQueueCount}
         deadLetterEntries={snapshot.deadLetterEntries}
         syncingManually={syncingManually}

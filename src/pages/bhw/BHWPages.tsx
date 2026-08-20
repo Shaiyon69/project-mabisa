@@ -15,7 +15,7 @@ import { ThemeToggle } from '../../components/common/ThemeToggle';
 import { supabase } from '../../lib/supabase';
 
 export function BHWHomePage() {
-  const { snapshot, isOnline, syncStatus, syncError, syncingManually, runManualSync, retryDeadLetters } =
+  const { snapshot, isOnline, syncStatus, syncError, lastSyncAt, syncingManually, runManualSync, retryDeadLetters } =
     useMabisaData();
 
   return (
@@ -24,6 +24,7 @@ export function BHWHomePage() {
       isOnline={isOnline}
       syncStatus={syncStatus}
       syncError={syncError}
+      lastSyncAt={lastSyncAt}
       syncingManually={syncingManually}
       onManualSync={runManualSync}
       onRetryDeadLetters={retryDeadLetters}

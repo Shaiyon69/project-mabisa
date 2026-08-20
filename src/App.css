@@ -581,6 +581,13 @@ button:active,
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* Reassurance, not an alert: it sits under the status tiles and stays quiet so
+   nothing competes with the failure banner below it. */
+.sync-last {
+  margin: 0;
+  font-size: 13px;
+}
+
 .metric-grid,
 .activity-grid,
 .field-row {
