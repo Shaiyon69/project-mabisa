@@ -131,6 +131,9 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
           occupation: emptyToNull(draft.occupation),
           educational_attainment: emptyToNull(draft.educational_attainment),
           philhealth_number: philhealthDigits(draft.philhealth_number),
+          // The head has no relationship to themself; promoting someone to head
+          // here has to drop the one they carried.
+          relationship_to_head: draft.is_household_head ? null : draft.relationship_to_head ?? null,
           // The engine filters every update on this value, so a correction that
           // does not move it forward is indistinguishable from no edit at all.
           updated_at: new Date().toISOString(),
@@ -236,6 +239,16 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               <Fact label={t('Birthdate')} value={formatDate(resident.birthday)} />
               <Fact label={t('Sex')} value={t(titleCase(resident.sex))} />
               <Fact label={t('Household')} value={resident.household_number ?? '—'} />
+              <Fact
+                label={t('Relationship to Household Head')}
+                value={
+                  resident.is_household_head
+                    ? t('Household Head')
+                    : resident.relationship_to_head
+                      ? t(titleCase(resident.relationship_to_head))
+                      : '—'
+                }
+              />
               <Fact label={t('Occupation')} value={resident.occupation ?? '—'} />
               <Fact
                 label={t('Educational Attainment')}

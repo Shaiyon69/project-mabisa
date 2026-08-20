@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import type { Individual, IndividualSex } from '../../types/database';
-import { today } from '../../lib/utils';
+import type { Individual, IndividualSex, RelationshipToHead } from '../../types/database';
+import { RELATIONSHIPS_TO_HEAD } from '../../types/database';
+import { titleCase, today } from '../../lib/utils';
 import { FormField, SelectField } from '../common/FormField';
 import { useBhwLanguage } from '../../app/BhwLanguageContext';
 
@@ -108,6 +109,32 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
           <option value="male">{t('Male')}</option>
         </SelectField>
       </div>
+
+      {/* The head has no relationship to themself, so the question is not asked of
+          them. Whatever was picked before the head box was ticked is dropped at
+          save time rather than cleared here — one place to strip it, and the
+          answer survives an accidental tick-and-untick. */}
+      {member.is_household_head ? null : (
+        <SelectField
+          label={t('Relationship to Household Head')}
+          value={member.relationship_to_head ?? ''}
+          onChange={(event) =>
+            onChange('relationship_to_head', (event.target.value || null) as RelationshipToHead | null)
+          }
+        >
+          {/* Blank first, and optional on purpose: a BHW who does not know how a
+              boarder is related should leave it blank rather than pick the
+              nearest wrong answer. Labels are titleCased from the stored value,
+              the same way
+              educational_attainment is displayed. */}
+          <option value="">{t('(Not specified)')}</option>
+          {RELATIONSHIPS_TO_HEAD.map((value) => (
+            <option key={value} value={value}>
+              {t(titleCase(value))}
+            </option>
+          ))}
+        </SelectField>
+      )}
 
       <div className="field-row">
         <FormField

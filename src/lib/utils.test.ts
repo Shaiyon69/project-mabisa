@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ageInYears, calculateBmi, getNutritionStatus, titleCase } from './utils';
+import {
+  ageInYears,
+  calculateBmi,
+  getNutritionStatus,
+  HEIGHT_CM_RANGE,
+  isMeasurementInRange,
+  titleCase,
+  WEIGHT_KG_RANGE,
+} from './utils';
 
 describe('calculateBmi', () => {
   it('computes BMI in kg/m² from centimetres', () => {
@@ -10,6 +18,35 @@ describe('calculateBmi', () => {
     expect(calculateBmi(0, 160)).toBeNull();
     expect(calculateBmi(60, 0)).toBeNull();
     expect(calculateBmi(-5, 160)).toBeNull();
+  });
+});
+
+describe('isMeasurementInRange', () => {
+  it('accepts both ends of the range and rejects a step past either', () => {
+    expect(isMeasurementInRange('1', WEIGHT_KG_RANGE)).toBe(true);
+    expect(isMeasurementInRange('300', WEIGHT_KG_RANGE)).toBe(true);
+    expect(isMeasurementInRange('0.9', WEIGHT_KG_RANGE)).toBe(false);
+    expect(isMeasurementInRange('300.1', WEIGHT_KG_RANGE)).toBe(false);
+
+    expect(isMeasurementInRange('30', HEIGHT_CM_RANGE)).toBe(true);
+    expect(isMeasurementInRange('250', HEIGHT_CM_RANGE)).toBe(true);
+    expect(isMeasurementInRange('29.9', HEIGHT_CM_RANGE)).toBe(false);
+    expect(isMeasurementInRange('250.1', HEIGHT_CM_RANGE)).toBe(false);
+  });
+
+  it('rejects an entry that is not a number rather than passing NaN down', () => {
+    expect(isMeasurementInRange('', WEIGHT_KG_RANGE)).toBe(false);
+    expect(isMeasurementInRange('   ', WEIGHT_KG_RANGE)).toBe(false);
+    expect(isMeasurementInRange('-', WEIGHT_KG_RANGE)).toBe(false);
+    expect(isMeasurementInRange('60kg', WEIGHT_KG_RANGE)).toBe(false);
+    expect(isMeasurementInRange('Infinity', WEIGHT_KG_RANGE)).toBe(false);
+  });
+
+  it('passes a plausible field reading, including a newborn', () => {
+    expect(isMeasurementInRange('3.2', WEIGHT_KG_RANGE)).toBe(true);
+    expect(isMeasurementInRange('49', HEIGHT_CM_RANGE)).toBe(true);
+    expect(isMeasurementInRange('58.5', WEIGHT_KG_RANGE)).toBe(true);
+    expect(isMeasurementInRange('161', HEIGHT_CM_RANGE)).toBe(true);
   });
 });
 

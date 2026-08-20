@@ -6,6 +6,20 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 // exactly these two values.
 export type UserRole = 'admin' | 'bhw';
 export type IndividualSex = 'male' | 'female';
+// How a member stands to the household head. The head themself carries no value:
+// `is_household_head` already says it, and a second column asserting the same
+// fact is a second column to keep in step.
+// The tuple is the list; the union is read off it, so a category added for the
+// picker and the check constraint cannot go missing from the type.
+export const RELATIONSHIPS_TO_HEAD = [
+  'spouse',
+  'child',
+  'parent',
+  'sibling',
+  'other_relative',
+  'unrelated',
+] as const;
+export type RelationshipToHead = (typeof RELATIONSHIPS_TO_HEAD)[number];
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
 export type DwellingType = 'concrete' | 'wood' | 'mixed' | 'makeshift';
@@ -51,6 +65,9 @@ export type Individual = {
   sex: IndividualSex;
   birthday: string;
   is_household_head: boolean;
+  // Null on the head, and on every row written before the column existed. Until
+  // this was added a spouse, a child and a boarder were indistinguishable.
+  relationship_to_head?: RelationshipToHead | null;
   occupation: string | null;
   educational_attainment: string | null;
   is_out_of_school_youth: boolean;
@@ -182,6 +199,7 @@ export type Database = {
     Enums: {
       app_role: UserRole;
       individual_sex: IndividualSex;
+      relationship_to_head: RelationshipToHead;
       inventory_item_type: InventoryItemType;
       nutrition_status: NutritionStatus;
       dwelling_type: DwellingType;

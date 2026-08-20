@@ -84,6 +84,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       sex: 'female',
       birthday: '',
       is_household_head: true,
+      relationship_to_head: null,
       occupation: '',
       educational_attainment: '',
       is_out_of_school_youth: false,
@@ -126,6 +127,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         sex: 'female',
         birthday: '',
         is_household_head: false,
+        relationship_to_head: null,
         occupation: '',
         educational_attainment: '',
         is_out_of_school_youth: false,
@@ -202,6 +204,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         occupation: emptyToNull(member.occupation),
         educational_attainment: emptyToNull(member.educational_attainment),
         philhealth_number: philhealthDigits(member.philhealth_number),
+        // The head has no relationship to themself. Stripped here rather than when
+        // the head box is ticked, so a member ticked and unticked again keeps the
+        // answer the BHW already gave.
+        relationship_to_head: member.is_household_head ? null : member.relationship_to_head ?? null,
         created_at: timestamp,
         updated_at: timestamp,
         updated_by: bhwId,

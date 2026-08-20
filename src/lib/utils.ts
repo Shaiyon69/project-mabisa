@@ -9,6 +9,32 @@ export function calculateBmi(weightKg: number, heightCm: number): number | null 
   return Number((weightKg / (heightMeters * heightMeters)).toFixed(2));
 }
 
+/**
+ * Absolute physical bounds on a field measurement — not a clinical judgement.
+ * Outside these the entry is a slipped decimal point or the wrong unit, not a
+ * reading, and an assessment built on one is worse than no assessment. Wide
+ * enough to hold a newborn at one end and the tallest adult at the other, so
+ * nothing real is refused.
+ */
+export const WEIGHT_KG_RANGE = { min: 1, max: 300 };
+export const HEIGHT_CM_RANGE = { min: 30, max: 250 };
+
+/**
+ * Whether a measurement typed into a form is one the app will record.
+ *
+ * Takes the raw string rather than a number so blank, `-`, and a half-typed
+ * exponent all answer false here instead of arriving as `NaN` further down. The
+ * save gate and the field's error message both call this, because they used to
+ * carry the bounds separately: the field drew "Enter a weight from 1 to 300 kg."
+ * while the gate asked only for a positive number, so a 900 kg entry showed the
+ * error and saved anyway.
+ */
+export function isMeasurementInRange(value: string, range: { min: number; max: number }): boolean {
+  const parsed = Number(value);
+
+  return value.trim() !== '' && Number.isFinite(parsed) && parsed >= range.min && parsed <= range.max;
+}
+
 export function getNutritionStatus(bmi: number | null): NutritionStatus | null {
   if (!bmi) {
     return null;
