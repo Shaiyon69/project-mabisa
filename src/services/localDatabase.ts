@@ -707,11 +707,68 @@ export async function saveInventoryItemLocally(item: InventoryItem, operationTyp
   await persistLocalDatabase();
 }
 
+/**
+ * Reads one inventory item, or null if this device has never seen it.
+ * Separate from readLocalInventoryItems() because the disbursement path needs the
+ * authoritative current row, not whatever the UI snapshot last loaded.
+ */
+export async function readLocalInventoryItem(itemId: string): Promise<InventoryItem | null> {
+  const database = await getLocalDatabase();
+  const result = await database.query('select * from inventory_items where item_id = ?', [itemId]);
+  const row = result.values?.[0];
+
+  return row ? ({ ...row, current_stock: Number(row.current_stock) } as InventoryItem) : null;
+}
+
+/**
+ * Records a supply release and moves the stock it came out of, as one call.
+ *
+ * The two used to be separate: this wrote the ledger row and nothing decremented
+ * `current_stock`, so the quantity check in the form was reading a figure only the
+ * admin surface could ever change.
+ *
+ * Only the disbursement is queued. The stock move is applied locally — a BHW
+ * offline for three days has to see what is actually left — but it is deliberately
+ * *not* pushed. Two reasons, and either alone would settle it:
+ *
+ * - `inventory_items` is admin-only for writes under the purok RLS, so a queued
+ *   stock update from a phone would be rejected every pass and quarantine.
+ * - An absolute stock number is the wrong thing to send anyway. Two devices
+ *   releasing offline from the same base would each push their own total and the
+ *   later one would win, silently erasing the other's release.
+ *
+ * Centrally the decrement rides on the ledger row instead: an `after insert`
+ * trigger on `supply_disbursements` (202608200002) subtracts the quantity from
+ * the item. That is relative, so concurrent offline releases add up rather than
+ * overwrite, and it does not fire on the `on conflict do update` path a replayed
+ * queue entry takes — so a retried push cannot decrement twice. The next pull
+ * brings the reconciled figure back down to the device.
+ */
 export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
   const database = await getLocalDatabase();
+
+  // Only a new release moves stock. An edit to an existing log row would have to
+  // reverse the original quantity first, and nothing in the app offers that yet.
+  const item = operationType === 'INSERT' ? await readLocalInventoryItem(disbursement.item_id) : null;
+
+  if (operationType === 'INSERT') {
+    if (!item) {
+      throw new Error('That supply item is not on this device yet. Sync before releasing it.');
+    }
+
+    // `check (current_stock >= 0)` on both SQLite and Postgres is the real
+    // backstop. This is here so the BHW reads a sentence instead of a constraint
+    // violation, and so the reason names the number they are short by.
+    if (disbursement.quantity > item.current_stock) {
+      throw new Error(
+        `Only ${item.current_stock} of ${item.item_name} left on this device — ${disbursement.quantity} cannot be released.`,
+      );
+    }
+  }
+
   await database.run(
     `insert or replace into supply_disbursements
      (log_id, item_id, resident_id, disbursement_date, quantity, created_at, updated_at)
@@ -727,6 +784,19 @@ export async function saveSupplyDisbursementLocally(
     ],
   );
   await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
+
+  if (item) {
+    // Local only, and not enqueued — see the note above. `updated_at` is left on
+    // the item's own value rather than stamped forward, so the pull that brings
+    // back the server's reconciled figure is not mistaken for stale data.
+    const movedStock: InventoryItem = {
+      ...item,
+      current_stock: item.current_stock - disbursement.quantity,
+    };
+
+    await database.run(inventoryUpsert.statement, inventoryUpsert.values(movedStock));
+  }
+
   await persistLocalDatabase();
 }
 
