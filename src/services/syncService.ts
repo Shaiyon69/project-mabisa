@@ -58,6 +58,67 @@ const RETRY_BASE_DELAY_MS = 30_000;
 const RETRY_MAX_DELAY_MS = 15 * 60_000;
 
 // -----------------------------------------------------------------------------
+// Pass bookkeeping
+// -----------------------------------------------------------------------------
+// Two facts outlive a pass and have to survive the app being closed: when the
+// queue last drained, which the BHW is shown, and how far the pull has read,
+// which keeps the next pull from re-downloading every table over cellular.
+
+const LAST_SYNC_AT_KEY = 'mabisa.last_sync_at';
+const PULLED_THROUGH_KEY = 'mabisa.pulled_through';
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable. The pass still succeeded; the next pull just reads
+    // the full tables again instead of the changed rows.
+  }
+}
+
+/** When the queue last drained, ISO 8601, or null if it never has on this device. */
+export function readLastSyncAt(): string | null {
+  return readStored(LAST_SYNC_AT_KEY);
+}
+
+/**
+ * Forgets how far the pull has read, so the next one re-reads every row.
+ *
+ * Called when quarantined entries are requeued: their server rows were skipped
+ * by the pull that quarantined them, and the watermark has since moved past
+ * those timestamps, so an incremental pull would never offer them again.
+ */
+export function resetPullWatermark(): void {
+  try {
+    localStorage.removeItem(PULLED_THROUGH_KEY);
+  } catch {
+    // Nothing to forget if storage is unavailable.
+  }
+}
+
+/**
+ * The central row changed after this device based its edit on it.
+ *
+ * Retrying cannot win that race — the server copy will still be newer next pass
+ * — so a conflict skips the retry ladder and goes straight to the dead letter,
+ * where `SyncStatusCard` shows it and an admin decides which version is right.
+ */
+export class SyncConflictError extends Error {
+  constructor(table: LocalTableName) {
+    super(`This ${table.replace(/_/g, ' ')} record was changed centrally after this device edited it.`);
+    this.name = 'SyncConflictError';
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Primary Key Mappings
 // -----------------------------------------------------------------------------
 // This maps every local table to its exact primary key column name.
@@ -272,7 +333,12 @@ export async function syncPendingQueue(): Promise<SyncResult> {
           firstErrorMessage = errorMessage;
         }
 
-        if (attempts >= MAX_SYNC_ATTEMPTS) {
+        // A conflict is not a transient failure: the server row is already newer
+        // than the edit this entry carries, and every retry would compare against
+        // a row that is newer still. Quarantine it now rather than five passes
+        // from now, so the person who has to choose between the two versions
+        // sees it while they still remember the visit.
+        if (error instanceof SyncConflictError || attempts >= MAX_SYNC_ATTEMPTS) {
           await moveSyncQueueEntryToDeadLetter({ ...entry, attempts }, errorMessage);
           deadLettered += 1;
           hold(own, 'quarantined');
@@ -336,6 +402,8 @@ export async function syncPendingQueue(): Promise<SyncResult> {
         errorMessage: describeIncompletePass(deferred, deadLettered, firstErrorMessage),
       };
     }
+
+    writeStored(LAST_SYNC_AT_KEY, new Date().toISOString());
 
     return {
       status: 'synced',
@@ -435,13 +503,39 @@ async function insertPayload(targetTable: LocalTableName, payload: SyncQueueEntr
 }
 
 /**
+ * The moment the device last touched this record. Every update is filtered on
+ * `updated_at <= this`, which is the conflict rule: a central row someone else
+ * changed afterwards is newer than the edit being pushed, matches nothing, and
+ * comes back as a conflict instead of silently overwriting their work.
+ */
+function editedAt(payload: SyncQueueEntry['payload']): string {
+  const value = (payload as Record<string, unknown>).updated_at;
+  // Every save*Locally helper stamps updated_at. A payload without one was
+  // queued before this rule existed, so let it through rather than quarantining
+  // a record for a column it never carried.
+  return typeof value === 'string' ? value : '9999-12-31T23:59:59.999Z';
+}
+
+/** An update that matched no row lost the race — see SyncConflictError. */
+function assertApplied(targetTable: LocalTableName, rows: unknown[] | null): void {
+  if (!rows?.length) {
+    throw new SyncConflictError(targetTable);
+  }
+}
+
+/**
  * Handles modifying existing records.
- * Extracts the primary key dynamically and strips it from the update payload 
+ * Extracts the primary key dynamically and strips it from the update payload
  * to prevent accidentally altering IDs in the cloud database.
+ *
+ * Each statement returns the primary key it wrote, because an update that
+ * changed nothing is indistinguishable from a successful one otherwise — and
+ * "changed nothing" is exactly what a concurrent central edit looks like.
  */
 async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
   const primaryKey = primaryKeys[targetTable];
   const primaryValue = payload[primaryKey as keyof typeof payload];
+  const since = editedAt(payload);
 
   if (typeof primaryValue !== 'string') {
     throw new Error(`Missing primary key for ${targetTable} update`);
@@ -450,32 +544,62 @@ async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntr
   switch (targetTable) {
     case 'households': {
       const update = withoutPrimaryKey(payload as Household, 'household_id');
-      const { error } = await supabase.from('households').update(update).eq('household_id', primaryValue);
+      const { data, error } = await supabase
+        .from('households')
+        .update(update)
+        .eq('household_id', primaryValue)
+        .lte('updated_at', since)
+        .select('household_id');
       if (error) throw error;
+      assertApplied(targetTable, data);
       return;
     }
     case 'individuals': {
       const update = withoutPrimaryKey(payload as Individual, 'resident_id');
-      const { error } = await supabase.from('individuals').update(update).eq('resident_id', primaryValue);
+      const { data, error } = await supabase
+        .from('individuals')
+        .update(update)
+        .eq('resident_id', primaryValue)
+        .lte('updated_at', since)
+        .select('resident_id');
       if (error) throw error;
+      assertApplied(targetTable, data);
       return;
     }
     case 'health_assessments': {
       const update = withoutPrimaryKey(payload as HealthAssessment, 'assessment_id');
-      const { error } = await supabase.from('health_assessments').update(update).eq('assessment_id', primaryValue);
+      const { data, error } = await supabase
+        .from('health_assessments')
+        .update(update)
+        .eq('assessment_id', primaryValue)
+        .lte('updated_at', since)
+        .select('assessment_id');
       if (error) throw error;
+      assertApplied(targetTable, data);
       return;
     }
     case 'inventory_items': {
       const update = withoutPrimaryKey(payload as InventoryItem, 'item_id');
-      const { error } = await supabase.from('inventory_items').update(update).eq('item_id', primaryValue);
+      const { data, error } = await supabase
+        .from('inventory_items')
+        .update(update)
+        .eq('item_id', primaryValue)
+        .lte('updated_at', since)
+        .select('item_id');
       if (error) throw error;
+      assertApplied(targetTable, data);
       return;
     }
     case 'supply_disbursements': {
       const update = withoutPrimaryKey(payload as SupplyDisbursement, 'log_id');
-      const { error } = await supabase.from('supply_disbursements').update(update).eq('log_id', primaryValue);
+      const { data, error } = await supabase
+        .from('supply_disbursements')
+        .update(update)
+        .eq('log_id', primaryValue)
+        .lte('updated_at', since)
+        .select('log_id');
       if (error) throw error;
+      assertApplied(targetTable, data);
       return;
     }
   }
@@ -529,18 +653,32 @@ async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> 
 
 export async function pullRemoteUpdates(): Promise<void> {
   try {
-    // 1. Fetch tables sequentially to respect foreign key constraints
+    // 1. Fetch tables sequentially to respect foreign key constraints.
+    //
+    // Which rows come back is not decided here. Every select runs under the
+    // purok policies in 202608160002, so a BHW's own assignment already bounds
+    // the result to their households and everything hanging off them; repeating
+    // that as a client filter would be a second copy of the rule to keep in step
+    // with the first. What this device does decide is how much of that scope it
+    // needs again: rows it has already read are re-read only if they changed.
+    //
+    // `gte`, not `gt`: a row written in the same millisecond as the watermark
+    // would otherwise be skipped forever. Re-reading a handful of boundary rows
+    // costs one upsert each.
+    const pulledThrough = readStored(PULLED_THROUGH_KEY);
+    const changedSince = <TQuery extends { gte(column: string, value: string): TQuery }>(query: TQuery): TQuery =>
+      pulledThrough ? query.gte('updated_at', pulledThrough) : query;
 
     // Fetch Households
-    const { data: cloudHouseholds, error: hError } = await supabase.from('households').select('*');
+    const { data: cloudHouseholds, error: hError } = await changedSince(supabase.from('households').select('*'));
     if (hError) throw new Error(`Household Pull Error: ${hError.message}`);
 
     // Fetch Individuals
-    const { data: cloudIndividuals, error: iError } = await supabase.from('individuals').select('*');
+    const { data: cloudIndividuals, error: iError } = await changedSince(supabase.from('individuals').select('*'));
     if (iError) throw new Error(`Individual Pull Error: ${iError.message}`);
 
     // Fetch Inventory
-    const { data: cloudInventory, error: invError } = await supabase.from('inventory_items').select('*');
+    const { data: cloudInventory, error: invError } = await changedSince(supabase.from('inventory_items').select('*'));
     if (invError) throw new Error(`Inventory Pull Error: ${invError.message}`);
 
     // 2. Drop any row whose local copy is quarantined. The server's version of it
@@ -573,7 +711,25 @@ export async function pullRemoteUpdates(): Promise<void> {
     await pullIndividualsFromServer(withoutQuarantined('individuals', cloudIndividuals));
     await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
 
-    logDev('Successfully pulled all updates from the cloud.');
+    // 4. Advance the watermark to the newest row the server handed over, rather
+    // than to this device's clock: a phone whose time is a minute fast would
+    // otherwise skip every row written in that minute.
+    const pulledRows: { updated_at?: string }[] = [
+      ...(cloudHouseholds ?? []),
+      ...(cloudIndividuals ?? []),
+      ...(cloudInventory ?? []),
+    ];
+
+    const newest = pulledRows.reduce<string | null>(
+      (latest, row) => (typeof row.updated_at === 'string' && (!latest || row.updated_at > latest) ? row.updated_at : latest),
+      pulledThrough,
+    );
+
+    if (newest) {
+      writeStored(PULLED_THROUGH_KEY, newest);
+    }
+
+    logDev('Successfully pulled all updates from the cloud.', { rows: pulledRows.length, through: newest });
 
   } catch (error) {
     console.error('Failed to pull remote updates:', error);

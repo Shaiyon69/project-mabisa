@@ -29,6 +29,8 @@ export type MabisaDataContextValue = {
   syncStatus: SyncStatus;
   /** Text for the failure banner, or null when the last pass was not a failure. */
   syncError: string | null;
+  /** When the queue last drained, ISO 8601, or null if it never has on this device. */
+  lastSyncAt: string | null;
   isOnline: boolean;
   syncingManually: boolean;
   refreshLocalData: () => Promise<void>;
