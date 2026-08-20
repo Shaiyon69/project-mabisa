@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:mobile": "tsc -b && vite build --mode bhw",
+    "build:admin": "tsc -b && vite build --mode admin",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "preview": "vite preview",
-    "sync:android": "npm run build && cap sync android",
+    "preview:admin": "vite preview --outDir dist-admin",
+    "sync:android": "npm run build:mobile && cap sync android",
     "open:android": "cap open android"
   },
   "dependencies": {
