@@ -249,6 +249,11 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   { table: 'individuals', column: 'duplicate_override_reason', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_by', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_at', definition: 'text' },
+  // How a member stands to the household head — see 202608200003. Nullable and
+  // unconstrained: the head has no value, every row written before the column has
+  // none either, and a check constraint here would only duplicate the one the
+  // central table already enforces.
+  { table: 'individuals', column: 'relationship_to_head', definition: 'text' },
 ];
 
 /**
@@ -640,6 +645,11 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
   { name: 'birthday', value: (individual) => individual.birthday, mutableOnConflict: true },
   // SQLite has no boolean type; the table stores 0/1 under a check constraint.
   { name: 'is_household_head', value: (individual) => (individual.is_household_head ? 1 : 0), mutableOnConflict: true },
+  {
+    name: 'relationship_to_head',
+    value: (individual) => individual.relationship_to_head ?? null,
+    mutableOnConflict: true,
+  },
   { name: 'occupation', value: (individual) => individual.occupation ?? null, mutableOnConflict: true },
   {
     name: 'educational_attainment',
