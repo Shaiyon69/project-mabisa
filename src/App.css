@@ -1945,3 +1945,28 @@ tbody tr:hover {
     animation-iteration-count: infinite !important;
   }
 }
+.duplicate-lede {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.duplicate-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.duplicate-group h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* The confidence pill sits under the detail line rather than beside it: on a
+   phone the name is already using the full width. */
+.duplicate-group .status-pill {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
