@@ -202,7 +202,11 @@ export function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
     case 'inventory_items':
       return [];
     case 'individuals':
-      return reference('household_id', 'households');
+      // duplicate_override_of points at another resident, so it is a second
+      // parent. Without it, a resident saved over a duplicate warning can be
+      // pushed ahead of the record they were warned about and land on a foreign
+      // key the server does not have yet.
+      return [...reference('household_id', 'households'), ...reference('duplicate_override_of', 'individuals')];
     case 'health_assessments':
       return reference('resident_id', 'individuals');
     case 'supply_disbursements':
