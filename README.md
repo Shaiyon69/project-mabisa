@@ -129,7 +129,7 @@ src/components/     admin/, bhw/, and a shared common/ UI kit
 src/services/       localDatabase.ts (SQLite) and syncService.ts (queue replay)
 src/hooks/          useBackgroundSync.ts
 src/types/          database.ts row shapes
-utils/supabase.ts   Supabase client, re-exported by src/lib/supabase.ts
+src/lib/            supabase.ts client, utils.ts, theme.ts
 capacitor.config.ts native app id, name, and web asset directory
 android/            generated native project, committed
 ```

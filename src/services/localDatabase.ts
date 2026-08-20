@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { logDev } from '../lib/utils';
+import { generateDatabasePassphrase } from '../lib/secureStorage';
 import type {
   HealthAssessment,
   HealthAssessmentInsert,
@@ -288,6 +289,40 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
   return localDatabaseSetup;
 }
 
+/**
+ * Decides how this device's database is opened, and encrypts it the first time.
+ *
+ * A field phone carries a barangay's health register offline. On Android that
+ * file is now SQLCipher-encrypted with a passphrase generated on the device and
+ * held by the plugin's own secure store, so a lost handset is a lost handset
+ * rather than a lost register.
+ *
+ * Three states, and the mode is read from stored fact rather than guessed:
+ *
+ * - **web** — `no-encryption`. `jeep-sqlite` has no SQLCipher and a browser has
+ *   no keystore, so the development build stays exactly as it was.
+ * - **native, no secret yet** — generate one, store it, and open with
+ *   `encryption`, which converts the existing plaintext file in place. This is
+ *   the one-time upgrade path for a device already carrying records; it must not
+ *   be reached twice, which is what `isSecretStored()` guarantees.
+ * - **native, secret stored** — `secret`, the ordinary open.
+ */
+async function prepareEncryption(): Promise<'no-encryption' | 'encryption' | 'secret'> {
+  if (isWebPlatform) {
+    return 'no-encryption';
+  }
+
+  const stored = await sqlite.isSecretStored();
+
+  if (stored.result) {
+    return 'secret';
+  }
+
+  await sqlite.setEncryptionSecret(generateDatabasePassphrase());
+  logDev('Local database encrypted for the first time on this device');
+  return 'encryption';
+}
+
 async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   // 2. THE WEB POLYFILL
   // This block ONLY runs in the browser. It ensures the emulator is injected
@@ -315,7 +350,14 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   }
 
   // 3. CREATE & OPEN CONNECTION
-  const database = await sqlite.createConnection('mabisa_local', false, 'no-encryption', 1, false);
+  const encryption = await prepareEncryption();
+  const database = await sqlite.createConnection(
+    'mabisa_local',
+    encryption !== 'no-encryption',
+    encryption,
+    1,
+    false,
+  );
   await database.open();
   await database.execute('pragma foreign_keys = on');
 
