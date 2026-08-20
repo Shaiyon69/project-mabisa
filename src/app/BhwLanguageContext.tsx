@@ -189,6 +189,12 @@ const filipino: Record<string, string> = {
   'Supply releases to this resident appear here.': 'Lalabas dito ang mga suplay na ibinigay sa residenteng ito.',
   'Item not on this device': 'Wala sa device na ito ang aytem',
 
+  // Idle lock. Nothing here may suggest work was lost, because none was.
+  'Screen locked': 'Naka-lock ang screen',
+  'Nothing was lost. Your records are still on this device.':
+    'Walang nawala. Nasa device pa rin ang inyong mga tala.',
+  'record(s) still saved on this device.': 'na tala ang nakasave pa rin sa device na ito.',
+  'Continue': 'Magpatuloy',
 };
 
 type BhwLanguageValue = {

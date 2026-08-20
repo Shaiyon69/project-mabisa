@@ -2049,3 +2049,27 @@ tbody tr:hover {
   margin-top: 4px;
 }
 
+/* Covers the shell and nothing more. It is opaque because the point is that the
+   record underneath stops being readable; a blur still shows the shape of a name. */
+.idle-lock {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  inset: 0;
+  background: var(--surface);
+  text-align: center;
+}
+
+.idle-lock h2 {
+  margin: 0;
+}
+
+.idle-lock p {
+  max-width: 30ch;
+  margin: 0;
+}
