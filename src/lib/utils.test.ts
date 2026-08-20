@@ -32,7 +32,7 @@ describe('ageInYears', () => {
 });
 
 describe('getNutritionStatus', () => {
-  // Adult cut-points only — see CLAUDE.md, children need DOH/NNC z-scores.
+  // Adult cut-points only — children need DOH/NNC z-scores.
   it('maps each band at its boundary', () => {
     expect(getNutritionStatus(18.49)).toBe('underweight');
     expect(getNutritionStatus(18.5)).toBe('normal');
