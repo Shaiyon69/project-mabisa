@@ -3,7 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import './App.css';
 import { MabisaDataProvider } from './app/MabisaDataContext';
-import { AppRoutes } from './app/routes/AppRoutes';
+import { AppRoutes } from './app/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
 import { logDev } from './lib/utils';
@@ -51,9 +51,19 @@ export function App() {
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [cachedRole, setCachedRole] = useState<CachedRole | null>(readCachedRole);
+  // Which account the profile lookup has actually answered for. Stored as the id
+  // rather than a flag so a new session is unchecked by construction — a leftover
+  // true would let the next account be judged on a lookup that ran for someone
+  // else.
+  const [checkedUserId, setCheckedUserId] = useState<string | null>(null);
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
   const role = cachedRole?.userId === bhwId ? cachedRole.role : null;
+  // Whether the null above means "not an admin" or only "not known yet". The
+  // admin surface needs the difference: it turns a null role away, and turning
+  // someone away because a fetch has not returned is not the same decision as
+  // turning them away because they are a BHW.
+  const roleChecked = bhwId !== null && checkedUserId === bhwId;
 
   useEffect(() => {
     supabase.auth
@@ -99,8 +109,11 @@ export function App() {
         }
 
         if (error) {
-          // Offline, or no profile row yet. Either way the cached role stands.
+          // Offline, or no profile row yet. Either way the cached role stands —
+          // and it is the only answer this device is going to get, so it counts
+          // as checked.
           logDev('Role lookup failed', error.message);
+          setCheckedUserId(bhwId);
           return;
         }
 
@@ -116,6 +129,7 @@ export function App() {
 
         localStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(next));
         setCachedRole(next);
+        setCheckedUserId(bhwId);
       });
 
     return () => {
@@ -178,7 +192,7 @@ export function App() {
   return (
     <BrowserRouter>
       <MabisaDataProvider bhwId={bhwId}>
-        <AppRoutes logout={handleLogout} role={role} />
+        <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} />
       </MabisaDataProvider>
     </BrowserRouter>
   );

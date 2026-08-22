@@ -581,6 +581,13 @@ button:active,
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* Reassurance, not an alert: it sits under the status tiles and stays quiet so
+   nothing competes with the failure banner below it. */
+.sync-last {
+  margin: 0;
+  font-size: 13px;
+}
+
 .metric-grid,
 .activity-grid,
 .field-row {
@@ -1018,18 +1025,6 @@ tbody tr:hover {
   border-radius: 999px;
   padding: 7px 10px;
   background: var(--field-soft);
-}
-
-.portal-switch {
-  margin: -4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
-}
-
-.portal-switch a {
-  color: var(--primary);
-  font-weight: 800;
 }
 
 /* Admin web */
@@ -1937,4 +1932,132 @@ tbody tr:hover {
     animation-duration: 2400ms !important;
     animation-iteration-count: infinite !important;
   }
+}
+
+/* -----------------------------------------------------------------------------
+   Resident registry, duplicate warning, and the idle lock
+   ----------------------------------------------------------------------------- */
+
+/* A metric that leads somewhere. Everything visual comes from `.metric`; this only
+   removes the anchor's own text styling and marks the tile as a target. */
+.metric-link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.metric-link:hover,
+.metric-link:focus-visible {
+  border-color: var(--secondary);
+}
+
+/* Rows in the registry are the whole tap target, not a link buried in the text —
+   a thumb in the field is not a mouse pointer. The button and anchor reset back to
+   the `.compact-list li` layout so both kinds of row look identical. */
+.resident-list li {
+  padding: 0;
+}
+
+.resident-list li > a,
+.resident-list li > button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 10px;
+  width: 100%;
+  padding: 13px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.resident-list li > a > span,
+.resident-list li > button > span {
+  grid-column: 1;
+}
+
+.resident-list li > a > small,
+.resident-list li > button > small {
+  grid-column: 1;
+}
+
+/* The chevron spans both rows of the grid so it centres against the pair. */
+.resident-list li > a > .ui-icon,
+.resident-list li > button > .ui-icon {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: var(--muted);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.back-link .ui-icon {
+  /* One chevron path in the icon set, pointed the other way. */
+  transform: rotate(180deg);
+}
+
+.back-link:hover {
+  color: var(--text-h);
+}
+
+.duplicate-lede {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.duplicate-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.duplicate-group h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* The confidence pill sits under the detail line rather than beside it: on a
+   phone the name is already using the full width. */
+.duplicate-group .status-pill {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* Covers the shell and nothing more. It is opaque because the point is that the
+   record underneath stops being readable; a blur still shows the shape of a name. */
+.idle-lock {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  inset: 0;
+  background: var(--surface);
+  text-align: center;
+}
+
+.idle-lock h2 {
+  margin: 0;
+}
+
+.idle-lock p {
+  max-width: 30ch;
+  margin: 0;
 }

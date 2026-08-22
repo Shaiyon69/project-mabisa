@@ -1,21 +1,27 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
 import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import type { Individual } from '../../types/database';
+import { ageInYears } from '../../lib/utils';
+import { readLocalIndividuals } from '../../services/localDatabase';
 import { BHWDashboard } from '../../components/bhw/BHWDashboard';
 import { HealthAssessmentForm } from '../../components/bhw/HealthAssessmentForm';
 import { HouseholdForm } from '../../components/bhw/HouseholdForm';
+import { ResidentDetail } from '../../components/bhw/ResidentDetail';
 import { SupplyDisbursementForm } from '../../components/bhw/SupplyDisbursementForm';
 import type { BhwOutletContext } from '../../components/bhw/BHWLayout';
 import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
+import { FormField } from '../../components/common/FormField';
 import { Icon } from '../../components/common/Icon';
 import { Modal } from '../../components/common/Modal';
+import { EmptyState } from '../../components/common/StateMessage';
 import { ThemeToggle } from '../../components/common/ThemeToggle';
 import { supabase } from '../../lib/supabase';
 
 export function BHWHomePage() {
-  const { snapshot, isOnline, syncStatus, syncError, syncingManually, runManualSync, retryDeadLetters } =
+  const { snapshot, isOnline, syncStatus, syncError, lastSyncAt, syncingManually, runManualSync, retryDeadLetters } =
     useMabisaData();
 
   return (
@@ -24,6 +30,7 @@ export function BHWHomePage() {
       isOnline={isOnline}
       syncStatus={syncStatus}
       syncError={syncError}
+      lastSyncAt={lastSyncAt}
       syncingManually={syncingManually}
       onManualSync={runManualSync}
       onRetryDeadLetters={retryDeadLetters}
@@ -44,6 +51,95 @@ export function RegisterResidentPage() {
         navigate('/bhw');
       }}
     />
+  );
+}
+
+export function ResidentsPage() {
+  const { t } = useBhwLanguage();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Individual[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  // Same 300ms debounce and the same accessor the resident picker uses; this
+  // screen only differs in showing the whole list rather than one selection.
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setSearching(true);
+      readLocalIndividuals({ searchQuery: query, limit: 50 })
+        .then(setResults)
+        .catch(console.error)
+        .finally(() => setSearching(false));
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [query]);
+
+  return (
+    <Card className="list-section">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">{t('Registry')}</p>
+          <h2>{t('Residents')}</h2>
+        </div>
+      </div>
+
+      <FormField
+        label={t('Search residents')}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder={t('Search by name...')}
+      />
+
+      {results.length ? (
+        <ul className="compact-list resident-list">
+          {results.map((person) => (
+            <li key={person.resident_id}>
+              <button type="button" onClick={() => navigate(`/bhw/residents/${person.resident_id}`)}>
+                <span>
+                  {person.last_name}, {person.first_name}
+                  {person.is_household_head ? ` (${t('Head')})` : ''}
+                </span>
+                <small>
+                  {ageInYears(person.birthday) ?? '—'} {t('years old')}
+                  {person.household_number ? ` • ${person.household_number}` : ''}
+                </small>
+                <Icon name="chevron" size={16} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyState
+          title={t(searching ? 'Searching...' : 'No resident found')}
+          text={t('Register a household to start the offline-first BHW workflow.')}
+        />
+      )}
+    </Card>
+  );
+}
+
+export function ResidentDetailPage() {
+  const { residentId } = useParams<{ residentId: string }>();
+  const { t } = useBhwLanguage();
+  const { bhwId, snapshot, refreshLocalData, setMessage } = useMabisaData();
+
+  return (
+    <>
+      <Link className="back-link" to="/bhw/residents">
+        <Icon name="chevron" size={16} />
+        {t('Back to residents')}
+      </Link>
+      <ResidentDetail
+        residentId={residentId ?? ''}
+        inventoryItems={snapshot.inventoryItems}
+        bhwId={bhwId}
+        onSaved={async () => {
+          await refreshLocalData();
+          setMessage('Pending Sync. Profile changes were saved on this device.');
+        }}
+      />
+    </>
   );
 }
 
@@ -131,9 +227,7 @@ export function SupplyDisbursementPage() {
       inventoryItems={snapshot.inventoryItems}
       onSaved={async () => {
         await refreshLocalData();
-        // Deliberately does not claim a stock update: saveSupplyDisbursementLocally
-        // writes the log row only. Nothing decrements inventory_items.current_stock yet.
-        setMessage('Pending Sync. Supply release was saved on this device.');
+        setMessage('Pending Sync. Supply release was saved and stock was updated on this device.');
         navigate('/bhw');
       }}
     />

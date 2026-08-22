@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { logDev } from '../lib/utils';
+import { generateDatabasePassphrase } from '../lib/secureStorage';
 import type {
   HealthAssessment,
   HealthAssessmentInsert,
@@ -237,6 +238,22 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   // Retry backoff. Devices installed before the resilience work have a sync_queue
   // without this column, and `create table if not exists` will never add it.
   { table: 'sync_queue', column: 'next_attempt_at', definition: 'text' },
+  // Who last wrote the row, so an authorized correction to a saved profile is
+  // attributable. `updated_at` already carries the when.
+  { table: 'individuals', column: 'updated_by', definition: 'text' },
+  // Duplicate-override provenance — see 202608200001. Deliberately carries no
+  // foreign key: the record a BHW was warned about is usually one this device
+  // pulled rather than wrote, and a device that has not pulled it yet must still
+  // be able to save the override rather than fail on a constraint.
+  { table: 'individuals', column: 'duplicate_override_of', definition: 'text' },
+  { table: 'individuals', column: 'duplicate_override_reason', definition: 'text' },
+  { table: 'individuals', column: 'duplicate_override_by', definition: 'text' },
+  { table: 'individuals', column: 'duplicate_override_at', definition: 'text' },
+  // How a member stands to the household head — see 202608200003. Nullable and
+  // unconstrained: the head has no value, every row written before the column has
+  // none either, and a check constraint here would only duplicate the one the
+  // central table already enforces.
+  { table: 'individuals', column: 'relationship_to_head', definition: 'text' },
 ];
 
 /**
@@ -277,6 +294,40 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
   return localDatabaseSetup;
 }
 
+/**
+ * Decides how this device's database is opened, and encrypts it the first time.
+ *
+ * A field phone carries a barangay's health register offline. On Android that
+ * file is now SQLCipher-encrypted with a passphrase generated on the device and
+ * held by the plugin's own secure store, so a lost handset is a lost handset
+ * rather than a lost register.
+ *
+ * Three states, and the mode is read from stored fact rather than guessed:
+ *
+ * - **web** — `no-encryption`. `jeep-sqlite` has no SQLCipher and a browser has
+ *   no keystore, so the development build stays exactly as it was.
+ * - **native, no secret yet** — generate one, store it, and open with
+ *   `encryption`, which converts the existing plaintext file in place. This is
+ *   the one-time upgrade path for a device already carrying records; it must not
+ *   be reached twice, which is what `isSecretStored()` guarantees.
+ * - **native, secret stored** — `secret`, the ordinary open.
+ */
+async function prepareEncryption(): Promise<'no-encryption' | 'encryption' | 'secret'> {
+  if (isWebPlatform) {
+    return 'no-encryption';
+  }
+
+  const stored = await sqlite.isSecretStored();
+
+  if (stored.result) {
+    return 'secret';
+  }
+
+  await sqlite.setEncryptionSecret(generateDatabasePassphrase());
+  logDev('Local database encrypted for the first time on this device');
+  return 'encryption';
+}
+
 async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   // 2. THE WEB POLYFILL
   // This block ONLY runs in the browser. It ensures the emulator is injected
@@ -304,7 +355,14 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   }
 
   // 3. CREATE & OPEN CONNECTION
-  const database = await sqlite.createConnection('mabisa_local', false, 'no-encryption', 1, false);
+  const encryption = await prepareEncryption();
+  const database = await sqlite.createConnection(
+    'mabisa_local',
+    encryption !== 'no-encryption',
+    encryption,
+    1,
+    false,
+  );
   await database.open();
   await database.execute('pragma foreign_keys = on');
 
@@ -587,6 +645,11 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
   { name: 'birthday', value: (individual) => individual.birthday, mutableOnConflict: true },
   // SQLite has no boolean type; the table stores 0/1 under a check constraint.
   { name: 'is_household_head', value: (individual) => (individual.is_household_head ? 1 : 0), mutableOnConflict: true },
+  {
+    name: 'relationship_to_head',
+    value: (individual) => individual.relationship_to_head ?? null,
+    mutableOnConflict: true,
+  },
   { name: 'occupation', value: (individual) => individual.occupation ?? null, mutableOnConflict: true },
   {
     name: 'educational_attainment',
@@ -606,6 +669,30 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
   { name: 'philhealth_number', value: (individual) => individual.philhealth_number ?? null, mutableOnConflict: true },
   { name: 'created_at', value: (individual) => individual.created_at, mutableOnConflict: false },
   { name: 'updated_at', value: (individual) => individual.updated_at, mutableOnConflict: true },
+  { name: 'updated_by', value: (individual) => individual.updated_by ?? null, mutableOnConflict: true },
+  // Mutable like any other column: the central row is the one the admin portal
+  // will eventually merge from, so a pull must be able to bring an override
+  // recorded on another device down to this one.
+  {
+    name: 'duplicate_override_of',
+    value: (individual) => individual.duplicate_override_of ?? null,
+    mutableOnConflict: true,
+  },
+  {
+    name: 'duplicate_override_reason',
+    value: (individual) => individual.duplicate_override_reason ?? null,
+    mutableOnConflict: true,
+  },
+  {
+    name: 'duplicate_override_by',
+    value: (individual) => individual.duplicate_override_by ?? null,
+    mutableOnConflict: true,
+  },
+  {
+    name: 'duplicate_override_at',
+    value: (individual) => individual.duplicate_override_at ?? null,
+    mutableOnConflict: true,
+  },
 ];
 
 const individualUpsert = buildUpsert('individuals', 'resident_id', individualColumns);
@@ -670,8 +757,18 @@ export async function saveIndividualLocally(individual: Individual, operationTyp
   const database = await getLocalDatabase();
   await database.run(individualUpsert.statement, individualUpsert.values(individual));
 
+  // household_number rides along on every read — readLocalIndividuals joins it so
+  // a list can show a household without a second query — but it is a column on
+  // `households`, not on `individuals`. The local write ignores it because the
+  // column map names its columns explicitly; the queued payload does not, and
+  // Supabase rejects the whole row over one unknown column. Anything editing a
+  // resident read back from SQLite would hit this, so it is dropped here rather
+  // than at each call site.
+  const syncable = { ...individual };
+  delete syncable.household_number;
+
   // Queue the raw object so Supabase receives actual booleans
-  await enqueueSyncOperation('individuals', operationType, individual);
+  await enqueueSyncOperation('individuals', operationType, syncable);
   await persistLocalDatabase();
 }
 
@@ -707,11 +804,68 @@ export async function saveInventoryItemLocally(item: InventoryItem, operationTyp
   await persistLocalDatabase();
 }
 
+/**
+ * Reads one inventory item, or null if this device has never seen it.
+ * Separate from readLocalInventoryItems() because the disbursement path needs the
+ * authoritative current row, not whatever the UI snapshot last loaded.
+ */
+export async function readLocalInventoryItem(itemId: string): Promise<InventoryItem | null> {
+  const database = await getLocalDatabase();
+  const result = await database.query('select * from inventory_items where item_id = ?', [itemId]);
+  const row = result.values?.[0];
+
+  return row ? ({ ...row, current_stock: Number(row.current_stock) } as InventoryItem) : null;
+}
+
+/**
+ * Records a supply release and moves the stock it came out of, as one call.
+ *
+ * The two used to be separate: this wrote the ledger row and nothing decremented
+ * `current_stock`, so the quantity check in the form was reading a figure only the
+ * admin surface could ever change.
+ *
+ * Only the disbursement is queued. The stock move is applied locally — a BHW
+ * offline for three days has to see what is actually left — but it is deliberately
+ * *not* pushed. Two reasons, and either alone would settle it:
+ *
+ * - `inventory_items` is admin-only for writes under the purok RLS, so a queued
+ *   stock update from a phone would be rejected every pass and quarantine.
+ * - An absolute stock number is the wrong thing to send anyway. Two devices
+ *   releasing offline from the same base would each push their own total and the
+ *   later one would win, silently erasing the other's release.
+ *
+ * Centrally the decrement rides on the ledger row instead: an `after insert`
+ * trigger on `supply_disbursements` (202608200002) subtracts the quantity from
+ * the item. That is relative, so concurrent offline releases add up rather than
+ * overwrite, and it does not fire on the `on conflict do update` path a replayed
+ * queue entry takes — so a retried push cannot decrement twice. The next pull
+ * brings the reconciled figure back down to the device.
+ */
 export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
   const database = await getLocalDatabase();
+
+  // Only a new release moves stock. An edit to an existing log row would have to
+  // reverse the original quantity first, and nothing in the app offers that yet.
+  const item = operationType === 'INSERT' ? await readLocalInventoryItem(disbursement.item_id) : null;
+
+  if (operationType === 'INSERT') {
+    if (!item) {
+      throw new Error('That supply item is not on this device yet. Sync before releasing it.');
+    }
+
+    // `check (current_stock >= 0)` on both SQLite and Postgres is the real
+    // backstop. This is here so the BHW reads a sentence instead of a constraint
+    // violation, and so the reason names the number they are short by.
+    if (disbursement.quantity > item.current_stock) {
+      throw new Error(
+        `Only ${item.current_stock} of ${item.item_name} left on this device — ${disbursement.quantity} cannot be released.`,
+      );
+    }
+  }
+
   await database.run(
     `insert or replace into supply_disbursements
      (log_id, item_id, resident_id, disbursement_date, quantity, created_at, updated_at)
@@ -727,6 +881,19 @@ export async function saveSupplyDisbursementLocally(
     ],
   );
   await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
+
+  if (item) {
+    // Local only, and not enqueued — see the note above. `updated_at` is left on
+    // the item's own value rather than stamped forward, so the pull that brings
+    // back the server's reconciled figure is not mistaken for stale data.
+    const movedStock: InventoryItem = {
+      ...item,
+      current_stock: item.current_stock - disbursement.quantity,
+    };
+
+    await database.run(inventoryUpsert.statement, inventoryUpsert.values(movedStock));
+  }
+
   await persistLocalDatabase();
 }
 
@@ -815,6 +982,34 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
     is_out_of_school_youth: row.is_out_of_school_youth === 1,
     is_pregnant_nursing_fp: row.is_pregnant_nursing_fp === 1,
   })) as Individual[];
+}
+
+/**
+ * One resident by id, or null if this device has never seen them.
+ *
+ * Goes through readLocalIndividuals rather than its own select so the boolean
+ * coercion and the household_number join stay in one place — a second query here
+ * is how the detail screen would end up showing `1` where the list shows `Head`.
+ */
+export async function readLocalIndividual(residentId: string): Promise<Individual | null> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query(
+    `SELECT i.*, h.household_number
+     FROM individuals i
+     LEFT JOIN households h ON i.household_id = h.household_id
+     WHERE i.resident_id = ?`,
+    [residentId],
+  );
+  const row = result.values?.[0];
+
+  return row
+    ? ({
+        ...row,
+        is_household_head: row.is_household_head === 1,
+        is_out_of_school_youth: row.is_out_of_school_youth === 1,
+        is_pregnant_nursing_fp: row.is_pregnant_nursing_fp === 1,
+      } as Individual)
+    : null;
 }
 
 export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Household[]> {

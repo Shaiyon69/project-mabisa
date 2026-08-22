@@ -5,9 +5,12 @@ import {
   calculateBmi,
   createId,
   getNutritionStatus,
+  HEIGHT_CM_RANGE,
+  isMeasurementInRange,
   scrollToFirstError,
   titleCase,
   today,
+  WEIGHT_KG_RANGE,
 } from '../../lib/utils';
 import { saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
@@ -33,6 +36,7 @@ const BMI_BANDS = [
 ] as const satisfies readonly { status: NutritionStatus; from: number; to: number }[];
 
 const BMI_TICKS = [18.5, 25, 30];
+
 
 // WHO reads 5-19 year olds off BMI-for-age z-scores, not these fixed cut-points,
 // and BMI is not a nutrition measure at all during pregnancy or nursing. The form
@@ -103,7 +107,11 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     !hasIndividuals && 'registered resident',
     !residentId && 'selected resident',
     !assessmentDate && 'assessment date',
-    (!weight || !height || !bmi || !nutritionStatus) && 'valid weight and height',
+    (!isMeasurementInRange(weight, WEIGHT_KG_RANGE) ||
+      !isMeasurementInRange(height, HEIGHT_CM_RANGE) ||
+      !bmi ||
+      !nutritionStatus) &&
+      'valid weight and height',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
   const caveats = bmiCaveats(resident, isFilipino);
@@ -185,24 +193,24 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           <FormField 
             label={t('Weight (kg)')}
             type="number" 
-            min="1" 
-            max="300" 
-            step="0.1" 
-            value={weight} 
-            onChange={(event) => setWeight(event.target.value)} 
-            required 
-            error={showValidation && (!weight || Number(weight) < 1 || Number(weight) > 300) ? t('Enter a weight from 1 to 300 kg.') : undefined}
+            min={WEIGHT_KG_RANGE.min}
+            max={WEIGHT_KG_RANGE.max}
+            step="0.1"
+            value={weight}
+            onChange={(event) => setWeight(event.target.value)}
+            required
+            error={showValidation && !isMeasurementInRange(weight, WEIGHT_KG_RANGE) ? t('Enter a weight from 1 to 300 kg.') : undefined}
           />
           <FormField 
             label={t('Height (cm)')}
             type="number" 
-            min="30"  
-            max="250" 
-            step="0.1" 
-            value={height} 
-            onChange={(event) => setHeight(event.target.value)} 
-            required 
-            error={showValidation && (!height || Number(height) < 30 || Number(height) > 250) ? t('Enter a height from 30 to 250 cm.') : undefined}
+            min={HEIGHT_CM_RANGE.min}
+            max={HEIGHT_CM_RANGE.max}
+            step="0.1"
+            value={height}
+            onChange={(event) => setHeight(event.target.value)}
+            required
+            error={showValidation && !isMeasurementInRange(height, HEIGHT_CM_RANGE) ? t('Enter a height from 30 to 250 cm.') : undefined}
           />
         </div>
         <BmiRail bmi={bmi} status={nutritionStatus} />

@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react';
 import { Button } from '../../components/common/Button';
 import { FormField } from '../../components/common/FormField';
+import { surface } from '../../app/surface';
 
 type LoginPageProps = {
   email: string;
@@ -21,7 +22,9 @@ export function LoginPage({
   onPasswordChange,
   onSubmit,
 }: LoginPageProps) {
-  const isAdminPortal = window.location.pathname.startsWith('/admin');
+  // A single-surface build already knows which portal it is. Only the combined
+  // development build has to read the path to decide which one is being opened.
+  const isAdminPortal = surface === 'admin' || (surface === 'both' && window.location.pathname.startsWith('/admin'));
   const portalName = isAdminPortal ? 'MABISA Admin Portal' : 'MABISA BHW Mobile';
 
   return (
@@ -70,14 +73,6 @@ export function LoginPage({
             {authLoading ? 'Checking Access' : isAdminPortal ? 'Sign in as Admin' : 'Sign in as BHW'}
           </Button>
         </form>
-
-        <p className="portal-switch">
-          {isAdminPortal ? 'Are you a Barangay Health Worker?' : 'Are you an administrator?'}{' '}
-          <a href={isAdminPortal ? '/bhw' : '/admin'}>
-            Open the {isAdminPortal ? 'BHW mobile login' : 'Admin Portal'}
-          </a>
-        </p>
-
       </section>
     </main>
   );
