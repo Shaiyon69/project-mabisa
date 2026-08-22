@@ -1,51 +1,202 @@
-import type { HealthAssessment, SupplyDisbursement } from '../../types/database';
+import type { ReactNode } from 'react';
 import { formatDate, titleCase } from '../../lib/utils';
+import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
+import {
+  AGE_BANDS,
+  NUTRITION_ORDER,
+  ageBandOf,
+  disbursementsByItem,
+  lowStockItems,
+  tally,
+  type AdminFilters,
+  type AdminSnapshot,
+} from '../../services/adminData';
+import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../../types/database';
+import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { EmptyState } from '../common/StateMessage';
+import { SummaryContext } from './AdminFilterBar';
+import { SummaryBars } from './SummaryBars';
 
 type ReportCardsProps = {
-  assessments: HealthAssessment[];
-  disbursements: SupplyDisbursement[];
+  snapshot: AdminSnapshot;
+  filters: AdminFilters;
 };
 
-export function ReportCards({ assessments, disbursements }: ReportCardsProps) {
-  const latestAssessments = assessments.slice(0, 5);
-  const latestDisbursements = disbursements.slice(0, 5);
+/**
+ * The four summaries FR-09 asks for, each with the CSV that reproduces it.
+ *
+ * These used to be the five most recent assessment rows and the five most recent
+ * disbursements, which is a feed rather than a report: it answers "what happened
+ * last" when an LGU officer needs "how many, over what period". Every panel here
+ * is an aggregate over the selected period, states that period, and exports the
+ * rows the aggregate was computed from — so the acceptance criterion that export
+ * totals match the filtered source records is a property of the code rather than
+ * a thing to check by hand.
+ */
+export function ReportCards({ snapshot, filters }: ReportCardsProps) {
+  const lowStock = lowStockItems(snapshot.inventoryItems);
+  const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
 
   return (
-    <div className="activity-grid">
-      <Card className="activity-card" as="article">
-        <h3>Nutrition Status Trends</h3>
-        {latestAssessments.length ? (
+    <div className="activity-grid report-grid">
+      <ReportPanel
+        title="Resident Demographics"
+        note={`${snapshot.residentCount} resident(s) profiled centrally. Sex and age bands are counted over every resident, not the period.`}
+        filters={filters}
+        filterNote="none beyond the period (totals cover all residents)"
+        onExport={() =>
+          exportReport('Resident Demographics', filters, buildDemographicRows(snapshot), [
+            { header: 'Grouping', value: (row) => row.grouping },
+            { header: 'Category', value: (row) => row.category },
+            { header: 'Residents', value: (row) => row.count },
+          ])
+        }
+      >
+        <h4>By sex</h4>
+        <SummaryBars
+          rows={tally(snapshot.residents, (resident) => resident.sex, ['female', 'male'])}
+          emptyTitle="No residents"
+          emptyText="Resident profiles appear here once a BHW device has synced."
+        />
+        <h4>By age band</h4>
+        <SummaryBars
+          rows={tally(snapshot.residents, (resident) => ageBandOf(resident.birthday), AGE_BANDS.map((band) => band.label))}
+          emptyTitle="No residents"
+          emptyText="Age bands are computed from recorded birthdays."
+        />
+      </ReportPanel>
+
+      <ReportPanel
+        title="Nutrition Status Summary"
+        note={`${snapshot.assessments.length} assessment(s) recorded in this period. A status is the reading the measurements produced, not a diagnosis.`}
+        filters={filters}
+        onExport={() =>
+          exportReport('Nutrition Status Summary', filters, snapshot.assessments, assessmentColumns)
+        }
+      >
+        <SummaryBars
+          rows={tally(snapshot.assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER)}
+          emptyTitle="No assessments in this period"
+          emptyText="Widen the date range, or wait for a field device to sync."
+        />
+      </ReportPanel>
+
+      <ReportPanel
+        title="Inventory On Hand"
+        note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. Stock is a current position and ignores the period.`}
+        filters={filters}
+        filterNote="none beyond the period (stock is current, not historical)"
+        onExport={() => exportReport('Inventory On Hand', filters, snapshot.inventoryItems, inventoryColumns)}
+      >
+        {lowStock.length ? (
           <ul className="compact-list">
-            {latestAssessments.map((assessment) => (
-              <li key={assessment.assessment_id}>
-                <span>{titleCase(assessment.nutrition_status)}</span>
+            {lowStock.map((item) => (
+              <li key={item.item_id}>
+                <span>{item.item_name}</span>
                 <small>
-                  {assessment.bmi.toFixed(2)} BMI • {formatDate(assessment.assessment_date)}
+                  {item.current_stock} on hand • {titleCase(item.type)}
                 </small>
               </li>
             ))}
           </ul>
         ) : (
-          <EmptyState title="No assessment data" text="Health assessment summaries will appear here." />
+          <p className="muted">No item is at or below the low-stock threshold.</p>
         )}
-      </Card>
-      <Card className="activity-card" as="article">
-        <h3>Supply Release Activity</h3>
-        {latestDisbursements.length ? (
-          <ul className="compact-list">
-            {latestDisbursements.map((disbursement) => (
-              <li key={disbursement.log_id}>
-                <span>{disbursement.quantity} item(s) released</span>
-                <small>{formatDate(disbursement.disbursement_date)}</small>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState title="No disbursement data" text="Supply allocation summaries will appear here." />
-        )}
-      </Card>
+      </ReportPanel>
+
+      <ReportPanel
+        title="Supply Allocation"
+        note={`${releasedTotal} unit(s) released across ${snapshot.disbursements.length} disbursement(s) in this period.`}
+        filters={filters}
+        onExport={() =>
+          exportReport('Supply Allocation', filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
+        }
+      >
+        <SummaryBars
+          rows={disbursementsByItem(snapshot.disbursements, snapshot.inventoryItems)}
+          emptyTitle="No releases in this period"
+          emptyText="Supply disbursements logged by a BHW appear here after sync."
+        />
+      </ReportPanel>
     </div>
   );
+}
+
+type ReportPanelProps = {
+  title: string;
+  note: string;
+  filters: AdminFilters;
+  filterNote?: string;
+  onExport: () => void;
+  children: ReactNode;
+};
+
+function ReportPanel({ title, note, filters, filterNote, onExport, children }: ReportPanelProps) {
+  return (
+    <Card className="activity-card report-card" as="article">
+      <div className="report-card-head">
+        <h3>{title}</h3>
+        <Button variant="ghost" onClick={onExport}>
+          Export CSV
+        </Button>
+      </div>
+      <SummaryContext filters={filters} extra={filterNote} />
+      {children}
+      <p className="muted report-note">{note}</p>
+    </Card>
+  );
+}
+
+function exportReport<Row>(title: string, filters: AdminFilters, rows: Row[], columns: CsvColumn<Row>[]): void {
+  downloadCsv(reportFileName(title), buildReportCsv({ title, from: filters.from, to: filters.to }, rows, columns));
+}
+
+type DemographicRow = { grouping: string; category: string; count: number };
+
+function buildDemographicRows(snapshot: AdminSnapshot): DemographicRow[] {
+  return [
+    ...tally(snapshot.residents, (resident) => resident.sex, ['female', 'male']).map((row) => ({
+      grouping: 'Sex',
+      category: titleCase(row.label),
+      count: row.count,
+    })),
+    ...tally(
+      snapshot.residents,
+      (resident) => ageBandOf(resident.birthday),
+      AGE_BANDS.map((band) => band.label),
+    ).map((row) => ({ grouping: 'Age band', category: row.label, count: row.count })),
+  ];
+}
+
+const assessmentColumns: CsvColumn<HealthAssessment>[] = [
+  { header: 'Assessment ID', value: (row) => row.assessment_id },
+  { header: 'Resident ID', value: (row) => row.resident_id },
+  { header: 'Date', value: (row) => row.assessment_date },
+  { header: 'Weight (kg)', value: (row) => row.weight },
+  { header: 'Height (cm)', value: (row) => row.height },
+  // The reading is exported beside the measurements that produced it, the same
+  // rule the assessment screen follows — a status on its own is not reviewable.
+  { header: 'BMI', value: (row) => row.bmi },
+  { header: 'Nutrition status', value: (row) => titleCase(row.nutrition_status) },
+];
+
+const inventoryColumns: CsvColumn<InventoryItem>[] = [
+  { header: 'Item ID', value: (row) => row.item_id },
+  { header: 'Item', value: (row) => row.item_name },
+  { header: 'Type', value: (row) => titleCase(row.type) },
+  { header: 'Current stock', value: (row) => row.current_stock },
+  { header: 'Last updated', value: (row) => formatDate(row.updated_at) },
+];
+
+function disbursementColumns(items: InventoryItem[]): CsvColumn<SupplyDisbursement>[] {
+  const names = new Map(items.map((item) => [item.item_id, item.item_name]));
+
+  return [
+    { header: 'Log ID', value: (row) => row.log_id },
+    { header: 'Date', value: (row) => row.disbursement_date },
+    { header: 'Item', value: (row) => names.get(row.item_id) ?? 'Unknown item' },
+    { header: 'Item ID', value: (row) => row.item_id },
+    { header: 'Resident ID', value: (row) => row.resident_id },
+    { header: 'Quantity', value: (row) => row.quantity },
+  ];
 }
