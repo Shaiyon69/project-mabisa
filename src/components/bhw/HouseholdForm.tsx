@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import type { Household, Individual, IndividualSex } from '../../types/database';
-import { createId, scrollToFirstError, today } from '../../lib/utils';
-import { saveHouseholdLocally, saveIndividualLocally } from '../../services/localDatabase';
+import type { Household, Individual } from '../../types/database';
+import { createId, scrollToFirstError } from '../../lib/utils';
+import { findLikelyDuplicates } from '../../lib/duplicates';
+import { readLocalIndividuals, saveHouseholdLocally, saveIndividualLocally } from '../../services/localDatabase';
+import { DuplicateWarningModal, type FlaggedMember } from './DuplicateWarningModal';
+import { MemberChoice, MemberFields } from './MemberFields';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { FormActions, FormField, SelectField } from '../common/FormField';
+import { FormActions, FormField } from '../common/FormField';
 import { CheckboxGroup } from '../common/CheckboxGroup';
 import { Icon } from '../common/Icon';
 import { useBhwLanguage } from '../../app/BhwLanguageContext';
@@ -32,19 +35,6 @@ const FOOD_OPTIONS = [
   { label: 'None', value: 'none' }
 ];
 
-// The column is plain text with no check constraint, so a fixed list is safe here
-// and keeps the registry searchable in a way free text would not.
-const EDUCATION_OPTIONS = [
-  { label: '(Not specified)', value: '' },
-  { label: 'None', value: 'none' },
-  { label: 'Elementary', value: 'elementary' },
-  { label: 'High School', value: 'high_school' },
-  { label: 'Senior High School', value: 'senior_high' },
-  { label: 'Vocational', value: 'vocational' },
-  { label: 'College', value: 'college' },
-  { label: 'Post-graduate', value: 'post_graduate' }
-];
-
 // PhilHealth numbers get written with dashes or spaces on paper forms. Accept both
 // on input, reject anything that is clearly not a number, and store digits only so
 // the same person cannot end up under two spellings of one ID.
@@ -62,30 +52,12 @@ function philhealthDigits(value: string | null | undefined): string | null {
   return digits ? digits : null;
 }
 
-/** One per-member yes/no, on the same target as every other choice in the app. */
-function MemberChoice({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <label className={`choice${checked ? ' is-checked' : ''}`}>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      {label}
-    </label>
-  );
-}
-
 type HouseholdFormProps = {
   bhwId: string;
   onSaved: () => Promise<void>;
 };
 
-export function HouseholdForm({ onSaved }: HouseholdFormProps) {
+export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const { t } = useBhwLanguage();
   const [household, setHousehold] = useState<Partial<Household>>({
     household_number: '',
@@ -112,6 +84,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
       sex: 'female',
       birthday: '',
       is_household_head: true,
+      relationship_to_head: null,
       occupation: '',
       educational_attainment: '',
       is_out_of_school_youth: false,
@@ -123,6 +96,11 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  // Members that look like someone already on this device, and the reason the BHW
+  // gives for saving them anyway. Non-empty `flagged` is what holds the save: the
+  // warning is raised before anything is written, never after.
+  const [flagged, setFlagged] = useState<FlaggedMember[]>([]);
+  const [overrideReason, setOverrideReason] = useState('');
   const missingRequirements = [
     !household.household_number?.trim() && 'household number',
     !household.water_source?.length && 'water source',
@@ -149,6 +127,7 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
         sex: 'female',
         birthday: '',
         is_household_head: false,
+        relationship_to_head: null,
         occupation: '',
         educational_attainment: '',
         is_out_of_school_youth: false,
@@ -156,6 +135,107 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
         philhealth_number: '',
       }
     ]);
+  }
+
+  /**
+   * Members who look like a record already on this device, checked before a single
+   * row is written.
+   *
+   * Candidates come from the same search the resident picker uses rather than a
+   * query of its own, so a name that can be found here is a name that could be
+   * found there. Only local SQLite is consulted: a resident profiled by a BHW in
+   * another purok is not on this device and RLS will not put them there, so
+   * cross-purok duplicates are the admin portal's to catch.
+   */
+  async function scanForDuplicates(): Promise<FlaggedMember[]> {
+    const scans = await Promise.all(
+      members.map(async (member, index) => {
+        const candidates = await readLocalIndividuals({ searchQuery: member.last_name?.trim(), limit: 50 });
+        const matches = findLikelyDuplicates(
+          {
+            first_name: member.first_name ?? '',
+            last_name: member.last_name ?? '',
+            birthday: member.birthday ?? '',
+          },
+          candidates,
+        );
+
+        return {
+          memberNumber: index + 1,
+          memberName: `${member.first_name} ${member.last_name}`.trim(),
+          matches,
+        };
+      }),
+    );
+
+    return scans.filter((member) => member.matches.length > 0);
+  }
+
+  /**
+   * Writes the household and every member.
+   *
+   * `overriddenMembers` is empty on the clean path and carries the flagged members
+   * when the BHW has said they are different people — each of those gets the
+   * record they were shown, their reason, and their own account stamped on it.
+   */
+  async function persistHousehold(overriddenMembers: FlaggedMember[], reason: string): Promise<void> {
+    const householdId = createId();
+    const timestamp = new Date().toISOString();
+    const overrideByMemberNumber = new Map(overriddenMembers.map((member) => [member.memberNumber, member]));
+
+    await saveHouseholdLocally({
+      ...(household as Household),
+      household_id: householdId,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+
+    for (const [index, member] of members.entries()) {
+      // Sorted most convincing first, so the head of the list is the record the
+      // BHW was actually weighing this person against.
+      const overridden = overrideByMemberNumber.get(index + 1);
+
+      await saveIndividualLocally({
+        ...(member as Individual),
+        resident_id: createId(),
+        household_id: householdId,
+        // Optional text is normalised here so the column holds NULL rather than
+        // an empty string, which reads the same in the UI but not in a query.
+        occupation: emptyToNull(member.occupation),
+        educational_attainment: emptyToNull(member.educational_attainment),
+        philhealth_number: philhealthDigits(member.philhealth_number),
+        // The head has no relationship to themself. Stripped here rather than when
+        // the head box is ticked, so a member ticked and unticked again keeps the
+        // answer the BHW already gave.
+        relationship_to_head: member.is_household_head ? null : member.relationship_to_head ?? null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        updated_by: bhwId,
+        duplicate_override_of: overridden?.matches[0]?.person.resident_id ?? null,
+        duplicate_override_reason: overridden ? reason.trim() : null,
+        duplicate_override_by: overridden ? bhwId : null,
+        duplicate_override_at: overridden ? timestamp : null,
+      });
+    }
+
+    await onSaved();
+  }
+
+  async function handleOverride() {
+    setSaving(true);
+    setFormError(null);
+
+    try {
+      await persistHousehold(flagged, overrideReason);
+      setFlagged([]);
+      setOverrideReason('');
+    } catch (error) {
+      setFlagged([]);
+      setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
+      scrollToFirstError();
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -203,32 +283,18 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
     }
 
     try {
-      const householdId = createId();
-      const timestamp = new Date().toISOString();
+      // The warning comes before the write, not after it. A save that had already
+      // landed would leave the BHW deleting a record they were never offered the
+      // chance to decline.
+      const flaggedMembers = await scanForDuplicates();
 
-      await saveHouseholdLocally({
-        ...(household as Household),
-        household_id: householdId,
-        created_at: timestamp,
-        updated_at: timestamp,
-      });
-
-      for (const member of members) {
-        await saveIndividualLocally({
-          ...(member as Individual),
-          resident_id: createId(),
-          household_id: householdId,
-          // Optional text is normalised here so the column holds NULL rather than
-          // an empty string, which reads the same in the UI but not in a query.
-          occupation: emptyToNull(member.occupation),
-          educational_attainment: emptyToNull(member.educational_attainment),
-          philhealth_number: philhealthDigits(member.philhealth_number),
-          created_at: timestamp,
-          updated_at: timestamp,
-        });
+      if (flaggedMembers.length > 0) {
+        setFlagged(flaggedMembers);
+        setSaving(false);
+        return;
       }
 
-      await onSaved();
+      await persistHousehold([], '');
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
       scrollToFirstError();
@@ -292,101 +358,18 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
           <div key={index} className="member-card">
             <h4>{t('Member')} {index + 1} {member.is_household_head ? `(${t('Head')})` : ''}</h4>
 
-            <div className="field-row">
-              {/* autoCapitalize is the phone keyboard's own behaviour for a name
-                  field; typing one lowercase surname per household is the kind of
-                  work the app should absorb rather than hand to the BHW. */}
-              <FormField
-                label={t('First Name')}
-                value={member.first_name}
-                onChange={(e) => updateMember(index, 'first_name', e.target.value)}
-                required
-                autoCapitalize="words"
-                error={showValidation && !member.first_name?.trim() ? t('First name is required.') : undefined}
-              />
-              <FormField
-                label={t('Middle Name')}
-                value={member.middle_name || ''}
-                onChange={(e) => updateMember(index, 'middle_name', e.target.value)}
-                placeholder="(Optional)"
-                autoCapitalize="words"
-              />
-              <FormField
-                label={t('Last Name')}
-                value={member.last_name}
-                onChange={(e) => updateMember(index, 'last_name', e.target.value)}
-                required
-                autoCapitalize="words"
-                error={showValidation && !member.last_name?.trim() ? t('Last name is required.') : undefined}
-              />
-            </div>
-
-            <div className="field-row">
-              <FormField 
-                label={t('Birthdate')}
-                type="date" 
-                max={today()}
-                value={member.birthday} 
-                onChange={(e) => updateMember(index, 'birthday', e.target.value)} 
-                required 
-                error={showValidation && !member.birthday ? t('Birthdate is required.') : undefined}
-              />
-              <SelectField 
-                label={t('Sex')}
-                value={member.sex} 
-                onChange={(e) => updateMember(index, 'sex', e.target.value as IndividualSex)}
-              >
-                <option value="female">{t('Female')}</option>
-                <option value="male">{t('Male')}</option>
-              </SelectField>
-            </div>
-
-            <div className="field-row">
-              <FormField
-                label={t('Occupation')}
-                value={member.occupation || ''}
-                onChange={(e) => updateMember(index, 'occupation', e.target.value)}
-                placeholder="(Optional)"
-              />
-              <SelectField
-                label={t('Educational Attainment')}
-                value={member.educational_attainment || ''}
-                onChange={(e) => updateMember(index, 'educational_attainment', e.target.value)}
-              >
-                {EDUCATION_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </option>
-                ))}
-              </SelectField>
-            </div>
-
-            <FormField
-              label={t('PhilHealth Number')}
-              value={member.philhealth_number || ''}
-              onChange={(e) => updateMember(index, 'philhealth_number', e.target.value)}
-              placeholder="(Optional) e.g. 12-345678901-2"
-              inputMode="numeric"
-              hint={t('Dashes and spaces are fine — only the digits are saved.')}
-            />
-
-            <div className="choice-list">
+            <MemberFields
+              member={member}
+              showValidation={showValidation}
+              onChange={(field, value) => updateMember(index, field, value)}
+            >
               <MemberChoice
                 label={t('This person is a household head')}
                 checked={member.is_household_head ?? false}
                 onChange={(next) => updateMember(index, 'is_household_head', next)}
               />
-              <MemberChoice
-                label={t('Out-of-school youth')}
-                checked={member.is_out_of_school_youth ?? false}
-                onChange={(next) => updateMember(index, 'is_out_of_school_youth', next)}
-              />
-              <MemberChoice
-                label={t('Pregnant, nursing, or using family planning')}
-                checked={member.is_pregnant_nursing_fp ?? false}
-                onChange={(next) => updateMember(index, 'is_pregnant_nursing_fp', next)}
-              />
-            </div>
+            </MemberFields>
+
             {showValidation && !members.some((entry) => entry.is_household_head) ? <small className="field-error"><b className="required-mark">*</b> {t('Assign one household head.')}</small> : null}
           </div>
         ))}
@@ -402,6 +385,19 @@ export function HouseholdForm({ onSaved }: HouseholdFormProps) {
           </Button>
         </FormActions>
       </form>
+
+      <DuplicateWarningModal
+        open={flagged.length > 0}
+        flagged={flagged}
+        reason={overrideReason}
+        saving={saving}
+        onReasonChange={setOverrideReason}
+        onCancel={() => {
+          setFlagged([]);
+          setOverrideReason('');
+        }}
+        onOverride={() => void handleOverride()}
+      />
     </Card>
   );
 }

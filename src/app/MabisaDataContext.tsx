@@ -11,6 +11,7 @@ import {
   requeueDeadLetterEntries,
   readSyncQueue,
 } from '../services/localDatabase';
+import { readLastSyncAt, resetPullWatermark } from '../services/syncService';
 import { MabisaDataContext, emptySnapshot, type LocalSnapshot, type MabisaDataContextValue } from './mabisaData';
 
 export function MabisaDataProvider({ bhwId, children }: { bhwId: string; children: React.ReactNode }) {
@@ -116,6 +117,10 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     setSyncError(null);
 
     try {
+      // The pull skipped these records' server rows while they sat quarantined,
+      // and its watermark has moved past them since. Forget it so the retry pass
+      // reads the central copies again and the two versions can be compared.
+      resetPullWatermark();
       const requeued = await requeueDeadLetterEntries();
       setMessage(`Returned ${requeued} set-aside change(s) to the sync queue.`);
       await runManualSync();
@@ -142,6 +147,9 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       syncError:
         syncError ?? (backgroundSync.status === 'failed' ? backgroundSync.lastResult?.errorMessage ?? null : null),
       isOnline: backgroundSync.isOnline,
+      // Re-read rather than held in state: the engine writes it, and `lastResult`
+      // in the dependency list below means a finished pass re-reads it.
+      lastSyncAt: readLastSyncAt(),
       syncingManually,
       refreshLocalData,
       runManualSync,

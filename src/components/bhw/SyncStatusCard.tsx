@@ -11,6 +11,8 @@ type SyncStatusCardProps = {
   syncStatus: SyncStatus;
   /** Present only on a genuine failure. Drives the "Action Required" banner. */
   syncError: string | null;
+  /** When the queue last drained, ISO 8601, or null if it never has on this device. */
+  lastSyncAt: string | null;
   pendingQueueCount: number;
   deadLetterEntries: DeadLetterEntry[];
   syncingManually: boolean;
@@ -39,10 +41,25 @@ const recordLabels: Record<LocalTableName, string> = {
   supply_disbursements: 'Supply release',
 };
 
+/**
+ * Date and time, because "last synced Aug 18" is not an answer to the question a
+ * BHW is asking — whether the records they entered this morning have left the
+ * phone. `formatDate` carries no clock, so this one is written here.
+ */
+function formatSyncMoment(value: string): string {
+  return new Intl.DateTimeFormat('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 export function SyncStatusCard({
   isOnline,
   syncStatus,
   syncError,
+  lastSyncAt,
   pendingQueueCount,
   deadLetterEntries,
   syncingManually,
@@ -94,6 +111,12 @@ export function SyncStatusCard({
           tone={isPending ? 'warning' : 'success'}
         />
       </div>
+
+      <p className="muted sync-last">
+        {lastSyncAt
+          ? `${t('Last synced')} ${formatSyncMoment(lastSyncAt)}`
+          : t('This device has not completed a sync yet.')}
+      </p>
 
       {isError && (
         <p className="alert sync-alert">

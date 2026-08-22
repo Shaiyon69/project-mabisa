@@ -12,10 +12,12 @@ const config: CapacitorConfig = {
   plugins: {
     CapacitorSQLite: {
       // Native Android keeps the database on the filesystem, so none of the web
-      // store machinery applies here. Encryption is left off deliberately: turning it
-      // on requires a passphrase the app has nowhere to get, and a hardcoded one
-      // protects nothing. Revisit alongside a real device-lock story.
-      androidIsEncryption: false,
+      // store machinery applies here — and a file holding a barangay's health
+      // register travels in a bag all day. SQLCipher is on, keyed by a passphrase
+      // generated on the device itself (see prepareEncryption in
+      // src/services/localDatabase.ts) and held by this plugin's own secure store.
+      // Never a hardcoded passphrase: one that ships in the APK protects nothing.
+      androidIsEncryption: true,
     },
   },
 };

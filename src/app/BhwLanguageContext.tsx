@@ -37,6 +37,8 @@ const filipino: Record<string, string> = {
   'Push Local Changes': 'I-sync ang mga Tala',
   'Retry Sync': 'Subukang Muli',
   'Syncing...': 'Nagsi-sync...',
+  'Last synced': 'Huling na-sync',
+  'This device has not completed a sync yet.': 'Wala pang natatapos na sync ang device na ito.',
   'Households': 'Mga Sambahayan',
   'Registered dwellings': 'Rehistradong tirahan',
   'Individuals': 'Mga Residente',
@@ -88,6 +90,13 @@ const filipino: Record<string, string> = {
   'Out-of-school youth': 'Kabataang hindi nag-aaral',
   'Pregnant, nursing, or using family planning': 'Buntis, nagpapasuso, o gumagamit ng family planning',
   'Occupation': 'Hanapbuhay',
+  'Relationship to Household Head': 'Kaugnayan sa Puno ng Sambahayan',
+  'Spouse': 'Asawa',
+  'Child': 'Anak',
+  'Parent': 'Magulang',
+  'Sibling': 'Kapatid',
+  'Other Relative': 'Ibang kamag-anak',
+  'Unrelated': 'Hindi kamag-anak',
   'Educational Attainment': 'Natapos na Pag-aaral',
   'PhilHealth Number': 'Numero ng PhilHealth',
   'Dashes and spaces are fine — only the digits are saved.': 'Puwede ang gitling at espasyo — ang mga numero lang ang ise-save.',
@@ -149,6 +158,50 @@ const filipino: Record<string, string> = {
   'Select at least one water source.': 'Pumili ng kahit isang pinagmumulan ng tubig.',
   'Select at least one toilet facility.': 'Pumili ng kahit isang uri ng palikuran.',
   'Select at least one food-production option.': 'Pumili ng kahit isang paraan ng produksyon ng pagkain.',
+
+  // Duplicate warning. MABISA only warns — the BHW confirms identity in person —
+  // so the Filipino has to read as a question, never as a refusal.
+  'Someone here may already be registered': 'May kaparehong nakatala na',
+  'Check these records before saving. If this is a different person, say so and the app will keep your reason with the new record.':
+    'Suriin ang mga talang ito bago mag-save. Kung ibang tao ito, sabihin at itatabi ng app ang inyong dahilan kasama ng bagong tala.',
+  'Same name and birthdate': 'Parehong pangalan at kaarawan',
+  'Same name': 'Parehong pangalan',
+  'Why is this a different person?': 'Bakit ibang tao ito?',
+  'Saved with the record so an administrator can see who decided this and why.':
+    'Itatabi kasama ng tala para makita ng administrator kung sino ang nagdesisyon at bakit.',
+  'Go back and edit': 'Bumalik at baguhin',
+  'Not the same person — save': 'Hindi pareho — i-save',
+
+  // Resident registry and detail.
+  'Registry': 'Talaan',
+  'Residents': 'Mga residente',
+  'Search residents': 'Maghanap ng residente',
+  'Back to residents': 'Bumalik sa mga residente',
+  'Opening record...': 'Binubuksan ang tala...',
+  'Resident not on this device': 'Wala sa device na ito ang residente',
+  'They may belong to another purok, or their record has not synced down yet.':
+    'Maaaring nasa ibang purok sila, o hindi pa nakababa ang kanilang tala.',
+  'Household Head': 'Puno ng Sambahayan',
+  'Household': 'Sambahayan',
+  'Age': 'Edad',
+  'years old': 'taong gulang',
+  'Yes': 'Oo',
+  'No': 'Hindi',
+  'Edit profile': 'Baguhin ang profile',
+  'Cancel': 'Kanselahin',
+  'Save changes': 'I-save ang binago',
+  'Saved over a duplicate warning': 'Na-save kahit may babala ng kaparehong tala',
+  'Supplies Released': 'Mga Ipinamahaging Suplay',
+  'No supplies released': 'Walang ipinamahaging suplay',
+  'Supply releases to this resident appear here.': 'Lalabas dito ang mga suplay na ibinigay sa residenteng ito.',
+  'Item not on this device': 'Wala sa device na ito ang aytem',
+
+  // Idle lock. Nothing here may suggest work was lost, because none was.
+  'Screen locked': 'Naka-lock ang screen',
+  'Nothing was lost. Your records are still on this device.':
+    'Walang nawala. Nasa device pa rin ang inyong mga tala.',
+  'record(s) still saved on this device.': 'na tala ang nakasave pa rin sa device na ito.',
+  'Continue': 'Magpatuloy',
 };
 
 type BhwLanguageValue = {
