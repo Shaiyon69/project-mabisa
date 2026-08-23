@@ -5,7 +5,7 @@ import { Button } from '../common/Button';
 import { Icon } from '../common/Icon';
 import { Modal } from '../common/Modal';
 import { TextAreaField } from '../common/FormField';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 /** One member of the household being saved, and the records that look like them. */
 export type FlaggedMember = {

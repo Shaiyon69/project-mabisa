@@ -11,7 +11,7 @@ import { Card } from '../common/Card';
 import { FormActions, FormField } from '../common/FormField';
 import { CheckboxGroup } from '../common/CheckboxGroup';
 import { Icon } from '../common/Icon';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 const WATER_OPTIONS = [
   { label: 'Local Water District', value: 'water_district' },
