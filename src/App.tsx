@@ -6,6 +6,9 @@ import { MabisaDataProvider } from './app/MabisaDataContext';
 import { AppRoutes } from './app/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
+import { describeAuthError } from './lib/authErrors';
+import { countPendingQueueEntries } from './services/localDatabase';
+import { buildsBhw } from './app/surface';
 import { logDev } from './lib/utils';
 import type { UserRole } from './types/database';
 
@@ -61,6 +64,7 @@ export function App() {
   // true would let the next account be judged on a lookup that ran for someone
   // else.
   const [checkedUserId, setCheckedUserId] = useState<string | null>(null);
+  const [pendingRecordCount, setPendingRecordCount] = useState<number | null>(null);
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
   const role = cachedRole?.userId === bhwId ? cachedRole.role : null;
@@ -142,6 +146,33 @@ export function App() {
     };
   }, [bhwId]);
 
+  // What is still on this device while nobody is signed in.
+  //
+  // A refresh token expires after enough days offline, which drops a BHW back to
+  // the login screen holding a phone full of unsent visits. Without this they
+  // have no way to tell whether signing in again is safe, and the honest fear is
+  // that the work is gone. Only the field build asks: the portal keeps no local
+  // records, so opening a database there would be work for no answer.
+  useEffect(() => {
+    if (bhwId || !buildsBhw) {
+      return;
+    }
+
+    let cancelled = false;
+
+    countPendingQueueEntries()
+      .then((count) => !cancelled && setPendingRecordCount(count))
+      .catch((error: unknown) => {
+        // A device that has never saved anything has no database yet, and a
+        // login screen is the wrong place to raise that.
+        logDev('Pending record count unavailable', error instanceof Error ? error.message : String(error));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bhwId]);
+
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAuthMessage(null);
@@ -155,8 +186,10 @@ export function App() {
     setAuthLoading(false);
 
     if (error) {
+      // The raw text still reaches the log; the screen gets a sentence that names
+      // what to try next.
       logDev('Supabase login failed', error.message);
-      setAuthMessage(error.message);
+      setAuthMessage(describeAuthError(error.message));
       return;
     }
 
@@ -177,6 +210,7 @@ export function App() {
         password={loginState.password}
         authMessage={authMessage}
         authLoading={authLoading}
+        pendingRecordCount={pendingRecordCount}
         onEmailChange={(email) =>
           setLoginState((current) => ({
             ...current,

@@ -426,6 +426,20 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
  * Fetches all pending jobs in chronological order.
  * The syncService loops through this list when the device connects to the internet.
  */
+/**
+ * How many changes are waiting to reach the server.
+ *
+ * A count query rather than `readSyncQueue().length`: that one JSON-parses every
+ * queued payload to produce a number, and this is called from the login screen,
+ * where there is no session and no reason to touch the payloads at all.
+ */
+export async function countPendingQueueEntries(): Promise<number> {
+  const database = await getLocalDatabase();
+  const result = await database.query('select count(*) as pending from sync_queue');
+
+  return Number(result.values?.[0]?.pending ?? 0);
+}
+
 export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
   const database = await getLocalDatabase();
   const result = await database.query(
