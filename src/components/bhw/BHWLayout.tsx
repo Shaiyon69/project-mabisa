@@ -5,7 +5,8 @@ import type { SyncStatus } from '../../services/syncService';
 import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
-import { BhwLanguageProvider, useBhwLanguage } from '../../app/BhwLanguageContext';
+import { BhwLanguageProvider } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 const bhwNavItems = [
   { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', icon: 'home' as const, end: true },

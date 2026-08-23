@@ -19,7 +19,7 @@ import { Card } from '../common/Card';
 import { FormActions, FormField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 // The rail draws roughly the range a field BMI lands in; readings outside it
 // still resolve to a band, the marker just parks at the end of the scale.

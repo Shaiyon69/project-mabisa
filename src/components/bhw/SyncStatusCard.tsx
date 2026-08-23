@@ -2,7 +2,7 @@ import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { formatDate } from '../../lib/utils';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 import type { DeadLetterEntry, LocalTableName } from '../../services/localDatabase';
 import type { SyncStatus } from '../../services/syncService';
 
