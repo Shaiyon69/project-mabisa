@@ -797,12 +797,13 @@ export async function saveHealthAssessmentLocally(
   await persistLocalDatabase();
 }
 
-export async function saveInventoryItemLocally(item: InventoryItem, operationType: SyncOperationType = 'INSERT'): Promise<void> {
-  const database = await getLocalDatabase();
-  await database.run(inventoryUpsert.statement, inventoryUpsert.values(item));
-  await enqueueSyncOperation('inventory_items', operationType, item);
-  await persistLocalDatabase();
-}
+// `saveInventoryItemLocally` was removed here. It had no callers, and after the
+// allocation model it would have been wrong to add one: a device's
+// `inventory_items` rows are that BHW's own allocated holding, pulled from
+// `bhw_item_stock`, and stock itself is created and moved by a barangay
+// administrator through `barangay_admin_create_item` / `_restock_item` /
+// `_allocate_stock`. A queued INSERT from a phone would have found no policy to
+// accept it and dead-lettered on every device.
 
 /**
  * Reads one inventory item, or null if this device has never seen it.

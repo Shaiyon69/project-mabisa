@@ -639,20 +639,72 @@ function withoutPrimaryKey<T extends Record<string, unknown>, K extends keyof T>
 async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> {
   const quarantined = new Map<LocalTableName, Set<string>>();
 
+  const hold = (table: LocalTableName, key: string) => {
+    const keys = quarantined.get(table) ?? new Set<string>();
+    keys.add(key);
+    quarantined.set(table, keys);
+  };
+
   for (const entry of await readDeadLetterEntries()) {
     const payload = entry.payload as Record<string, unknown>;
     const value = payload[primaryKeys[entry.target_table]];
 
-    if (typeof value !== 'string') {
-      continue;
+    if (typeof value === 'string') {
+      hold(entry.target_table, value);
     }
 
-    const keys = quarantined.get(entry.target_table) ?? new Set<string>();
-    keys.add(value);
-    quarantined.set(entry.target_table, keys);
+    for (const derived of derivedEntityKeys(entry)) {
+      hold(derived.table, derived.key);
+    }
   }
 
   return quarantined;
+}
+
+/**
+ * Rows whose *server* value is computed from this entry, and which are therefore
+ * stale for as long as the entry has not shipped.
+ *
+ * One relationship qualifies today, and it is a real hole without this: a
+ * quarantined release has already been subtracted from the device's stock, but
+ * the server has never seen it, so `bhw_item_stock` still counts the quantity as
+ * held. Pulling that figure hands the BHW back medicine they physically gave
+ * away, and nothing stops them releasing it a second time.
+ *
+ * Deliberately narrower than `parentEntityKeys`. A disbursement also points at a
+ * resident, but a resident's *profile* is not derived from it — holding that back
+ * would block an unrelated central correction to the person's record for as long
+ * as one release sits in quarantine.
+ */
+export function derivedEntityKeys(entry: {
+  target_table: LocalTableName;
+  payload: SyncQueueEntry['payload'];
+}): { table: LocalTableName; key: string }[] {
+  if (entry.target_table !== 'supply_disbursements') {
+    return [];
+  }
+
+  const itemId = (entry.payload as Record<string, unknown>).item_id;
+
+  return typeof itemId === 'string' ? [{ table: 'inventory_items', key: itemId }] : [];
+}
+
+/**
+ * How far the next filtered pull may start from: the newest `updated_at` the
+ * server actually handed over, or the previous watermark when it handed over
+ * nothing.
+ *
+ * Only rows that were themselves read *through* the watermark belong here. A row
+ * fetched unfiltered — `bhw_item_stock` is — carries a timestamp that proves
+ * nothing about how far the filtered reads have got, and letting one in drags the
+ * watermark past households this device has never seen, which skips them
+ * permanently rather than late.
+ */
+export function newestUpdatedAt(rows: { updated_at?: string }[], fallback: string | null): string | null {
+  return rows.reduce<string | null>(
+    (latest, row) => (typeof row.updated_at === 'string' && (!latest || row.updated_at > latest) ? row.updated_at : latest),
+    fallback,
+  );
 }
 
 export async function pullRemoteUpdates(): Promise<void> {
@@ -681,9 +733,32 @@ export async function pullRemoteUpdates(): Promise<void> {
     const { data: cloudIndividuals, error: iError } = await changedSince(supabase.from('individuals').select('*'));
     if (iError) throw new Error(`Individual Pull Error: ${iError.message}`);
 
-    // Fetch Inventory
-    const { data: cloudInventory, error: invError } = await changedSince(supabase.from('inventory_items').select('*'));
+    // Fetch Inventory — from `bhw_item_stock`, not `inventory_items`.
+    //
+    // Those are two different numbers. `inventory_items.current_stock` is what
+    // the barangay still holds unallocated, which is the admin portal's figure
+    // and is not releasable by anyone in the field. The view is allocations to
+    // *this* signed-in BHW minus what they have already released, which is the
+    // only quantity a phone should ever show or spend. It lands in the same
+    // local `inventory_items` table because to a device "stock" means theirs.
+    //
+    // Not filtered by `changedSince`: the view is derived, so a release by this
+    // BHW changes their balance for an item whose allocation row is older than
+    // the watermark. It is a handful of rows per device — pull all of them.
+    const { data: cloudStock, error: invError } = await supabase.from('bhw_item_stock').select('*');
     if (invError) throw new Error(`Inventory Pull Error: ${invError.message}`);
+
+    // `created_at` is not on the view and is not mutable on conflict, so it only
+    // ever stamps a row this device is seeing for the first time.
+    const cloudInventory: InventoryItem[] = (cloudStock ?? []).map((stock) => ({
+      item_id: stock.item_id,
+      item_name: stock.item_name,
+      type: stock.type,
+      current_stock: stock.current_stock,
+      barangay_id: stock.barangay_id,
+      created_at: stock.updated_at,
+      updated_at: stock.updated_at,
+    }));
 
     // 2. Drop any row whose local copy is quarantined. The server's version of it
     // is stale by definition — the edit that would have updated it is the one that
@@ -718,16 +793,17 @@ export async function pullRemoteUpdates(): Promise<void> {
     // 4. Advance the watermark to the newest row the server handed over, rather
     // than to this device's clock: a phone whose time is a minute fast would
     // otherwise skip every row written in that minute.
+    //
+    // Inventory is deliberately not in this list. It is pulled unfiltered, so its
+    // timestamps are not evidence of how far the *filtered* reads have got — an
+    // allocation stamped later than every household would drag the watermark past
+    // households this device has never seen and skip them permanently.
     const pulledRows: { updated_at?: string }[] = [
       ...(cloudHouseholds ?? []),
       ...(cloudIndividuals ?? []),
-      ...(cloudInventory ?? []),
     ];
 
-    const newest = pulledRows.reduce<string | null>(
-      (latest, row) => (typeof row.updated_at === 'string' && (!latest || row.updated_at > latest) ? row.updated_at : latest),
-      pulledThrough,
-    );
+    const newest = newestUpdatedAt(pulledRows, pulledThrough);
 
     if (newest) {
       writeStored(PULLED_THROUGH_KEY, newest);
