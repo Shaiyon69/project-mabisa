@@ -41,8 +41,40 @@ export type Profile = {
   disabled_by: string | null;
 };
 
+// public.puroks and public.bhw_purok_assignments, also from the foundation
+// slice. Like profiles they are read-only to the client — every write goes
+// through an admin_* RPC so it carries an audit event — so both are typed with
+// `never` for Insert and Update.
+export type Purok = {
+  purok_id: string;
+  name: string;
+  code: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+};
+
+export type BhwPurokAssignment = {
+  assignment_id: string;
+  bhw_id: string;
+  purok_id: string;
+  started_at: string;
+  ended_at: string | null;
+  assigned_by: string;
+  ended_by: string | null;
+  assignment_reason: string;
+  end_reason: string | null;
+  created_at: string;
+};
+
 export type Household = {
   household_id: string;
+  // Server-stamped from the writer's active assignment by 202608160002 and the
+  // only place purok membership is recorded. Optional here because a device
+  // form never supplies it — accepting it from a sync payload would let a
+  // client choose its own scope.
+  purok_id?: string;
   household_number: string;
   dwelling_type: DwellingType;
   electric_service: ElectricService;
@@ -173,6 +205,8 @@ export type Database = {
   public: {
     Tables: {
       profiles: RowDefinition<Profile, ProfileInsert, ProfileUpdate>;
+      puroks: RowDefinition<Purok, never, never>;
+      bhw_purok_assignments: RowDefinition<BhwPurokAssignment, never, never>;
       households: RowDefinition<Household, HouseholdInsert, HouseholdUpdate>;
       individuals: RowDefinition<Individual, IndividualInsert, IndividualUpdate>;
       health_assessments: RowDefinition<HealthAssessment, HealthAssessmentInsert, HealthAssessmentUpdate>;
