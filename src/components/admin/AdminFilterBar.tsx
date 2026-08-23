@@ -59,6 +59,14 @@ function DataFreshness({ snapshot, loading }: { snapshot: AdminSnapshot; loading
 
   return (
     <small className="muted">
+      {/*
+        Which area these numbers cover, stated on screen and not only on an
+        export. Two roles read this dashboard and they are shown different
+        totals from the same query — without the scope on the page, a barangay
+        administrator seeing a smaller resident count has no way to tell a
+        correctly-scoped view from a sync that has not finished.
+      */}
+      {snapshot.barangayLabel ? `${snapshot.barangayLabel}. ` : ''}
       Central data read {new Date(snapshot.fetchedAt).toLocaleTimeString()}.{' '}
       {snapshot.newestRecordAt
         ? `Newest synced record ${formatDate(snapshot.newestRecordAt)}.`

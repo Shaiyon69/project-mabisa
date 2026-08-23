@@ -45,7 +45,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
         filters={filters}
         filterNote="none beyond the period (totals cover all residents)"
         onExport={() =>
-          exportReport('Resident Demographics', filters, buildDemographicRows(snapshot), [
+          exportReport('Resident Demographics', snapshot.barangayLabel, filters, buildDemographicRows(snapshot), [
             { header: 'Grouping', value: (row) => row.grouping },
             { header: 'Category', value: (row) => row.category },
             { header: 'Residents', value: (row) => row.count },
@@ -71,7 +71,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
         note={`${snapshot.assessments.length} assessment(s) recorded in this period. A status is the reading the measurements produced, not a diagnosis.`}
         filters={filters}
         onExport={() =>
-          exportReport('Nutrition Status Summary', filters, snapshot.assessments, assessmentColumns)
+          exportReport('Nutrition Status Summary', snapshot.barangayLabel, filters, snapshot.assessments, assessmentColumns)
         }
       >
         <SummaryBars
@@ -82,11 +82,13 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
       </ReportPanel>
 
       <ReportPanel
-        title="Inventory On Hand"
-        note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. Stock is a current position and ignores the period.`}
+        title="Unallocated Barangay Stock"
+        note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. This is what the barangay still holds to hand out — quantities already allocated to a health worker are counted against that worker, not here. Stock is a current position and ignores the period.`}
         filters={filters}
         filterNote="none beyond the period (stock is current, not historical)"
-        onExport={() => exportReport('Inventory On Hand', filters, snapshot.inventoryItems, inventoryColumns)}
+        onExport={() =>
+          exportReport('Unallocated Barangay Stock', snapshot.barangayLabel, filters, snapshot.inventoryItems, inventoryColumns)
+        }
       >
         {lowStock.length ? (
           <ul className="compact-list">
@@ -94,7 +96,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
               <li key={item.item_id}>
                 <span>{item.item_name}</span>
                 <small>
-                  {item.current_stock} on hand • {titleCase(item.type)}
+                  {item.current_stock} unallocated • {titleCase(item.type)}
                 </small>
               </li>
             ))}
@@ -109,7 +111,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
         note={`${releasedTotal} unit(s) released across ${snapshot.disbursements.length} disbursement(s) in this period.`}
         filters={filters}
         onExport={() =>
-          exportReport('Supply Allocation', filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
+          exportReport('Supply Allocation', snapshot.barangayLabel, filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
         }
       >
         <SummaryBars
@@ -147,8 +149,17 @@ function ReportPanel({ title, note, filters, filterNote, onExport, children }: R
   );
 }
 
-function exportReport<Row>(title: string, filters: AdminFilters, rows: Row[], columns: CsvColumn<Row>[]): void {
-  downloadCsv(reportFileName(title), buildReportCsv({ title, from: filters.from, to: filters.to }, rows, columns));
+function exportReport<Row>(
+  title: string,
+  barangay: string,
+  filters: AdminFilters,
+  rows: Row[],
+  columns: CsvColumn<Row>[],
+): void {
+  downloadCsv(
+    reportFileName(title),
+    buildReportCsv({ title, barangay, from: filters.from, to: filters.to }, rows, columns),
+  );
 }
 
 type DemographicRow = { grouping: string; category: string; count: number };
@@ -184,7 +195,7 @@ const inventoryColumns: CsvColumn<InventoryItem>[] = [
   { header: 'Item ID', value: (row) => row.item_id },
   { header: 'Item', value: (row) => row.item_name },
   { header: 'Type', value: (row) => titleCase(row.type) },
-  { header: 'Current stock', value: (row) => row.current_stock },
+  { header: 'Unallocated stock', value: (row) => row.current_stock },
   { header: 'Last updated', value: (row) => formatDate(row.updated_at) },
 ];
 
