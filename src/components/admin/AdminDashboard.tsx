@@ -1,24 +1,57 @@
-import type { LocalSnapshot } from '../../app/mabisaData';
+import { NUTRITION_ORDER, lowStockItems, tally, type AdminFilters, type AdminSnapshot } from '../../services/adminData';
 import { Card } from '../common/Card';
+import { ErrorState } from '../common/StateMessage';
 import { InventoryTable } from './InventoryTable';
 import { ReportCards } from './ReportCards';
 import { IndividualsTable } from './IndividualsTable';
 import { StatCard } from './StatCard';
+import { SummaryBars } from './SummaryBars';
+import { SummaryContext } from './AdminFilterBar';
 
 type AdminDashboardProps = {
-  snapshot: LocalSnapshot;
+  snapshot: AdminSnapshot;
+  filters: AdminFilters;
+  loading: boolean;
+  error: string | null;
 };
 
-export function AdminDashboard({ snapshot }: AdminDashboardProps) {
+export function AdminDashboard({ snapshot, filters, loading, error }: AdminDashboardProps) {
+  const lowStock = lowStockItems(snapshot.inventoryItems);
+  const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
+
   return (
     <div className="dashboard-grid">
-      <section className="metric-grid admin-metrics" aria-label="Admin metrics">
-        <StatCard label="Residents" value={snapshot.individualCount} detail="Profiled locally" tone="blue" />
-        <StatCard label="Assessments" value={snapshot.assessments.length} detail="Health records" tone="green" />
-        <StatCard label="Inventory" value={snapshot.inventoryItems.length} detail="Tracked supplies" tone="amber" />
-        <StatCard label="Released" value={snapshot.disbursements.length} detail="Disbursement logs" tone="red" />
+      {error ? (
+        <Card className="admin-monitor">
+          <ErrorState title="Could not read the central database" text={error} />
+        </Card>
+      ) : null}
+
+      <section className="metric-grid admin-metrics" aria-label="Admin metrics" aria-busy={loading}>
+        {/* Households and residents are totals; the rest are scoped to the
+            selected period, which is what the caption below spells out. */}
+        <StatCard label="Households" value={snapshot.householdCount} detail="Profiled centrally" tone="blue" />
+        <StatCard label="Residents" value={snapshot.residentCount} detail="Profiled centrally" tone="blue" />
+        <StatCard label="Assessments" value={snapshot.assessments.length} detail="In selected period" tone="green" />
+        <StatCard label="Units released" value={releasedTotal} detail="In selected period" tone="amber" />
+        <StatCard label="Low stock" value={lowStock.length} detail={`Items at or below 10`} tone="red" />
       </section>
-      
+
+      <Card className="admin-monitor">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Health</p>
+            <h2>Nutrition Status Distribution</h2>
+          </div>
+        </div>
+        <SummaryContext filters={filters} />
+        <SummaryBars
+          rows={tally(snapshot.assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER)}
+          emptyTitle="No assessments in this period"
+          emptyText="Widen the date range, or wait for a field device to sync."
+        />
+      </Card>
+
       <Card className="admin-monitor">
         <div className="panel-heading">
           <div>
@@ -26,9 +59,9 @@ export function AdminDashboard({ snapshot }: AdminDashboardProps) {
             <h2>Resident Monitoring</h2>
           </div>
         </div>
-        <IndividualsTable pendingQueueCount={snapshot.pendingQueueCount} />
+        <IndividualsTable />
       </Card>
-      
+
       <Card className="admin-monitor">
         <div className="panel-heading">
           <div>
@@ -38,15 +71,15 @@ export function AdminDashboard({ snapshot }: AdminDashboardProps) {
         </div>
         <InventoryTable inventoryItems={snapshot.inventoryItems} />
       </Card>
-      
+
       <Card className="activity-panel">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">Reports</p>
-            <h2>Analytics Cards</h2>
+            <h2>Period Summaries</h2>
           </div>
         </div>
-        <ReportCards assessments={snapshot.assessments} disbursements={snapshot.disbursements} />
+        <ReportCards snapshot={snapshot} filters={filters} />
       </Card>
     </div>
   );

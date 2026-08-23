@@ -1,48 +1,66 @@
-import { useMabisaData } from '../../app/mabisaData';
 import { AccountsTable } from '../../components/admin/AccountsTable';
 import { AdminDashboard } from '../../components/admin/AdminDashboard';
+import { AdminFilterBar } from '../../components/admin/AdminFilterBar';
 import { InventoryTable } from '../../components/admin/InventoryTable';
 import { ReportCards } from '../../components/admin/ReportCards';
 import { IndividualsTable } from '../../components/admin/IndividualsTable';
 import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ErrorState } from '../../components/common/StateMessage';
+import { useAdminData } from '../../hooks/useAdminData';
+
+/**
+ * Every page here reads the central database through `useAdminData`, never
+ * `useMabisaData().snapshot`. That snapshot is the local SQLite mirror the BHW
+ * app writes to, so on an LGU workstation it is empty and on a shared machine it
+ * is whatever the last field device left — FR-06 requires the central data, and
+ * the portal is a wired desktop that can always reach it.
+ */
 
 export function AdminDashboardPage() {
-  const { snapshot } = useMabisaData();
+  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
 
   return (
     <>
       <PageHeader
         eyebrow="Admin overview"
         title="Barangay Monitoring Dashboard"
-        description="Desktop-first view of local resident profiles, health assessments, inventory, supply releases, and sync readiness."
+        description="Centrally synchronized resident profiles, health assessments, inventory, and supply releases for the selected period."
       />
-      <AdminDashboard snapshot={snapshot} />
+      <AdminFilterBar filters={filters} onChange={setFilters} onRefresh={refresh} loading={loading} snapshot={snapshot} />
+      <AdminDashboard snapshot={snapshot} filters={filters} loading={loading} error={error} />
     </>
   );
 }
 
 export function ResidentsPage() {
-  const { snapshot } = useMabisaData();
-
   return (
     <>
-      <PageHeader eyebrow="Residents" title="Resident Registry" description="Search and review resident profiles saved on this device." />
+      <PageHeader
+        eyebrow="Residents"
+        title="Resident Registry"
+        description="Search and review every resident profile synchronized to the central database."
+      />
       <Card className="admin-monitor">
-        <IndividualsTable pendingQueueCount={snapshot.pendingQueueCount} />
+        <IndividualsTable />
       </Card>
     </>
   );
 }
 
 export function InventoryPage() {
-  const { snapshot } = useMabisaData();
+  const { snapshot, loading, error } = useAdminData();
 
   return (
     <>
-      <PageHeader eyebrow="Inventory" title="Supply Inventory" description="Monitor local supply stock levels and low-stock indicators." />
+      <PageHeader
+        eyebrow="Inventory"
+        title="Supply Inventory"
+        description="Central supply stock levels and low-stock indicators."
+      />
       <Card className="admin-monitor">
-        <InventoryTable inventoryItems={snapshot.inventoryItems} />
+        {error ? <ErrorState title="Could not read inventory" text={error} /> : null}
+        <InventoryTable inventoryItems={snapshot.inventoryItems} loading={loading} />
       </Card>
     </>
   );
@@ -54,7 +72,7 @@ export function AccountsPage() {
       <PageHeader
         eyebrow="Accounts"
         title="Account Management"
-        description="Prepared admin surface for user accounts while preserving the existing authentication implementation."
+        description="Accounts, roles, and purok assignments as the database enforces them. Changes go through the administrative RPCs."
       />
       <Card className="admin-monitor">
         <AccountsTable />
@@ -64,13 +82,19 @@ export function AccountsPage() {
 }
 
 export function ReportsPage() {
-  const { snapshot } = useMabisaData();
+  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
 
   return (
     <>
-      <PageHeader eyebrow="Reports" title="Reports and Analytics" description="Review recent nutrition and supply allocation activity from local records." />
+      <PageHeader
+        eyebrow="Reports"
+        title="Reports and Analytics"
+        description="Demographic, nutrition, inventory, and supply allocation summaries over a chosen period, each exportable as CSV."
+      />
+      <AdminFilterBar filters={filters} onChange={setFilters} onRefresh={refresh} loading={loading} snapshot={snapshot} />
       <Card className="activity-panel">
-        <ReportCards assessments={snapshot.assessments} disbursements={snapshot.disbursements} />
+        {error ? <ErrorState title="Could not read the central database" text={error} /> : null}
+        <ReportCards snapshot={snapshot} filters={filters} />
       </Card>
     </>
   );

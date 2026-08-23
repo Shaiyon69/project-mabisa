@@ -2061,3 +2061,127 @@ tbody tr:hover {
   max-width: 30ch;
   margin: 0;
 }
+
+/* Admin period filter, summary captions and distribution bars ------------- */
+
+.admin-filter-bar {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.admin-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-filter-actions small {
+  flex: 1 1 220px;
+}
+
+.admin-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-pager .muted {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Every summary states the period and filters that produced it, so the caption
+   is part of the panel rather than something to look up elsewhere. */
+.summary-context {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summary-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.summary-bar-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.summary-bar-label span {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.summary-bar-label strong {
+  color: var(--text-h);
+  font-family: var(--display);
+  font-size: 15px;
+}
+
+.summary-bar-label small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.summary-bar-track {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--field-soft);
+}
+
+.summary-bar-fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.report-grid .report-card {
+  gap: 10px;
+}
+
+.report-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.report-card h4 {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.report-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+@media (min-width: 860px) {
+  .admin-filter-bar {
+    grid-template-columns: minmax(0, 200px) minmax(0, 200px) minmax(0, 1fr);
+    align-items: end;
+  }
+}
