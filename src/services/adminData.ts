@@ -4,6 +4,7 @@ import type {
   HealthAssessment,
   Individual,
   InventoryItem,
+  InventoryItemType,
   NutritionStatus,
   Profile,
   Purok,
@@ -19,11 +20,11 @@ import type {
  * machine holds whatever the last field device happened to sync. FR-06 requires
  * the central PostgreSQL database. Nothing here touches localDatabase.
  *
- * Which rows come back is settled by the purok policies in 202608160002, not
- * re-filtered here: `is_admin()` opens `households` to the whole barangay and
- * the other four reach that scope through their foreign keys. An admin sees
- * every synchronized purok; a non-admin session reaching this code sees only
- * its own, which is the same answer the route guard gives.
+ * Which rows come back is settled by the policies in `barangay_roles.sql`, not
+ * re-filtered here. An RHU admin reads every barangay; a barangay administrator
+ * reads their own and nothing else; the other four tables reach that scope
+ * through their foreign keys. Adding a client-side filter would be a second copy
+ * of the rule to keep in step with the first.
  */
 
 /**
@@ -64,6 +65,12 @@ export type AdminSnapshot = {
   disbursements: SupplyDisbursement[];
   /** Stock is a current position, so it ignores the period too. */
   inventoryItems: InventoryItem[];
+  /**
+   * The barangay this snapshot covers, spelled the way it should appear on the
+   * face of an export. Read from the data rather than from the build, because
+   * one database now holds every barangay in the RHU.
+   */
+  barangayLabel: string;
   /** When this snapshot was read from the central database. */
   fetchedAt: string;
   /** Newest `updated_at` in the rows that came back, or null when none did. */
@@ -77,12 +84,13 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   assessments: [],
   disbursements: [],
   inventoryItems: [],
+  barangayLabel: '',
   fetchedAt: new Date(0).toISOString(),
   newestRecordAt: null,
 };
 
 export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSnapshot> {
-  const [households, residents, assessments, disbursements, inventory] = await Promise.all([
+  const [households, residents, assessments, disbursements, inventory, barangayLabel] = await Promise.all([
     // head:true asks for the count without the rows — the dashboard needs the
     // number of households, never the households themselves.
     supabase.from('households').select('household_id', { count: 'exact', head: true }),
@@ -100,6 +108,7 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
       .lte('disbursement_date', filters.to)
       .order('disbursement_date', { ascending: false }),
     supabase.from('inventory_items').select('*').order('item_name'),
+    fetchBarangayScope(),
   ]);
 
   const failure = [households, residents, assessments, disbursements, inventory].find((result) => result.error);
@@ -119,9 +128,57 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     assessments: assessmentRows,
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
+    barangayLabel,
     fetchedAt: new Date().toISOString(),
     newestRecordAt: newest([...residentRows, ...assessmentRows, ...disbursementRows, ...inventoryRows]),
   };
+}
+
+/**
+ * What an export should call the area it covers.
+ *
+ * A barangay administrator is confined to one, so it is named. An RHU account is
+ * confined to none and its rows may span several, so naming any single barangay
+ * would put a false heading on a true report — it gets the whole unit instead,
+ * with the count, so a reader can tell a municipal summary from a barangay one at
+ * a glance.
+ *
+ * Exported for its test: this is the line an official LGU document is captioned
+ * with, and getting it wrong is worse than leaving it blank.
+ */
+export async function fetchBarangayScope(): Promise<string> {
+  const [scope, barangays] = await Promise.all([
+    // Null for an RHU account, which is confined to no barangay. That null is the
+    // answer, not a missing one.
+    supabase.rpc('current_barangay_id'),
+    supabase.from('barangays').select('barangay_id, name').order('name'),
+  ]);
+
+  if (scope.error) {
+    throw new Error(scope.error.message);
+  }
+
+  if (barangays.error) {
+    throw new Error(barangays.error.message);
+  }
+
+  return describeBarangayScope(scope.data, barangays.data ?? []);
+}
+
+export function describeBarangayScope(scopeId: string | null, barangays: { barangay_id: string; name: string }[]): string {
+  if (scopeId) {
+    return barangays.find((barangay) => barangay.barangay_id === scopeId)?.name ?? 'Barangay name not configured';
+  }
+
+  if (barangays.length === 1) {
+    return barangays[0].name;
+  }
+
+  if (barangays.length === 0) {
+    return 'Barangay name not configured';
+  }
+
+  return `All barangays (${barangays.length}) — Rural Health Unit`;
 }
 
 /**
@@ -188,7 +245,16 @@ export function ageBandOf(birthday: string): string | null {
   return AGE_BANDS.find((band) => age >= band.min && age <= band.max)?.label ?? null;
 }
 
-/** Stock at or below this is called out as an alert. Matches InventoryTable. */
+/**
+ * Unallocated stock at or below this is called out as an alert. Matches
+ * InventoryTable.
+ *
+ * It measures what is left to hand out, not what the barangay owns: an item can
+ * read as low here while its health workers are carrying plenty. That is the
+ * useful reading for the person doing the allocating, and the wrong one for
+ * anyone deciding whether to reorder — which is why every surface that shows it
+ * says "unallocated" rather than "on hand".
+ */
 export const LOW_STOCK_THRESHOLD = 10;
 
 export function lowStockItems(items: InventoryItem[]): InventoryItem[] {
@@ -310,4 +376,62 @@ export async function fetchResidentPage(query: string, limit: number, offset: nu
     rows: rows.map((row) => ({ ...row, household_number: numbers.get(row.household_id) })),
     total: count ?? 0,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Supply stock — the barangay administrator's three write paths
+//
+// All three are RPCs rather than table writes, and that is the enforcement, not a
+// convenience: `inventory_items` has a SELECT policy and no INSERT or UPDATE
+// policy at all, so a stock figure cannot be changed except through a function
+// that also writes the audit event explaining it. An RHU admin calling any of
+// these gets `insufficient_privilege` from the database — reads are their whole
+// remit, and hiding the controls from them is cosmetics on top of that.
+// -----------------------------------------------------------------------------
+
+/** The BHWs a barangay administrator may allocate to. RLS already limits the rows to their own barangay. */
+export async function fetchAllocatableBhws(): Promise<AccountRow[]> {
+  const accounts = await fetchAccounts();
+
+  // An unassigned BHW has no purok and therefore no barangay, and the RPC will
+  // refuse them. Leaving them out of the picker means the refusal is not a
+  // surprise arriving after the form is filled in.
+  return accounts.filter((account) => account.profile.role === 'bhw' && account.purokName !== null);
+}
+
+export async function createInventoryItem(name: string, type: InventoryItemType, openingStock: number): Promise<void> {
+  const { error } = await supabase.rpc('barangay_admin_create_item', {
+    target_item_name: name,
+    target_type: type,
+    target_initial_stock: openingStock,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function restockInventoryItem(itemId: string, quantity: number, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('barangay_admin_restock_item', {
+    target_item_id: itemId,
+    target_quantity: quantity,
+    target_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function allocateStockToBhw(itemId: string, bhwId: string, quantity: number, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('barangay_admin_allocate_stock', {
+    target_item_id: itemId,
+    target_bhw_id: bhwId,
+    target_quantity: quantity,
+    target_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }

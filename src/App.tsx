@@ -27,16 +27,21 @@ type CachedRole = {
   role: UserRole;
 };
 
+// Every value public.app_role has. Listed here rather than tested one by one so
+// that a role added to the enum and to UserRole cannot be silently rejected by a
+// stale cache check that nobody remembered to widen.
+const ROLES: UserRole[] = ['admin', 'barangay_admin', 'bhw'];
+
 function readCachedRole(): CachedRole | null {
   try {
     const parsed = JSON.parse(localStorage.getItem(ROLE_CACHE_KEY) ?? 'null');
     const role: unknown = parsed?.role;
 
-    if (typeof parsed?.userId !== 'string' || (role !== 'admin' && role !== 'bhw')) {
+    if (typeof parsed?.userId !== 'string' || !ROLES.includes(role as UserRole)) {
       return null;
     }
 
-    return { userId: parsed.userId, role };
+    return { userId: parsed.userId, role: role as UserRole };
   } catch {
     return null;
   }

@@ -1,10 +1,32 @@
 import { useEffect, useState } from 'react';
 import { formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { fetchAccounts, type AccountRow } from '../../services/adminData';
+import { fetchAccounts, type AccountRow, fetchBarangayScope } from '../../services/adminData';
+import type { UserRole } from '../../types/database';
 import { Button } from '../common/Button';
 import { ErrorState } from '../common/StateMessage';
 import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
+
+/**
+ * Every role spelled out. A lookup rather than a ternary, because the ternary
+ * this replaced read `role === 'admin' ? … : 'Barangay Health Worker'` and so
+ * labelled a barangay administrator as a health worker the moment a third role
+ * existed. A map cannot silently absorb a fourth.
+ */
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'RHU Administrator',
+  barangay_admin: 'Barangay Administrator',
+  bhw: 'Barangay Health Worker',
+};
+
+/** What the purok column means for a role that is not assigned to one. */
+const SCOPE_WITHOUT_PUROK: Record<UserRole, string> = {
+  admin: 'All barangays',
+  barangay_admin: 'Whole barangay',
+  // A BHW with no active assignment can neither read nor write a field row, so an
+  // empty cell here is the reason a device that signs in successfully sees nothing.
+  bhw: 'None — cannot sync',
+};
 
 const columns: TableColumn<AccountRow>[] = [
   {
@@ -15,16 +37,12 @@ const columns: TableColumn<AccountRow>[] = [
   {
     key: 'role',
     header: 'Role',
-    render: (account) => (account.profile.role === 'admin' ? 'Admin / LGU' : 'Barangay Health Worker'),
+    render: (account) => ROLE_LABELS[account.profile.role],
   },
   {
     key: 'assigned-purok',
     header: 'Assigned Purok',
-    // A BHW with no active assignment can neither read nor write a field row
-    // under the purok policies, so an empty cell here is the reason a device
-    // that signs in successfully still sees nothing.
-    render: (account) =>
-      account.purokName ?? (account.profile.role === 'admin' ? 'All puroks' : 'None — cannot sync'),
+    render: (account) => account.purokName ?? SCOPE_WITHOUT_PUROK[account.profile.role],
   },
   {
     key: 'assigned-since',
@@ -95,17 +113,23 @@ export function AccountsTable() {
     };
   }, []);
 
+  async function exportAccounts() {
+    downloadCsv(
+      reportFileName('Accounts'),
+      buildReportCsv(
+        { title: 'Accounts', barangay: await fetchBarangayScope(), from: 'all dates', to: 'all dates' },
+        rows,
+        exportColumns,
+      ),
+    );
+  }
+
   return (
     <div className="ui-table-stack">
       <TableToolbar>
         <Button
           variant="ghost"
-          onClick={() =>
-            downloadCsv(
-              reportFileName('Accounts'),
-              buildReportCsv({ title: 'Accounts', from: 'all dates', to: 'all dates' }, rows, exportColumns),
-            )
-          }
+          onClick={() => void exportAccounts()}
           disabled={loading || !rows.length}
         >
           Export CSV

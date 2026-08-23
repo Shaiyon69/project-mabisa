@@ -16,7 +16,7 @@ import {
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { buildsAdmin, buildsBhw, isSingleSurface } from './surface';
-import type { UserRole } from '../types/database';
+import { isDeskRole, type UserRole } from '../types/database';
 
 type AppRoutesProps = {
   logout: () => Promise<void>;
@@ -30,9 +30,11 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
   // unknown role has to land somewhere, and giving each surface its own predicate
   // would leave a null role rejected by both and bouncing between them forever.
   //
-  // One value to test, because public.app_role has exactly two members. An LGU
-  // official is an `admin` row in public.profiles.
-  const isAdmin = role === 'admin';
+  // Two of the three roles sign in here. The portal itself does not branch on
+  // which — an RHU admin and a barangay administrator see the same screens, and
+  // what differs is which rows come back and which controls the database will
+  // accept a write from. Row Level Security draws that line, not this flag.
+  const isAdmin = isDeskRole(role);
   const belongsHere = isAdmin ? buildsAdmin : buildsBhw;
 
   // What a non-admin sees when it reaches the admin portal, in either build. The
@@ -89,7 +91,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       ) : null}
 
       {buildsAdmin ? (
-        <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} /> : adminRejection}>
+        <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} role={role} /> : adminRejection}>
           <Route index element={<AdminDashboardPage />} />
           <Route path="residents" element={<ResidentsPage />} />
           <Route path="inventory" element={<InventoryPage />} />

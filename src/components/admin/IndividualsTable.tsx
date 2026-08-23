@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { fetchResidentPage } from '../../services/adminData';
+import { fetchBarangayScope, fetchResidentPage } from '../../services/adminData';
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
@@ -124,13 +124,14 @@ export function IndividualsTable() {
    * is refetched at full size for the same search term.
    */
   async function exportResidents() {
-    const all = await fetchResidentPage(query, Math.max(total, 1), 0);
+    const [all, barangay] = await Promise.all([fetchResidentPage(query, Math.max(total, 1), 0), fetchBarangayScope()]);
 
     downloadCsv(
       reportFileName('Resident Registry'),
       buildReportCsv(
         {
           title: 'Resident Registry',
+          barangay,
           from: 'all dates',
           to: 'all dates',
           filters: query.trim() ? [{ label: 'Search', value: query.trim() }] : [],

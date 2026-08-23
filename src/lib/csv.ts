@@ -1,14 +1,5 @@
 import { logDev } from './utils';
 
-/**
- * The barangay an export belongs to. FR-09 requires it on the face of every
- * report, and it is deployment configuration rather than data: one portal serves
- * one barangay. There is deliberately no plausible default — an LGU document
- * carrying the wrong barangay name is worse than one that says the name is
- * missing.
- */
-export const BARANGAY_NAME = import.meta.env.VITE_BARANGAY_NAME || 'Barangay name not configured';
-
 export type CsvColumn<Row> = {
   header: string;
   value: (row: Row) => string | number | boolean | null | undefined;
@@ -49,6 +40,15 @@ export function toCsv<Row>(rows: Row[], columns: CsvColumn<Row>[]): string {
  */
 export type ReportContext = {
   title: string;
+  /**
+   * The area covered, per FR-09. Travels with the rows rather than coming from
+   * the build: this used to read `VITE_BARANGAY_NAME`, which was right while one
+   * deployment served one barangay and wrong the moment the database began
+   * holding several — an RHU export spanning all of them printed whichever name
+   * that bundle happened to be compiled with. `describeBarangayScope` derives it
+   * from the same query that produced the numbers.
+   */
+  barangay: string;
   from: string;
   to: string;
   /** Any filter beyond the date range, as label/value pairs already formatted. */
@@ -62,7 +62,7 @@ export function buildReportCsv<Row>(context: ReportContext, rows: Row[], columns
 
   const preamble = [
     ['Report', context.title],
-    ['Barangay', BARANGAY_NAME],
+    ['Barangay', context.barangay],
     ['Date range', `${context.from} to ${context.to}`],
     ['Generated', new Date().toISOString()],
     ['Filters', filters],
