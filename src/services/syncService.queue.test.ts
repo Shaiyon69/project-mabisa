@@ -33,7 +33,7 @@ vi.mock('../lib/supabase', () => {
       then: (onFulfilled: (value: unknown) => unknown) => Promise.resolve(value).then(onFulfilled),
     };
 
-    for (const method of ['eq', 'lte', 'gte', 'select', 'order', 'limit']) {
+    for (const method of ['eq', 'lte', 'gte', 'select', 'order', 'limit', 'range']) {
       chain[method] = () => chain;
     }
 

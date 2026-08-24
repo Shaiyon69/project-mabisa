@@ -614,6 +614,42 @@ export function newestUpdatedAt(rows: { updated_at?: string }[], fallback: strin
   );
 }
 
+/** Rows per pull request. Supabase's own default cap, so asking for more gets silently trimmed anyway. */
+export const PULL_PAGE_SIZE = 1000;
+
+/**
+ * Reads one table to the end, a page at a time.
+ *
+ * A single `select('*')` stops at the server's row cap and says nothing about
+ * it, and an unordered truncated read is the dangerous half: the watermark then
+ * advances to the newest row that happened to come back, and every row the cap
+ * cut is below it, so `updated_at >= watermark` never offers them again. Ordering
+ * by `updated_at` plus the primary key makes the pages a stable sequence — the
+ * tiebreak matters because rows written in the same millisecond would otherwise
+ * shuffle between pages and one could fall through the seam.
+ */
+export async function readAllPages<TRow>(
+  label: string,
+  page: (from: number, to: number) => PromiseLike<{ data: TRow[] | null; error: { message: string } | null }>,
+): Promise<TRow[]> {
+  const rows: TRow[] = [];
+
+  for (;;) {
+    const { data, error } = await page(rows.length, rows.length + PULL_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(`${label} Pull Error: ${error.message}`);
+    }
+
+    rows.push(...(data ?? []));
+
+    // A short page is the last page — a full one might not be, so ask again.
+    if ((data?.length ?? 0) < PULL_PAGE_SIZE) {
+      return rows;
+    }
+  }
+}
+
 export async function pullRemoteUpdates(): Promise<void> {
   try {
     // Row scope is enforced entirely by RLS, not repeated here as a client filter.
@@ -623,22 +659,25 @@ export async function pullRemoteUpdates(): Promise<void> {
     const changedSince = <TQuery extends { gte(column: string, value: string): TQuery }>(query: TQuery): TQuery =>
       pulledThrough ? query.gte('updated_at', pulledThrough) : query;
 
-    const { data: cloudHouseholds, error: hError } = await changedSince(supabase.from('households').select('*'));
-    if (hError) throw new Error(`Household Pull Error: ${hError.message}`);
+    const cloudHouseholds = await readAllPages('Household', (from, to) =>
+      changedSince(supabase.from('households').select('*')).order('updated_at').order('household_id').range(from, to),
+    );
 
-    const { data: cloudIndividuals, error: iError } = await changedSince(supabase.from('individuals').select('*'));
-    if (iError) throw new Error(`Individual Pull Error: ${iError.message}`);
+    const cloudIndividuals = await readAllPages('Individual', (from, to) =>
+      changedSince(supabase.from('individuals').select('*')).order('updated_at').order('resident_id').range(from, to),
+    );
 
     // Pulls `bhw_item_stock` (this BHW's allocations minus releases), not
     // `inventory_items` (the barangay's unallocated total) — a phone only ever
     // shows its own holding. Unfiltered: the view is derived, so its timestamps
     // don't track the watermark.
-    const { data: cloudStock, error: invError } = await supabase.from('bhw_item_stock').select('*');
-    if (invError) throw new Error(`Inventory Pull Error: ${invError.message}`);
+    const cloudStock = await readAllPages('Inventory', (from, to) =>
+      supabase.from('bhw_item_stock').select('*').order('updated_at').order('item_id').range(from, to),
+    );
 
     // `created_at` is not on the view and is not mutable on conflict, so it only
     // ever stamps a row this device is seeing for the first time.
-    const cloudInventory: InventoryItem[] = (cloudStock ?? []).map((stock) => ({
+    const cloudInventory: InventoryItem[] = cloudStock.map((stock) => ({
       item_id: stock.item_id,
       item_name: stock.item_name,
       type: stock.type,
@@ -679,10 +718,7 @@ export async function pullRemoteUpdates(): Promise<void> {
     // Advance the watermark to the server's newest row, not this device's clock
     // (clock drift would skip rows). Inventory is excluded — it's pulled
     // unfiltered, so its timestamps aren't evidence of the filtered reads' progress.
-    const pulledRows: { updated_at?: string }[] = [
-      ...(cloudHouseholds ?? []),
-      ...(cloudIndividuals ?? []),
-    ];
+    const pulledRows: { updated_at?: string }[] = [...cloudHouseholds, ...cloudIndividuals];
 
     const newest = newestUpdatedAt(pulledRows, pulledThrough);
 
