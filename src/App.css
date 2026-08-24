@@ -515,6 +515,15 @@ button:active,
   margin-top: 20px;
 }
 
+/* Same shape as the set-aside block below, so the two read as one family of
+   "something needs you" panels rather than two unrelated warnings. */
+.sync-signin {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  justify-items: start;
+}
+
 .sync-quarantine {
   display: grid;
   gap: 12px;

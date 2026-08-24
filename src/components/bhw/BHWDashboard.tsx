@@ -21,6 +21,7 @@ type BHWDashboardProps = {
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
   onRetryDeadLetters: () => Promise<void>;
+  onSignInAgain: () => Promise<void>;
 };
 
 export function BHWDashboard({
@@ -32,6 +33,7 @@ export function BHWDashboard({
   syncingManually,
   onManualSync,
   onRetryDeadLetters,
+  onSignInAgain,
 }: BHWDashboardProps) {
   const { t } = useBhwLanguage();
   // 1. Replaced the useMemo slice with a local state for our SQLite query
@@ -56,6 +58,7 @@ export function BHWDashboard({
         syncingManually={syncingManually}
         onManualSync={onManualSync}
         onRetryDeadLetters={onRetryDeadLetters}
+        onSignInAgain={onSignInAgain}
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
