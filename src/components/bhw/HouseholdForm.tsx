@@ -59,11 +59,6 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const { t } = useBhwLanguage();
   const [household, setHousehold] = useState<Partial<Household>>({
     household_number: '',
-    // Not asked here (not health data) but `not null` on the schema — placeholders satisfy the constraint.
-    // TODO: drop these three columns in a migration and remove the placeholders with them.
-    dwelling_type: 'concrete',
-    electric_service: 'iselco',
-    fuel_used: 'wood',
     toilet_type: [],
     water_source: [],
     food_production: [],

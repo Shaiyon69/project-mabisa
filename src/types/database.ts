@@ -30,9 +30,6 @@ export const RELATIONSHIPS_TO_HEAD = [
 export type RelationshipToHead = (typeof RELATIONSHIPS_TO_HEAD)[number];
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
-export type DwellingType = 'concrete' | 'wood' | 'mixed' | 'makeshift';
-export type ElectricService = 'lamp' | 'gas' | 'iselco' | 'none';
-export type FuelUsed = 'wood' | 'charcoal' | 'lpg' | 'electricity';
 
 // public.profiles — the single source of a session's role. Writes go through
 // the admin_* RPCs, not the table, so there is no Insert/Update variant here.
@@ -94,9 +91,6 @@ export type Household = {
   purok_id?: string;
   barangay_id?: string;
   household_number: string;
-  dwelling_type: DwellingType;
-  electric_service: ElectricService;
-  fuel_used: FuelUsed;
   toilet_type: string[];
   water_source: string[];
   food_production: string[];
@@ -304,9 +298,6 @@ export type Database = {
       relationship_to_head: RelationshipToHead;
       inventory_item_type: InventoryItemType;
       nutrition_status: NutritionStatus;
-      dwelling_type: DwellingType;
-      electric_service: ElectricService;
-      fuel_used: FuelUsed;
     };
     CompositeTypes: Record<string, never>;
   };

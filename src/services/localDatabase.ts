@@ -110,9 +110,6 @@ const migrations = [
   `create table if not exists households (
     household_id text primary key,
     household_number text not null,
-    dwelling_type text not null check (dwelling_type in ('concrete', 'wood', 'mixed', 'makeshift')),
-    electric_service text not null check (electric_service in ('lamp', 'gas', 'iselco', 'none')),
-    fuel_used text not null check (fuel_used in ('wood', 'charcoal', 'lpg', 'electricity')),
     toilet_type text not null,
     water_source text not null,
     food_production text not null,
@@ -232,6 +229,33 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   { table: 'individuals', column: 'relationship_to_head', definition: 'text' },
 ];
 
+/**
+ * Columns dropped after release. A device that predates the drop still carries them,
+ * and they are `not null` with no default, so an insert that no longer supplies one
+ * fails on that device alone — the schema has to actually shrink, not just stop being
+ * written to. Idempotent via `pragma table_info`, same as the additions above.
+ */
+const columnRemovals: { table: MigratableTableName; column: string }[] = [
+  // Dwelling, electricity and cooking fuel. Removed on a BHW's reading that none of
+  // the three is health data, after the form had been filling them with fixed
+  // placeholders to satisfy the `not null` — so nothing recorded here was ever asked.
+  { table: 'households', column: 'dwelling_type' },
+  { table: 'households', column: 'electric_service' },
+  { table: 'households', column: 'fuel_used' },
+];
+
+/** Drops any column this device still carries that the schema has since removed. */
+async function applyColumnRemovals(database: SQLiteDBConnection): Promise<void> {
+  for (const removal of columnRemovals) {
+    const info = await database.query(`pragma table_info(${removal.table})`);
+    const hasColumn = (info.values ?? []).some((row) => row.name === removal.column);
+
+    if (hasColumn) {
+      await database.execute(`alter table ${removal.table} drop column ${removal.column}`);
+    }
+  }
+}
+
 /** Adds any post-release column this device's database predates. Idempotent via `pragma table_info`. */
 async function applyColumnUpgrades(database: SQLiteDBConnection): Promise<void> {
   for (const upgrade of columnUpgrades) {
@@ -323,6 +347,8 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   }
 
   await applyColumnUpgrades(database);
+  // After the additions, and before verify() — which reports a device still holding a dropped column.
+  await applyColumnRemovals(database);
   await householdUpsert.verify(database);
   await individualUpsert.verify(database);
   await inventoryUpsert.verify(database);
@@ -609,9 +635,6 @@ const individualUpsert = buildUpsert('individuals', 'resident_id', individualCol
 const householdColumns: ColumnDescriptor<Household>[] = [
   { name: 'household_id', value: (household) => household.household_id, mutableOnConflict: false },
   { name: 'household_number', value: (household) => household.household_number, mutableOnConflict: true },
-  { name: 'dwelling_type', value: (household) => household.dwelling_type, mutableOnConflict: true },
-  { name: 'electric_service', value: (household) => household.electric_service, mutableOnConflict: true },
-  { name: 'fuel_used', value: (household) => household.fuel_used, mutableOnConflict: true },
   { name: 'toilet_type', value: (household) => JSON.stringify(household.toilet_type ?? []), mutableOnConflict: true },
   { name: 'water_source', value: (household) => JSON.stringify(household.water_source ?? []), mutableOnConflict: true },
   {
