@@ -833,28 +833,13 @@ export async function readLocalInventoryItem(itemId: string): Promise<InventoryI
 }
 
 /**
- * Records a supply release and moves the stock it came out of, as one call.
+ * Records a supply release and decrements the device's local stock in one call.
  *
- * The two used to be separate: this wrote the ledger row and nothing decremented
- * `current_stock`, so the quantity check in the form was reading a figure only the
- * admin surface could ever change.
- *
- * Only the disbursement is queued. The stock move is applied locally — a BHW
- * offline for three days has to see what is actually left — but it is deliberately
- * *not* pushed. Two reasons, and either alone would settle it:
- *
- * - `inventory_items` is admin-only for writes under the purok RLS, so a queued
- *   stock update from a phone would be rejected every pass and quarantine.
- * - An absolute stock number is the wrong thing to send anyway. Two devices
- *   releasing offline from the same base would each push their own total and the
- *   later one would win, silently erasing the other's release.
- *
- * Centrally the decrement rides on the ledger row instead: an `after insert`
- * trigger on `supply_disbursements` (202608200002) subtracts the quantity from
- * the item. That is relative, so concurrent offline releases add up rather than
- * overwrite, and it does not fire on the `on conflict do update` path a replayed
- * queue entry takes — so a retried push cannot decrement twice. The next pull
- * brings the reconciled figure back down to the device.
+ * Only the disbursement is queued; the decrement stays local and is never pushed —
+ * `inventory_items` has no BHW write policy, and an absolute total would let two
+ * offline devices overwrite each other's release. The server reconciles the real
+ * figure live via the `bhw_item_stock` view (allocations minus disbursements),
+ * which the next pull brings back down.
  */
 export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
