@@ -93,6 +93,9 @@ vi.mock('./localDatabase', () => ({
   pullHouseholdsFromServer: () => Promise.resolve(),
   pullIndividualsFromServer: () => Promise.resolve(),
   pullInventoryFromServer: () => Promise.resolve(),
+  pullHealthAssessmentsFromServer: () => Promise.resolve(),
+  pullSupplyDisbursementsFromServer: () => Promise.resolve(),
+  readExistingIds: () => Promise.resolve(new Set<string>()),
 }));
 
 const { syncPendingQueue } = await import('./syncService');

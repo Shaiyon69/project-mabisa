@@ -20,7 +20,10 @@ import {
   type SyncQueueEntry,
   pullInventoryFromServer,
   pullHouseholdsFromServer,
-  pullIndividualsFromServer
+  pullIndividualsFromServer,
+  pullHealthAssessmentsFromServer,
+  pullSupplyDisbursementsFromServer,
+  readExistingIds,
 } from './localDatabase';
 
 /** `deferred` is a normal outcome (retry backoff), distinct from `failed` (quarantined). */
@@ -650,6 +653,32 @@ export async function readAllPages<TRow>(
   }
 }
 
+/**
+ * Rows whose foreign key names a record this device holds.
+ *
+ * The two leaf tables are scoped by resident, so a release logged by another BHW for
+ * a resident this one also covers comes back on the pull — pointing at an item that
+ * was never allocated to this device. Local foreign keys are enforced, so that row
+ * would fail the whole statement. Dropping it costs the device a line of another
+ * worker's history it cannot render anyway; keeping it costs the pull.
+ *
+ * A skipped row still advances the watermark, so it is not offered again. That is
+ * deliberate: the parent it names is not coming, and holding the watermark back for
+ * it would re-download every row since, on every pass, forever.
+ */
+export function withKnownParents<TRow>(rows: TRow[], foreignKey: keyof TRow & string, known: Set<string>): TRow[] {
+  const kept = rows.filter((row) => known.has(String(row[foreignKey])));
+
+  if (kept.length !== rows.length) {
+    logDev('Skipped pulled rows whose parent is not on this device', {
+      foreignKey,
+      skipped: rows.length - kept.length,
+    });
+  }
+
+  return kept;
+}
+
 export async function pullRemoteUpdates(): Promise<void> {
   try {
     // Row scope is enforced entirely by RLS, not repeated here as a client filter.
@@ -673,6 +702,16 @@ export async function pullRemoteUpdates(): Promise<void> {
     // don't track the watermark.
     const cloudStock = await readAllPages('Inventory', (from, to) =>
       supabase.from('bhw_item_stock').select('*').order('updated_at').order('item_id').range(from, to),
+    );
+
+    // Read back so a reinstalled device recovers the history it recorded, and so a
+    // resident's record shows the checks and releases made from another device.
+    const cloudAssessments = await readAllPages('Health assessment', (from, to) =>
+      changedSince(supabase.from('health_assessments').select('*')).order('updated_at').order('assessment_id').range(from, to),
+    );
+
+    const cloudDisbursements = await readAllPages('Supply disbursement', (from, to) =>
+      changedSince(supabase.from('supply_disbursements').select('*')).order('updated_at').order('log_id').range(from, to),
     );
 
     // `created_at` is not on the view and is not mutable on conflict, so it only
@@ -715,10 +754,33 @@ export async function pullRemoteUpdates(): Promise<void> {
     await pullIndividualsFromServer(withoutQuarantined('individuals', cloudIndividuals));
     await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
 
+    // Parents are read after the writes above, so a row that arrived in this same pass counts as held.
+    const [residentIds, itemIds] = await Promise.all([
+      readExistingIds('individuals', 'resident_id'),
+      readExistingIds('inventory_items', 'item_id'),
+    ]);
+
+    await pullHealthAssessmentsFromServer(
+      withKnownParents(withoutQuarantined('health_assessments', cloudAssessments), 'resident_id', residentIds),
+    );
+
+    await pullSupplyDisbursementsFromServer(
+      withKnownParents(
+        withKnownParents(withoutQuarantined('supply_disbursements', cloudDisbursements), 'resident_id', residentIds),
+        'item_id',
+        itemIds,
+      ),
+    );
+
     // Advance the watermark to the server's newest row, not this device's clock
     // (clock drift would skip rows). Inventory is excluded — it's pulled
     // unfiltered, so its timestamps aren't evidence of the filtered reads' progress.
-    const pulledRows: { updated_at?: string }[] = [...cloudHouseholds, ...cloudIndividuals];
+    const pulledRows: { updated_at?: string }[] = [
+      ...cloudHouseholds,
+      ...cloudIndividuals,
+      ...cloudAssessments,
+      ...cloudDisbursements,
+    ];
 
     const newest = newestUpdatedAt(pulledRows, pulledThrough);
 

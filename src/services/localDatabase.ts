@@ -689,27 +689,49 @@ export async function saveIndividualLocally(individual: Individual, operationTyp
   await persistLocalDatabase();
 }
 
+/**
+ * The two leaf tables keep `insert or replace` — nothing references them, so REPLACE
+ * cascades into nothing. Both the local write and the server pull go through these,
+ * so the column list cannot drift between the two the way it can when each has its own.
+ */
+const assessmentInsert = {
+  statement: `insert or replace into health_assessments
+     (assessment_id, resident_id, assessment_date, weight, height, bmi, nutrition_status, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  values: (assessment: HealthAssessment): SqlValue[] => [
+    assessment.assessment_id,
+    assessment.resident_id,
+    assessment.assessment_date,
+    assessment.weight,
+    assessment.height,
+    assessment.bmi,
+    assessment.nutrition_status,
+    assessment.created_at,
+    assessment.updated_at,
+  ],
+};
+
+const disbursementInsert = {
+  statement: `insert or replace into supply_disbursements
+     (log_id, item_id, resident_id, disbursement_date, quantity, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?)`,
+  values: (disbursement: SupplyDisbursement): SqlValue[] => [
+    disbursement.log_id,
+    disbursement.item_id,
+    disbursement.resident_id,
+    disbursement.disbursement_date,
+    disbursement.quantity,
+    disbursement.created_at,
+    disbursement.updated_at,
+  ],
+};
+
 export async function saveHealthAssessmentLocally(
   assessment: HealthAssessment,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
   const database = await getLocalDatabase();
-  await database.run(
-    `insert or replace into health_assessments
-     (assessment_id, resident_id, assessment_date, weight, height, bmi, nutrition_status, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      assessment.assessment_id,
-      assessment.resident_id,
-      assessment.assessment_date,
-      assessment.weight,
-      assessment.height,
-      assessment.bmi,
-      assessment.nutrition_status,
-      assessment.created_at,
-      assessment.updated_at,
-    ],
-  );
+  await database.run(assessmentInsert.statement, assessmentInsert.values(assessment));
   await enqueueSyncOperation('health_assessments', operationType, assessment);
   await persistLocalDatabase();
 }
@@ -757,20 +779,7 @@ export async function saveSupplyDisbursementLocally(
     }
   }
 
-  await database.run(
-    `insert or replace into supply_disbursements
-     (log_id, item_id, resident_id, disbursement_date, quantity, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      disbursement.log_id,
-      disbursement.item_id,
-      disbursement.resident_id,
-      disbursement.disbursement_date,
-      disbursement.quantity,
-      disbursement.created_at,
-      disbursement.updated_at,
-    ],
-  );
+  await database.run(disbursementInsert.statement, disbursementInsert.values(disbursement));
   await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
 
   if (item) {
@@ -807,6 +816,29 @@ export async function getIndividualCount(options?: Pick<PaginatedQuery, 'searchQ
     search.params,
   );
 
+  return result.values?.[0]?.total || 0;
+}
+
+/**
+ * Row counts for the tables the dashboard only ever counts. Reading them as rows
+ * meant parsing a purok's whole assessment and release history on every refresh —
+ * which now runs every 30 seconds while any queue entry is waiting out a backoff.
+ */
+export async function getHealthAssessmentCount(): Promise<number> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query('select count(*) as total from health_assessments');
+  return result.values?.[0]?.total || 0;
+}
+
+export async function getSupplyDisbursementCount(): Promise<number> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query('select count(*) as total from supply_disbursements');
+  return result.values?.[0]?.total || 0;
+}
+
+export async function getSyncQueueCount(): Promise<number> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query('select count(*) as total from sync_queue');
   return result.values?.[0]?.total || 0;
 }
 
@@ -929,16 +961,18 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
   })) as Household[];
 }
 
-export async function readLocalHealthAssessments(residentId?: string): Promise<HealthAssessment[]> {
+/** `limit` exists for the dashboard, which shows three rows out of a purok's whole history. */
+export async function readLocalHealthAssessments(residentId?: string, limit?: number): Promise<HealthAssessment[]> {
   const database = await getLocalDatabase();
+  const bound = limit === undefined ? '' : ' limit ?';
   const query = residentId
     ? {
-        statement: 'select * from health_assessments where resident_id = ? order by assessment_date desc',
-        values: [residentId],
+        statement: `select * from health_assessments where resident_id = ? order by assessment_date desc${bound}`,
+        values: limit === undefined ? [residentId] : [residentId, limit],
       }
     : {
-        statement: 'select * from health_assessments order by assessment_date desc',
-        values: [],
+        statement: `select * from health_assessments order by assessment_date desc${bound}`,
+        values: limit === undefined ? [] : [limit],
       };
   const result = await database.query(query.statement, query.values);
   
@@ -1055,6 +1089,49 @@ export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Pr
     await persistLocalDatabase();
   } catch (error) {
     console.error('Failed to pull households into SQLite:', error);
+    throw error;
+  }
+}
+
+/**
+ * Primary keys already in a local table. The pull uses this to drop a row whose
+ * parent this device does not hold — a release recorded by another BHW can name an
+ * item that was never allocated here, and `pragma foreign_keys = on` makes that a
+ * failed statement rather than a skipped row.
+ */
+export async function readExistingIds(table: LocalTableName, column: string): Promise<Set<string>> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query(`select ${column} from ${table}`);
+
+  return new Set((result.values ?? []).map((row) => String(row[column])));
+}
+
+export async function pullHealthAssessmentsFromServer(cloudAssessments: HealthAssessment[]): Promise<void> {
+  if (!cloudAssessments.length) return;
+  const db = await initializeLocalDatabase();
+
+  const values = cloudAssessments.map((assessment) => assessmentInsert.values(assessment));
+
+  try {
+    await db.executeSet([{ statement: assessmentInsert.statement, values }]);
+    await persistLocalDatabase();
+  } catch (error) {
+    console.error('Failed to pull health assessments into SQLite:', error);
+    throw error;
+  }
+}
+
+export async function pullSupplyDisbursementsFromServer(cloudDisbursements: SupplyDisbursement[]): Promise<void> {
+  if (!cloudDisbursements.length) return;
+  const db = await initializeLocalDatabase();
+
+  const values = cloudDisbursements.map((disbursement) => disbursementInsert.values(disbursement));
+
+  try {
+    await db.executeSet([{ statement: disbursementInsert.statement, values }]);
+    await persistLocalDatabase();
+  } catch (error) {
+    console.error('Failed to pull supply disbursements into SQLite:', error);
     throw error;
   }
 }
