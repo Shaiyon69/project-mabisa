@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { derivedEntityKeys, nextAttemptTimestamp, newestUpdatedAt, ownEntityKey, parentEntityKeys } from './syncService';
+import {
+  PULL_PAGE_SIZE,
+  derivedEntityKeys,
+  nextAttemptTimestamp,
+  newestUpdatedAt,
+  ownEntityKey,
+  parentEntityKeys,
+  readAllPages,
+} from './syncService';
 import type { LocalTableName, SyncQueueEntry } from './localDatabase';
 
 /** Minimal queue entry — only the fields the dependency helpers actually read. */
@@ -151,5 +159,62 @@ describe('derivedEntityKeys', () => {
 
   it('holds nothing back when the release carries no item', () => {
     expect(derivedEntityKeys(entry('supply_disbursements', { log_id: 'l1', resident_id: 'r1' }))).toEqual([]);
+  });
+});
+
+describe('readAllPages', () => {
+  /** A server holding `total` rows, answering each requested range like PostgREST does. */
+  function server(total: number) {
+    const rows = Array.from({ length: total }, (_, index) => ({ updated_at: `row-${index}` }));
+    const ranges: [number, number][] = [];
+
+    return {
+      ranges,
+      page: (from: number, to: number) => {
+        ranges.push([from, to]);
+        return Promise.resolve({ data: rows.slice(from, to + 1), error: null });
+      },
+    };
+  }
+
+  it('reads a table shorter than one page in a single request', async () => {
+    const { page, ranges } = server(107);
+
+    await expect(readAllPages('Household', page)).resolves.toHaveLength(107);
+    expect(ranges).toEqual([[0, PULL_PAGE_SIZE - 1]]);
+  });
+
+  // The data loss this exists for: a single capped read returns PULL_PAGE_SIZE rows
+  // and says nothing about the rest, the watermark advances past the newest of them,
+  // and every row the cap cut is below it — so the filtered pull never offers them again.
+  it('keeps asking past the row cap instead of stopping at the first full page', async () => {
+    const { page, ranges } = server(PULL_PAGE_SIZE * 2 + 3);
+
+    const rows = await readAllPages('Individual', page);
+
+    expect(rows).toHaveLength(PULL_PAGE_SIZE * 2 + 3);
+    expect(ranges).toEqual([
+      [0, PULL_PAGE_SIZE - 1],
+      [PULL_PAGE_SIZE, PULL_PAGE_SIZE * 2 - 1],
+      [PULL_PAGE_SIZE * 2, PULL_PAGE_SIZE * 3 - 1],
+    ]);
+  });
+
+  it('asks once more when the last page lands exactly on the cap', async () => {
+    const { page, ranges } = server(PULL_PAGE_SIZE);
+
+    await expect(readAllPages('Household', page)).resolves.toHaveLength(PULL_PAGE_SIZE);
+    expect(ranges).toHaveLength(2);
+  });
+
+  it('fails the pass with the table name rather than returning a partial read', async () => {
+    const failing = (from: number) =>
+      Promise.resolve(
+        from === 0
+          ? { data: Array.from({ length: PULL_PAGE_SIZE }, () => ({})), error: null }
+          : { data: null, error: { message: 'connection reset' } },
+      );
+
+    await expect(readAllPages('Individual', failing)).rejects.toThrow('Individual Pull Error: connection reset');
   });
 });
