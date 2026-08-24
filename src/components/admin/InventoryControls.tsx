@@ -3,7 +3,9 @@ import {
   allocateStockToBhw,
   createInventoryItem,
   fetchAllocatableBhws,
+  reorderLevelOf,
   restockInventoryItem,
+  setReorderLevel,
   type AccountRow,
 } from '../../services/adminData';
 import type { InventoryItem, InventoryItemType } from '../../types/database';
@@ -47,6 +49,7 @@ export function InventoryControls({ items, onChanged }: InventoryControlsProps) 
       {loadError ? <ErrorState title="Could not read health worker accounts" text={loadError} /> : null}
       <ReceiveStockCard items={items} onChanged={onChanged} />
       <AllocateStockCard items={items} bhws={bhws} onChanged={onChanged} />
+      <ReorderLevelCard items={items} onChanged={onChanged} />
     </div>
   );
 }
@@ -190,6 +193,56 @@ function AllocateStockCard({ items, bhws, onChanged }: InventoryControlsProps & 
             await allocateStockToBhw(itemId, bhwId, amount, reason.trim());
             setQuantity('');
             setReason('');
+          })
+        }
+      />
+    </Card>
+  );
+}
+
+/** The level an item warns at. Set by the office that does the reordering, not by the app. */
+function ReorderLevelCard({ items, onChanged }: InventoryControlsProps) {
+  const [itemId, setItemId] = useState('');
+  const [level, setLevel] = useState('');
+  const { busy, message, error, run } = useStockAction(onChanged);
+
+  const selected = items.find((item) => item.item_id === itemId);
+  const nextLevel = Number(level);
+  const levelValid = Number.isInteger(nextLevel) && nextLevel >= 0;
+
+  return (
+    <Card className="report-card">
+      <h3>Set a low-stock warning</h3>
+      <p className="muted">
+        The barangay is warned when an item's unallocated count falls to this number. Five sachets and five sacks are
+        not the same situation, so each item carries its own.
+      </p>
+
+      <ItemSelect items={items} value={itemId} onChange={setItemId} />
+
+      <FormField
+        label="Warn at"
+        type="number"
+        min={0}
+        value={level}
+        onChange={(event) => setLevel(event.target.value)}
+        hint={
+          selected
+            ? `${selected.item_name} currently warns at ${reorderLevelOf(selected)}. Zero turns the warning off.`
+            : 'Zero turns the warning off for that item.'
+        }
+      />
+
+      <StockActionFooter
+        busy={busy}
+        message={message}
+        error={error}
+        label="Save level"
+        disabled={!itemId || !levelValid}
+        onSubmit={() =>
+          run(async () => {
+            await setReorderLevel(itemId, nextLevel);
+            setLevel('');
           })
         }
       />
