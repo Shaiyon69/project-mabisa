@@ -215,6 +215,15 @@
   background: var(--field-soft);
 }
 
+/* The remove control sits on the member's own heading line, not above the card,
+   so it is unmistakably attached to that one person. */
+.member-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .member-card h4 {
   margin: 0;
   color: var(--text-h);

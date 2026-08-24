@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
 import { createId, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
@@ -11,6 +11,7 @@ import { Card } from '../common/Card';
 import { FormActions, FormField } from '../common/FormField';
 import { CheckboxGroup } from '../common/CheckboxGroup';
 import { Icon } from '../common/Icon';
+import { Modal } from '../common/Modal';
 import { useBhwLanguage } from '../../app/bhwLanguage';
 
 const WATER_OPTIONS = [
@@ -50,6 +51,51 @@ function philhealthDigits(value: string | null | undefined): string | null {
   return digits ? digits : null;
 }
 
+/**
+ * A household is minutes of typing on a phone that also rings, sleeps and runs out
+ * of battery. The form keeps the entries in local storage as they are typed and
+ * offers them back on the next visit, so a backgrounded tab is an interruption
+ * rather than a re-survey. Keyed per health worker: two accounts on one device must
+ * not inherit each other's half-finished household.
+ */
+type HouseholdDraft = {
+  household: Partial<Household>;
+  members: Partial<Individual>[];
+  savedAt: string;
+};
+
+function draftKey(bhwId: string): string {
+  return `mabisa.household_draft.${bhwId}`;
+}
+
+function readDraft(bhwId: string): HouseholdDraft | null {
+  try {
+    const stored = localStorage.getItem(draftKey(bhwId));
+    const parsed = stored ? (JSON.parse(stored) as HouseholdDraft) : null;
+
+    // A draft with no members is a shape this form cannot render — treat it as none.
+    return parsed?.members?.length ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(bhwId: string, draft: HouseholdDraft): void {
+  try {
+    localStorage.setItem(draftKey(bhwId), JSON.stringify(draft));
+  } catch {
+    // Storage full or unavailable — the form still works, it just cannot be resumed.
+  }
+}
+
+function clearDraft(bhwId: string): void {
+  try {
+    localStorage.removeItem(draftKey(bhwId));
+  } catch {
+    // Nothing to clear if storage is unavailable.
+  }
+}
+
 type HouseholdFormProps = {
   bhwId: string;
   onSaved: () => Promise<void>;
@@ -57,7 +103,10 @@ type HouseholdFormProps = {
 
 export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const { t } = useBhwLanguage();
-  const [household, setHousehold] = useState<Partial<Household>>({
+  // Read once, on the first render only — later renders must not fight the BHW's typing.
+  const [restored] = useState(() => readDraft(bhwId));
+  const [restoredNotice, setRestoredNotice] = useState(restored !== null);
+  const [household, setHousehold] = useState<Partial<Household>>(restored?.household ?? {
     household_number: '',
     toilet_type: [],
     water_source: [],
@@ -65,7 +114,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     health_status_notes: ''
   });
 
-  const [members, setMembers] = useState<Partial<Individual>[]>([
+  const [members, setMembers] = useState<Partial<Individual>[]>(restored?.members ?? [
     {
       first_name: '',
       middle_name: '',
@@ -89,6 +138,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   // Non-empty `flagged` holds the save — the warning is raised before anything is written.
   const [flagged, setFlagged] = useState<FlaggedMember[]>([]);
   const [overrideReason, setOverrideReason] = useState('');
+  // Index of the member the BHW asked to remove, held until they confirm. Only a
+  // row with something typed in it gets that question — an empty one just goes.
+  const [removingMember, setRemovingMember] = useState<number | null>(null);
   const missingRequirements = [
     !household.household_number?.trim() && 'household number',
     !household.water_source?.length && 'water source',
@@ -98,6 +150,52 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     !members.some((member) => member.is_household_head) && 'household head',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
+
+  // Nothing typed yet is not a draft — an untouched form would otherwise offer
+  // itself back as one on the next visit.
+  const hasEntries =
+    Boolean(household.household_number?.trim()) ||
+    Boolean(household.health_status_notes?.trim()) ||
+    Boolean(household.toilet_type?.length) ||
+    Boolean(household.water_source?.length) ||
+    Boolean(household.food_production?.length) ||
+    members.some((member) => memberHasEntries(member));
+
+  useEffect(() => {
+    if (hasEntries) {
+      writeDraft(bhwId, { household, members, savedAt: new Date().toISOString() });
+    }
+  }, [bhwId, hasEntries, household, members]);
+
+  function startBlank() {
+    clearDraft(bhwId);
+    setHousehold({
+      household_number: '',
+      toilet_type: [],
+      water_source: [],
+      food_production: [],
+      health_status_notes: '',
+    });
+    setMembers([
+      {
+        first_name: '',
+        middle_name: '',
+        last_name: '',
+        sex: 'female',
+        birthday: '',
+        is_household_head: true,
+        relationship_to_head: null,
+        occupation: '',
+        educational_attainment: '',
+        is_out_of_school_youth: false,
+        is_pregnant_nursing_fp: false,
+        philhealth_number: '',
+      },
+    ]);
+    setFlagged([]);
+    setShowValidation(false);
+    setRestoredNotice(false);
+  }
 
   function updateMember(index: number, field: keyof Individual, value: unknown) {
     const updatedMembers = [...members];
@@ -123,6 +221,41 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         philhealth_number: '',
       }
     ]);
+  }
+
+  function memberLabel(member: Partial<Individual>, index: number): string {
+    const name = `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim();
+
+    return name || `${t('Member')} ${index + 1}`;
+  }
+
+  /** Whether anything was typed into this row — an untouched one is not worth a confirmation. */
+  function memberHasEntries(member: Partial<Individual>): boolean {
+    return Boolean(
+      member.first_name?.trim() ||
+        member.middle_name?.trim() ||
+        member.last_name?.trim() ||
+        member.birthday ||
+        member.occupation?.trim() ||
+        member.educational_attainment?.trim() ||
+        member.philhealth_number?.trim(),
+    );
+  }
+
+  function requestRemoveMember(index: number) {
+    if (memberHasEntries(members[index])) {
+      setRemovingMember(index);
+      return;
+    }
+
+    removeMember(index);
+  }
+
+  function removeMember(index: number) {
+    setMembers(members.filter((_, position) => position !== index));
+    setRemovingMember(null);
+    // Duplicate flags are keyed by member number, which every later row just changed.
+    setFlagged([]);
   }
 
   /**
@@ -196,6 +329,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         duplicate_override_at: overridden ? timestamp : null,
       });
     }
+
+    // The entries are now in SQLite and on the queue — the draft has nothing left to protect.
+    clearDraft(bhwId);
+    setRestoredNotice(false);
 
     await onSaved();
   }
@@ -291,6 +428,16 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       <form className="stack" onSubmit={handleSubmit}>
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
+        {/* Says why the form is not empty. Without it, restored entries read as another
+            household's, and the safe move looks like clearing them by hand. */}
+        {restoredNotice ? (
+          <p className="form-alert tone-info" role="status">
+            <Icon name="save" size={18} />
+            {t('Unsaved entries from your last visit were restored.')}
+            <Button type="button" variant="ghost" onClick={startBlank}>{t('Start blank')}</Button>
+          </p>
+        ) : null}
+
         <h3>{t('Household Information')}</h3>
         <FormField 
           label={t('Household Number')}
@@ -331,7 +478,15 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
         {members.map((member, index) => (
           <div key={index} className="member-card">
-            <h4>{t('Member')} {index + 1} {member.is_household_head ? `(${t('Head')})` : ''}</h4>
+            <div className="member-card-heading">
+              <h4>{t('Member')} {index + 1} {member.is_household_head ? `(${t('Head')})` : ''}</h4>
+              {/* One member is the household itself — there is nothing to remove down to. */}
+              {members.length > 1 ? (
+                <Button type="button" variant="ghost" onClick={() => requestRemoveMember(index)}>
+                  {t('Remove')}
+                </Button>
+              ) : null}
+            </div>
 
             <MemberFields
               member={member}
@@ -373,6 +528,25 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         }}
         onOverride={() => void handleOverride()}
       />
+
+      <Modal
+        open={removingMember !== null}
+        title={t('Remove this member?')}
+        onClose={() => setRemovingMember(null)}
+      >
+        <p className="logout-warning">
+          <Icon name="warning" size={20} />
+          {removingMember !== null ? memberLabel(members[removingMember], removingMember) : ''}
+          {' — '}
+          {t('what was typed for this member will be discarded.')}
+        </p>
+        <div className="modal-actions">
+          <Button variant="ghost" onClick={() => setRemovingMember(null)}>{t('Keep member')}</Button>
+          <Button variant="danger" onClick={() => removingMember !== null && removeMember(removingMember)}>
+            {t('Remove')}
+          </Button>
+        </div>
+      </Modal>
     </Card>
   );
 }
