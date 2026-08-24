@@ -5,14 +5,18 @@ import {
   readLocalHealthAssessments,
   getHouseholdCount,
   getIndividualCount,
+  getHealthAssessmentCount,
+  getSupplyDisbursementCount,
+  getSyncQueueCount,
   readLocalInventoryItems,
-  readLocalSupplyDisbursements,
   readDeadLetterEntries,
   requeueDeadLetterEntries,
-  readSyncQueue,
 } from '../services/localDatabase';
 import { readLastSyncAt, resetPullWatermark } from '../services/syncService';
 import { MabisaDataContext, emptySnapshot, type LocalSnapshot, type MabisaDataContextValue } from './mabisaData';
+
+/** Recent checks shown on the dashboard. Matches what BHWDashboard renders. */
+const DASHBOARD_ASSESSMENTS = 3;
 
 export function MabisaDataProvider({ bhwId, children }: { bhwId: string; children: React.ReactNode }) {
   const backgroundSync = useBackgroundSync();
@@ -22,25 +26,36 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
   const [syncError, setSyncError] = useState<string | null>(null); 
 
   const refreshLocalData = useCallback(async () => {
-    // 1. Fetch lightweight counts instead of massive arrays
-    const [householdCount, individualCount, assessments, inventoryItems, disbursements, queue, deadLetterEntries] =
-      await Promise.all([
-        getHouseholdCount(),
-        getIndividualCount(),
-        readLocalHealthAssessments(),
-        readLocalInventoryItems(),
-        readLocalSupplyDisbursements(),
-        readSyncQueue(),
-        readDeadLetterEntries(),
-      ]);
+    // Counts where the UI only counts. The pull now brings a whole purok's history
+    // onto the device, so reading these as rows would parse all of it every refresh.
+    const [
+      householdCount,
+      individualCount,
+      assessmentCount,
+      disbursementCount,
+      latestAssessments,
+      inventoryItems,
+      pendingQueueCount,
+      deadLetterEntries,
+    ] = await Promise.all([
+      getHouseholdCount(),
+      getIndividualCount(),
+      getHealthAssessmentCount(),
+      getSupplyDisbursementCount(),
+      readLocalHealthAssessments(undefined, DASHBOARD_ASSESSMENTS),
+      readLocalInventoryItems(),
+      getSyncQueueCount(),
+      readDeadLetterEntries(),
+    ]);
 
     setSnapshot({
       householdCount,
       individualCount,
-      assessments,
+      assessmentCount,
+      disbursementCount,
+      latestAssessments,
       inventoryItems,
-      disbursements,
-      pendingQueueCount: queue.length,
+      pendingQueueCount,
       deadLetterEntries,
     });
   }, []);

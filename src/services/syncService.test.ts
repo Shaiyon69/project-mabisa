@@ -7,6 +7,7 @@ import {
   ownEntityKey,
   parentEntityKeys,
   readAllPages,
+  withKnownParents,
 } from './syncService';
 import type { LocalTableName, SyncQueueEntry } from './localDatabase';
 
@@ -216,5 +217,27 @@ describe('readAllPages', () => {
       );
 
     await expect(readAllPages('Individual', failing)).rejects.toThrow('Individual Pull Error: connection reset');
+  });
+});
+
+describe('withKnownParents', () => {
+  const residents = new Set(['r1', 'r2']);
+
+  it('keeps the rows whose parent is on this device', () => {
+    const rows = [{ resident_id: 'r1' }, { resident_id: 'r2' }];
+
+    expect(withKnownParents(rows, 'resident_id', residents)).toEqual(rows);
+  });
+
+  // The failure this prevents: local foreign keys are on, so one unknown parent
+  // fails the whole insert set and the pull brings back nothing at all.
+  it('drops a row naming a parent this device never received', () => {
+    const rows = [{ resident_id: 'r1' }, { resident_id: 'somebody-elses' }];
+
+    expect(withKnownParents(rows, 'resident_id', residents)).toEqual([{ resident_id: 'r1' }]);
+  });
+
+  it('drops everything rather than half-writing when no parent is held', () => {
+    expect(withKnownParents([{ item_id: 'i1' }], 'item_id', new Set<string>())).toEqual([]);
   });
 });
