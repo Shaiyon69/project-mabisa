@@ -1,0 +1,30 @@
+# The 83 tests, the type-check and the lint only prove anything if something runs
+# them without being asked. The build is here too: it fails on things `tsc -b`
+# alone does not, and it produces what `cap sync` copies into the APK.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    # CI has no `.env`, and the Supabase client is constructed at module scope —
+    # so importing anything that touches it throws without these. Placeholders, not
+    # secrets: nothing here reaches the network.
+    env:
+      VITE_SUPABASE_URL: https://example.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b --pretty false
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

@@ -3,11 +3,14 @@ import {
   AGE_BANDS,
   NUTRITION_ORDER,
   ageBandOf,
+  assessmentsBelowAdultBmiAge,
   defaultAdminFilters,
   describeBarangayScope,
   describePeriod,
   disbursementsByItem,
+  LOW_STOCK_THRESHOLD,
   lowStockItems,
+  reorderLevelOf,
   tally,
 } from './adminData';
 import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
@@ -72,20 +75,45 @@ describe('ageBandOf', () => {
   });
 });
 
-const item = (item_id: string, item_name: string, current_stock: number): InventoryItem => ({
+const item = (item_id: string, item_name: string, current_stock: number, reorder_level?: number): InventoryItem => ({
   item_id,
   item_name,
   type: 'medicine',
   current_stock,
+  reorder_level,
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: '2026-01-01T00:00:00.000Z',
 });
 
+describe('reorderLevelOf', () => {
+  it("takes the item's own level", () => {
+    expect(reorderLevelOf(item('a', 'Rice', 40, 5))).toBe(5);
+  });
+
+  // Zero is the office switching the warning off, and `??` is what keeps it from
+  // collapsing into the shared fallback the way `||` would.
+  it('keeps a zero level rather than falling back', () => {
+    expect(reorderLevelOf(item('a', 'Leaflets', 0, 0))).toBe(0);
+    expect(lowStockItems([item('a', 'Leaflets', 0, 0)])).toEqual([]);
+  });
+
+  it("falls back for an item never given a level, like a device's copy", () => {
+    expect(reorderLevelOf(item('a', 'Paracetamol', 40))).toBe(LOW_STOCK_THRESHOLD);
+  });
+});
+
 describe('lowStockItems', () => {
-  it('includes the threshold itself and excludes what sits above it', () => {
+  it('includes the level itself and excludes what sits above it', () => {
     const items = [item('a', 'Paracetamol', 10), item('b', 'Vitamins', 11), item('c', 'Soap', 0)];
 
     expect(lowStockItems(items).map((row) => row.item_id)).toEqual(['a', 'c']);
+  });
+
+  // The reason the level moved onto the item: one number cannot serve both.
+  it('warns per item, so sacks and sachets are judged separately', () => {
+    const items = [item('rice', 'Rice sack', 4, 10), item('vitamin', 'Vitamins', 4, 2)];
+
+    expect(lowStockItems(items).map((row) => row.item_id)).toEqual(['rice']);
   });
 });
 
@@ -171,5 +199,37 @@ describe('describeBarangayScope', () => {
   it('says the name is missing rather than inventing one', () => {
     expect(describeBarangayScope(null, [])).toBe('Barangay name not configured');
     expect(describeBarangayScope('gone', barangays)).toBe('Barangay name not configured');
+  });
+});
+
+describe('assessmentsBelowAdultBmiAge', () => {
+  const on = new Date('2026-08-24T00:00:00.000Z');
+  const residents = [
+    { resident_id: 'child', birthday: '2023-01-01' },
+    { resident_id: 'teen', birthday: '2010-01-01' },
+    { resident_id: 'adult', birthday: '1980-01-01' },
+    // Turns 20 the day after the report is read — still a child by these cut-points.
+    { resident_id: 'almost', birthday: '2006-08-25' },
+  ];
+
+  it('counts only the assessments the adult bands do not classify', () => {
+    const assessments = [
+      { resident_id: 'child' },
+      { resident_id: 'teen' },
+      { resident_id: 'adult' },
+      { resident_id: 'almost' },
+    ];
+
+    expect(assessmentsBelowAdultBmiAge(assessments, residents, on)).toBe(3);
+  });
+
+  it('says nothing when every assessment is of an adult', () => {
+    expect(assessmentsBelowAdultBmiAge([{ resident_id: 'adult' }], residents, on)).toBe(0);
+  });
+
+  // A resident the portal did not read back is unknown, not young — counting them
+  // would put a caveat on a report that has no children in it.
+  it('does not treat an unknown resident as a child', () => {
+    expect(assessmentsBelowAdultBmiAge([{ resident_id: 'nobody' }], residents, on)).toBe(0);
   });
 });

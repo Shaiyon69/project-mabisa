@@ -35,6 +35,14 @@ export function isMeasurementInRange(value: string, range: { min: number; max: n
   return value.trim() !== '' && Number.isFinite(parsed) && parsed >= range.min && parsed <= range.max;
 }
 
+/**
+ * Below this age the four bands below classify nobody. WHO reads under-20s off
+ * BMI-for-age z-scores instead, so the status a child's measurements produce here
+ * is an adult reading printed against a child, not a finding. Every surface that
+ * shows a status to someone who did not take the measurement has to say so.
+ */
+export const ADULT_BMI_MIN_AGE = 20;
+
 export function getNutritionStatus(bmi: number | null): NutritionStatus | null {
   if (!bmi) {
     return null;
