@@ -158,6 +158,12 @@ export type InventoryItem = {
   item_name: string;
   type: InventoryItemType;
   current_stock: number;
+  /**
+   * Warn at or below this. Per item because five sachets and five sacks are not the
+   * same situation. Absent on a device: its rows come from `bhw_item_stock`, which
+   * carries a worker's holding rather than the barangay's reorder policy.
+   */
+  reorder_level?: number;
   barangay_id?: string;
   created_at: string;
   updated_at: string;
@@ -293,6 +299,10 @@ export type Database = {
       };
       barangay_admin_restock_item: {
         Args: { target_item_id: string; target_quantity: number; target_reason: string };
+        Returns: InventoryItem;
+      };
+      barangay_admin_set_reorder_level: {
+        Args: { target_item_id: string; target_level: number };
         Returns: InventoryItem;
       };
       barangay_admin_allocate_stock: {

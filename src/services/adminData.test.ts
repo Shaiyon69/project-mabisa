@@ -8,7 +8,9 @@ import {
   describeBarangayScope,
   describePeriod,
   disbursementsByItem,
+  LOW_STOCK_THRESHOLD,
   lowStockItems,
+  reorderLevelOf,
   tally,
 } from './adminData';
 import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
@@ -73,20 +75,45 @@ describe('ageBandOf', () => {
   });
 });
 
-const item = (item_id: string, item_name: string, current_stock: number): InventoryItem => ({
+const item = (item_id: string, item_name: string, current_stock: number, reorder_level?: number): InventoryItem => ({
   item_id,
   item_name,
   type: 'medicine',
   current_stock,
+  reorder_level,
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: '2026-01-01T00:00:00.000Z',
 });
 
+describe('reorderLevelOf', () => {
+  it("takes the item's own level", () => {
+    expect(reorderLevelOf(item('a', 'Rice', 40, 5))).toBe(5);
+  });
+
+  // Zero is the office switching the warning off, and `??` is what keeps it from
+  // collapsing into the shared fallback the way `||` would.
+  it('keeps a zero level rather than falling back', () => {
+    expect(reorderLevelOf(item('a', 'Leaflets', 0, 0))).toBe(0);
+    expect(lowStockItems([item('a', 'Leaflets', 0, 0)])).toEqual([]);
+  });
+
+  it("falls back for an item never given a level, like a device's copy", () => {
+    expect(reorderLevelOf(item('a', 'Paracetamol', 40))).toBe(LOW_STOCK_THRESHOLD);
+  });
+});
+
 describe('lowStockItems', () => {
-  it('includes the threshold itself and excludes what sits above it', () => {
+  it('includes the level itself and excludes what sits above it', () => {
     const items = [item('a', 'Paracetamol', 10), item('b', 'Vitamins', 11), item('c', 'Soap', 0)];
 
     expect(lowStockItems(items).map((row) => row.item_id)).toEqual(['a', 'c']);
+  });
+
+  // The reason the level moved onto the item: one number cannot serve both.
+  it('warns per item, so sacks and sachets are judged separately', () => {
+    const items = [item('rice', 'Rice sack', 4, 10), item('vitamin', 'Vitamins', 4, 2)];
+
+    expect(lowStockItems(items).map((row) => row.item_id)).toEqual(['rice']);
   });
 });
 

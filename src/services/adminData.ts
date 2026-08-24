@@ -237,8 +237,22 @@ export function ageBandOf(birthday: string): string | null {
  */
 export const LOW_STOCK_THRESHOLD = 10;
 
+/** The level to warn at: the item's own, or the shared fallback for one never given a level. */
+export function reorderLevelOf(item: InventoryItem): number {
+  return item.reorder_level ?? LOW_STOCK_THRESHOLD;
+}
+
+/**
+ * Items at or below their own warning level. A level of 0 is the office switching the
+ * warning off for that item — a one-off delivery of leaflets should not sit in the
+ * alert count forever once it runs out.
+ */
 export function lowStockItems(items: InventoryItem[]): InventoryItem[] {
-  return items.filter((item) => item.current_stock <= LOW_STOCK_THRESHOLD);
+  return items.filter((item) => {
+    const level = reorderLevelOf(item);
+
+    return level > 0 && item.current_stock <= level;
+  });
 }
 
 /** Quantity released per item over the period, largest first. */
@@ -380,6 +394,18 @@ export async function restockInventoryItem(itemId: string, quantity: number, rea
     target_item_id: itemId,
     target_quantity: quantity,
     target_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Sets the level an item warns at. 0 turns the warning off for that item. */
+export async function setReorderLevel(itemId: string, level: number): Promise<void> {
+  const { error } = await supabase.rpc('barangay_admin_set_reorder_level', {
+    target_item_id: itemId,
+    target_level: level,
   });
 
   if (error) {
