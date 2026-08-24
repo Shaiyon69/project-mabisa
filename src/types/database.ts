@@ -91,6 +91,14 @@ export type Household = {
   purok_id?: string;
   barangay_id?: string;
   household_number: string;
+  /**
+   * Who profiled the household and who last edited it, stamped by
+   * `households_stamp_actor` from the session. Optional here for the same reason as
+   * the scope columns above — a device never supplies them, and the phone's mirror is
+   * built from the local table, which does not carry them.
+   */
+  recorded_by?: string;
+  updated_by?: string;
   toilet_type: string[];
   water_source: string[];
   food_production: string[];
