@@ -10,7 +10,7 @@ import { describeAuthError } from './lib/authErrors';
 import { countPendingQueueEntries } from './services/localDatabase';
 import { buildsBhw } from './app/surface';
 import { logDev } from './lib/utils';
-import type { UserRole } from './types/database';
+import { isDeskRole, type UserRole } from './types/database';
 
 type LoginState = {
   email: string;
@@ -228,11 +228,22 @@ export function App() {
     );
   }
 
+  // The offline engine — local SQLite, the sync queue, background pulls of
+  // every household and individual the session can read — exists for BHW
+  // fieldwork only. The admin portal reads Supabase directly (see adminData.ts)
+  // and has no offline mode, so a desk account must never open it: on an RHU
+  // account that pull is every barangay's residents, landing in this browser's
+  // unencrypted storage for no reason. `role` starts null until the profile
+  // lookup settles, and that ambiguous window stays on the BHW-shaped default —
+  // the same fail-safe direction the rest of the app already takes — so this
+  // only turns off once a desk role is confirmed.
+  const runsOfflineEngine = buildsBhw && !isDeskRole(role);
+
+  const routes = <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} />;
+
   return (
     <BrowserRouter>
-      <MabisaDataProvider bhwId={bhwId}>
-        <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} />
-      </MabisaDataProvider>
+      {runsOfflineEngine ? <MabisaDataProvider bhwId={bhwId}>{routes}</MabisaDataProvider> : routes}
     </BrowserRouter>
   );
 }
