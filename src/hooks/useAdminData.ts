@@ -18,12 +18,8 @@ export type AdminData = {
 
 /**
  * Central data for one admin screen, refetched whenever the period changes.
- *
- * Filter state lives here rather than in a provider: each admin page asks its
- * own question over its own period, and the portal is a handful of screens on a
- * wired workstation, so a shared cache would buy less than it costs to keep in
- * step. Callers get the snapshot and the filters that produced it from the same
- * hook, which is what lets every summary caption state its period honestly.
+ * Filter state lives here, not in a provider — each page asks its own question
+ * over its own period, and gets the snapshot and filters from the same hook.
  */
 export function useAdminData(): AdminData {
   const [filters, setFilters] = useState<AdminFilters>(defaultAdminFilters);
@@ -34,16 +30,13 @@ export function useAdminData(): AdminData {
     settledFor: '',
   });
 
-  // The request this render is asking for. `loading` is the difference between
-  // it and the request the state was last settled against, rather than a flag
-  // set in the effect body — a new period makes the screen busy on the render
-  // that changed it, with no second render to get there.
+  // `loading` is this key vs. the one state last settled against — not a flag set
+  // in the effect body — so a new period is busy on the render that changed it.
   const requestKey = `${filters.from}|${filters.to}|${reloadToken}`;
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
   useEffect(() => {
-    // A period changed mid-flight would otherwise let the slower of the two
-    // responses land last and caption itself with the newer filters.
+    // Guards against a period changing mid-flight and the slower response landing last.
     let current = true;
 
     fetchAdminSnapshot(filters)

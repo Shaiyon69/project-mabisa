@@ -5,7 +5,8 @@ import type { SyncStatus } from '../../services/syncService';
 import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
-import { BhwLanguageProvider, useBhwLanguage } from '../../app/BhwLanguageContext';
+import { BhwLanguageProvider } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 const bhwNavItems = [
   { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', icon: 'home' as const, end: true },
@@ -25,9 +26,8 @@ export type BhwOutletContext = {
   logout: () => Promise<void>;
 };
 
-// A BHW should never have to open a screen to learn whether the last hour of
-// encoding is still only on this phone, so record safety rides on a rail that
-// is present on every screen rather than a badge on one of them.
+// Record safety is a rail on every screen, not a badge on one — a BHW shouldn't
+// have to open a screen to check whether the last hour of encoding is still only on this phone.
 function recordRail(
   isOnline: boolean,
   syncStatus: SyncStatus,
@@ -76,9 +76,7 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
   return (
     <main className="bhw-preview-shell">
       <section className="bhw-mobile-shell" aria-label="BHW mobile app preview">
-        {/* Covers the screen, changes nothing underneath it. Records stay saved
-            and queued while it is up — the count is shown precisely so nobody
-            reads the cover as work having been lost. */}
+        {/* Records stay saved and queued underneath — the count is shown so nobody reads this as lost work. */}
         {locked ? (
           <div className="idle-lock" role="dialog" aria-modal="true" aria-label={t('Screen locked')}>
             <span className="brand-mark" aria-hidden="true">
@@ -98,9 +96,7 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
           {rail.label}
         </p>
 
-        {/* No header actions: connection state lives on the rail above, and theme
-            and logout now live on the Profile tab so the top of every screen is
-            content rather than controls. */}
+        {/* No header actions — connection state lives on the rail; theme/logout live on the Profile tab. */}
         <PageHeader eyebrow={t('Project MABISA')} title={t('BHW Mobile')} />
         {message ? <p className="notice">{message}</p> : null}
 

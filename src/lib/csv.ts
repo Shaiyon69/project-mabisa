@@ -1,27 +1,14 @@
 import { logDev } from './utils';
 
-/**
- * The barangay an export belongs to. FR-09 requires it on the face of every
- * report, and it is deployment configuration rather than data: one portal serves
- * one barangay. There is deliberately no plausible default — an LGU document
- * carrying the wrong barangay name is worse than one that says the name is
- * missing.
- */
-export const BARANGAY_NAME = import.meta.env.VITE_BARANGAY_NAME || 'Barangay name not configured';
-
 export type CsvColumn<Row> = {
   header: string;
   value: (row: Row) => string | number | boolean | null | undefined;
 };
 
 /**
- * One cell, quoted only when it has to be.
- *
- * The leading apostrophe on `=`, `+`, `-` and `@` is not cosmetic: a spreadsheet
- * treats a cell starting with one as a formula, so a resident whose occupation
- * was typed as `=cmd|...` becomes code the moment an LGU officer opens the file.
- * Every value here originates in a free-text field a BHW filled in on a phone,
- * which makes the export the trust boundary.
+ * One cell, quoted only when it has to be. The leading apostrophe on `=+-@` guards
+ * against formula injection — a resident's free-text field becomes the cell's
+ * first character, and a spreadsheet treats one starting with those as a formula.
  */
 export function escapeCsvCell(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) {
@@ -42,13 +29,14 @@ export function toCsv<Row>(rows: Row[], columns: CsvColumn<Row>[]): string {
 }
 
 /**
- * What an export has to say about itself before its first data row, from FR-09:
- * report title, barangay, date range, generation timestamp, and the filters that
- * were active. Without these a saved CSV is a column of numbers nobody can tie
- * back to a question.
+ * What an export says about itself before its first data row: title, barangay,
+ * date range, generation timestamp, active filters — so a saved CSV isn't just
+ * a column of numbers nobody can tie back to a question.
  */
 export type ReportContext = {
   title: string;
+  /** The area covered — derived from the same query that produced the numbers, not the build. */
+  barangay: string;
   from: string;
   to: string;
   /** Any filter beyond the date range, as label/value pairs already formatted. */
@@ -62,7 +50,7 @@ export function buildReportCsv<Row>(context: ReportContext, rows: Row[], columns
 
   const preamble = [
     ['Report', context.title],
-    ['Barangay', BARANGAY_NAME],
+    ['Barangay', context.barangay],
     ['Date range', `${context.from} to ${context.to}`],
     ['Generated', new Date().toISOString()],
     ['Filters', filters],
@@ -81,12 +69,7 @@ export function reportFileName(title: string): string {
   return `${slug || 'report'}-${new Date().toISOString().slice(0, 10)}.csv`;
 }
 
-/**
- * Hands the finished CSV to the browser's download flow.
- *
- * The BOM is what makes Excel read the file as UTF-8 rather than the local code
- * page; without it a resident named Peña arrives mangled in the LGU's copy.
- */
+/** Hands the finished CSV to the browser's download flow. The BOM makes Excel read it as UTF-8, not the local code page. */
 export function downloadCsv(fileName: string, content: string): void {
   const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);

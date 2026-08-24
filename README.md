@@ -19,8 +19,9 @@ Project MABISA is a Mobile-based Application for Assessment of Barangay Inhabita
 - Web LGU portal: built, not planned. Desktop-first administrative dashboard covering residents, inventory, accounts, and reports.
 - Backend database: Supabase PostgreSQL schema with Row Level Security enabled and enforced on every table.
 
-Both surfaces live in this one codebase and are selected by the signed-in account's
-role. There is no separate build per surface.
+Both surfaces live in this one codebase but ship as separate deployments —
+`npm run build:mobile` and `npm run build:admin`. A plain `npm run dev` serves both, and
+the route guard keeps a session on the surface its role belongs to.
 
 ## Setup
 
@@ -94,19 +95,38 @@ selects the correct JDK on its own.
 
 ## Roles and Access
 
-Every account has a role in `public.users`: `bhw`, `admin`, or `lgu`. The role decides
-which surface the session lands on, and it is set server-side — new accounts are
-created as `bhw` by a database trigger, and promotion is a manual SQL update. There is
-no sign-up screen.
+Every account has a role in `public.profiles`, and the role decides both which surface
+the session lands on and how much of the data it can see. It is set server-side; there
+is no sign-up screen, and promotion is a manual SQL update.
 
-Access is enforced in the database, not the browser. BHW accounts write resident,
-household, assessment and disbursement records; admin and LGU accounts read all of them
-and write none. No account can delete through the API. The route guard in the app
-mirrors these rules for convenience, but Row Level Security is the actual boundary.
+| role | sees | writes |
+|---|---|---|
+| `admin` | every barangay in the RHU | nothing, anywhere |
+| `barangay_admin` | one barangay's residents | that barangay's supply stock only |
+| `bhw` | one purok's residents | field data in that purok; releases only stock allocated to them |
+
+`admin` is the Rural Health Unit's oversight account — municipal level, read-only by
+design, because an edit made away from the household is indistinguishable from one made
+at it. `barangay_admin` is the barangay-level desk account: it cannot touch a resident
+record either, but it owns its barangay's supplies and is the only role that can create
+stock, receive more of it, or hand a quantity to a named BHW.
+
+Both desk roles sign in to the same admin portal; nothing in the portal branches on
+which, beyond hiding the stock controls from an account the database would refuse.
+
+Access is enforced in the database, not the browser. A household is stamped with the
+recording BHW's purok by a trigger — never by anything the device sends — and every
+other table reaches its scope through that. No account can delete through the API. The
+route guard mirrors these rules for convenience, but Row Level Security is the boundary.
+
+Scoping does nothing until barangays, puroks and BHW assignments exist: until a BHW has
+an active purok assignment they cannot save a household at all. Cabugao, Salay and
+Pag-asa are seeded, each with two puroks and its own administrator; `barangay_roles.sql`
+section 11 records what was seeded and how to add another barangay.
 
 ## Supabase Schema
 
-The migrations are not kept in this repo — the schema is managed in the Supabase project directly. The central tables are `households`, `individuals`, `health_assessments`, `inventory_items`, and `supply_disbursements`, with Row Level Security enabled and policied on all of them. The local SQLite tables mirror these names one-to-one.
+The migrations are applied to the Supabase project directly; `barangay_roles.sql` at the repo root is the one kept alongside the code, because it is the file that has to be read before touching a policy. The field tables are `households`, `individuals`, `health_assessments`, `inventory_items`, and `supply_disbursements`; the access model adds `profiles`, `barangays`, `puroks`, `bhw_purok_assignments`, `inventory_allocations` and `audit_events`. Row Level Security is enabled and policied on all of them. The local SQLite tables mirror the five field table names one-to-one — except `inventory_items`, which on a device holds that BHW's own allocated stock, pulled from the `bhw_item_stock` view rather than from the table of the same name.
 
 Row shapes are declared in `src/types/database.ts` and the Supabase client is typed against it, so a column that drifts from this file is a build error rather than a runtime failure. Note that the file carries columns and nullability only — check constraints are not represented, so introspect the live schema before writing SQL against any table.
 
@@ -135,9 +155,10 @@ android/            generated native project, committed
 ```
 
 Two surfaces share this codebase. `/bhw` is the phone-sized field client with a bottom
-tab bar; `/admin` is the desktop LGU portal with a sidebar. Each sits behind its own
-layout, and both read the same device-local SQLite database rather than querying
-Supabase directly.
+tab bar, and it reads device-local SQLite so it works with no connection. `/admin` is the
+desktop portal with a sidebar, and it queries Supabase directly — an oversight surface on
+a wired workstation has no use for a mirror of one phone's records. Each sits behind its
+own layout.
 
 ## Known Limitations
 
@@ -148,12 +169,20 @@ These are current and deliberate, not oversights waiting to be discovered:
   The assessment screen states this on-screen; the correct standard is not yet
   implemented and the result should not be read as a clinical finding for children,
   teenagers, or pregnant women.
-- **Supply disbursement does not change stock.** Releases are logged, but nothing
-  decrements inventory and nothing checks availability. No screen creates an inventory
-  item yet either, so disbursement is not usable in the field today.
-- **The admin portal reads only what its own browser has synced.** Health assessments
-  and supply disbursements are pushed to the server but never pulled back, so an LGU
-  workstation does not see records collected on other devices.
+- **Stock has no unit of measure, batch, expiry or reorder threshold.** An item is a
+  name, a type and a count. Releases now move real quantities — a barangay administrator
+  creates and receives stock, allocates it to named BHWs, and a device can release only
+  what its holder was given, checked again server-side on arrival — but the model behind
+  those quantities is still a placeholder that needs a working BHW's requirements before
+  it is built out.
+- **A phone never pulls back assessments or disbursements.** The admin portal reads the
+  central database directly and is unaffected, but a device sync fetches only
+  households, individuals and its holder's own stock. A BHW who reinstalls, or picks up
+  a second device, sees no assessment history for residents that do sync down.
+- **A report's barangay name still comes from the build.** `VITE_BARANGAY_NAME` is baked
+  into the bundle, which was right when a deployment served one barangay. Now that the
+  database holds several, an RHU export covering all of them prints whichever name that
+  build was compiled with. The name should be read off the rows instead.
 - **Recording a household again creates a duplicate.** Registration is the only path
   there is: the form mints a new id on every submit and never looks for an existing
   record, so a repeat visit writes a second household and a second set of members.

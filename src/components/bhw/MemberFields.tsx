@@ -3,7 +3,7 @@ import type { Individual, IndividualSex, RelationshipToHead } from '../../types/
 import { RELATIONSHIPS_TO_HEAD } from '../../types/database';
 import { titleCase, today } from '../../lib/utils';
 import { FormField, SelectField } from '../common/FormField';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 // The column is plain text with no check constraint, so a fixed list is safe here
 // and keeps the registry searchable in a way free text would not.

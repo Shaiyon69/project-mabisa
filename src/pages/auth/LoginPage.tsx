@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Button } from '../../components/common/Button';
 import { FormField } from '../../components/common/FormField';
 import { surface } from '../../app/surface';
@@ -8,6 +8,8 @@ type LoginPageProps = {
   password: string;
   authMessage: string | null;
   authLoading: boolean;
+  /** Records saved on this device that haven't reached the server, or null if unreadable — reassures a BHW dropped back here that nothing is lost. */
+  pendingRecordCount: number | null;
   onEmailChange: (email: string) => void;
   onPasswordChange: (password: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -18,12 +20,13 @@ export function LoginPage({
   password,
   authMessage,
   authLoading,
+  pendingRecordCount,
   onEmailChange,
   onPasswordChange,
   onSubmit,
 }: LoginPageProps) {
-  // A single-surface build already knows which portal it is. Only the combined
-  // development build has to read the path to decide which one is being opened.
+  // Only the combined dev build needs the path — a single-surface build already knows which portal it is.
+  const [showPassword, setShowPassword] = useState(false);
   const isAdminPortal = surface === 'admin' || (surface === 'both' && window.location.pathname.startsWith('/admin'));
   const portalName = isAdminPortal ? 'MABISA Admin Portal' : 'MABISA BHW Mobile';
 
@@ -60,14 +63,27 @@ export function LoginPage({
           <FormField
             label="Password"
             autoComplete="current-password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             value={password}
             placeholder="Enter password"
             onChange={(event) => onPasswordChange(event.target.value)}
             required
           />
 
+          {/* Default stays hidden — this only offers the choice, for phone keyboards where typos are easy to miss. */}
+          <label className="check-option">
+            <input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />
+            <span>Show password</span>
+          </label>
+
           {authMessage ? <p className="alert">{authMessage}</p> : null}
+
+          {pendingRecordCount ? (
+            <p className="muted">
+              {pendingRecordCount} record{pendingRecordCount === 1 ? ' is' : 's are'} still saved on this device and will sync
+              once you are signed in. Nothing has been lost.
+            </p>
+          ) : null}
 
           <Button type="submit" disabled={authLoading}>
             {authLoading ? 'Checking Access' : isAdminPortal ? 'Sign in as Admin' : 'Sign in as BHW'}

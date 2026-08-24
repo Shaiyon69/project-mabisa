@@ -4,6 +4,7 @@ import type {
   HealthAssessment,
   Individual,
   InventoryItem,
+  InventoryItemType,
   NutritionStatus,
   Profile,
   Purok,
@@ -11,27 +12,12 @@ import type {
 } from '../types/database';
 
 /**
- * Where the admin portal gets its numbers.
- *
- * This module exists because of one defect: every admin page used to read
- * `useMabisaData().snapshot`, which is the *admin browser's own* local SQLite
- * mirror — a BHW cache that on an LGU workstation is empty, and on a shared
- * machine holds whatever the last field device happened to sync. FR-06 requires
- * the central PostgreSQL database. Nothing here touches localDatabase.
- *
- * Which rows come back is settled by the purok policies in 202608160002, not
- * re-filtered here: `is_admin()` opens `households` to the whole barangay and
- * the other four reach that scope through their foreign keys. An admin sees
- * every synchronized purok; a non-admin session reaching this code sees only
- * its own, which is the same answer the route guard gives.
+ * Where the admin portal gets its numbers — reads Supabase directly, never
+ * localDatabase. Row scope (RHU sees every barangay, a barangay_admin only its
+ * own) is enforced by `barangay_roles.sql`, not re-filtered here.
  */
 
-/**
- * The period a dashboard or report is scoped to. FR-06 requires every summary to
- * state its period, so the filter travels *with* the data rather than living
- * only in the control that set it — a caption cannot drift from its numbers if
- * it is rendered from the same object.
- */
+/** The period a dashboard/report is scoped to — travels with the data so a caption can't drift from its numbers. */
 export type AdminFilters = {
   from: string;
   to: string;
@@ -64,6 +50,8 @@ export type AdminSnapshot = {
   disbursements: SupplyDisbursement[];
   /** Stock is a current position, so it ignores the period too. */
   inventoryItems: InventoryItem[];
+  /** The barangay this snapshot covers, spelled as it should appear on an export. */
+  barangayLabel: string;
   /** When this snapshot was read from the central database. */
   fetchedAt: string;
   /** Newest `updated_at` in the rows that came back, or null when none did. */
@@ -77,14 +65,14 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   assessments: [],
   disbursements: [],
   inventoryItems: [],
+  barangayLabel: '',
   fetchedAt: new Date(0).toISOString(),
   newestRecordAt: null,
 };
 
 export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSnapshot> {
-  const [households, residents, assessments, disbursements, inventory] = await Promise.all([
-    // head:true asks for the count without the rows — the dashboard needs the
-    // number of households, never the households themselves.
+  const [households, residents, assessments, disbursements, inventory, barangayLabel] = await Promise.all([
+    // head:true asks for the count without the rows.
     supabase.from('households').select('household_id', { count: 'exact', head: true }),
     supabase.from('individuals').select('resident_id, sex, birthday, updated_at'),
     supabase
@@ -100,6 +88,7 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
       .lte('disbursement_date', filters.to)
       .order('disbursement_date', { ascending: false }),
     supabase.from('inventory_items').select('*').order('item_name'),
+    fetchBarangayScope(),
   ]);
 
   const failure = [households, residents, assessments, disbursements, inventory].find((result) => result.error);
@@ -119,16 +108,52 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     assessments: assessmentRows,
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
+    barangayLabel,
     fetchedAt: new Date().toISOString(),
     newestRecordAt: newest([...residentRows, ...assessmentRows, ...disbursementRows, ...inventoryRows]),
   };
 }
 
 /**
- * Data freshness, per FR-06. The fetch timestamp only says when the portal
- * asked; this says how recently a field device actually contributed something,
- * which is the number that tells an official whether the barangay has synced.
+ * What an export should call the area it covers: a barangay administrator's own
+ * barangay by name, or the whole unit (with a count) for an RHU account whose
+ * rows may span several — naming any single one would be a false heading.
  */
+export async function fetchBarangayScope(): Promise<string> {
+  const [scope, barangays] = await Promise.all([
+    // Null for an RHU account — that's the answer, not a missing one.
+    supabase.rpc('current_barangay_id'),
+    supabase.from('barangays').select('barangay_id, name').order('name'),
+  ]);
+
+  if (scope.error) {
+    throw new Error(scope.error.message);
+  }
+
+  if (barangays.error) {
+    throw new Error(barangays.error.message);
+  }
+
+  return describeBarangayScope(scope.data, barangays.data ?? []);
+}
+
+export function describeBarangayScope(scopeId: string | null, barangays: { barangay_id: string; name: string }[]): string {
+  if (scopeId) {
+    return barangays.find((barangay) => barangay.barangay_id === scopeId)?.name ?? 'Barangay name not configured';
+  }
+
+  if (barangays.length === 1) {
+    return barangays[0].name;
+  }
+
+  if (barangays.length === 0) {
+    return 'Barangay name not configured';
+  }
+
+  return `All barangays (${barangays.length}) — Rural Health Unit`;
+}
+
+/** How recently a field device actually contributed something, vs. just when the portal asked. */
 function newest(rows: { updated_at: string }[]): string | null {
   return rows.reduce<string | null>((latest, row) => (!latest || row.updated_at > latest ? row.updated_at : latest), null);
 }
@@ -139,12 +164,7 @@ export type Tally = {
   count: number;
 };
 
-/**
- * Counts rows by a key. `order` fixes the categories and keeps the zeroes — a
- * nutrition distribution that silently drops `obese` because nobody fell in it
- * reads as a missing category rather than as an empty one. Without `order` the
- * categories are whatever appeared, largest first.
- */
+/** Counts rows by a key. `order` fixes the categories and keeps the zeroes (an empty category shouldn't look missing). */
 export function tally<Row>(rows: Row[], key: (row: Row) => string | null, order?: readonly string[]): Tally[] {
   const counts = new Map<string, number>();
 
@@ -164,12 +184,7 @@ export function tally<Row>(rows: Row[], key: (row: Row) => string | null, order?
 
 export const NUTRITION_ORDER: readonly NutritionStatus[] = ['underweight', 'normal', 'overweight', 'obese'];
 
-/**
- * Demographic age bands, not a health classification — they group residents for
- * a headcount and carry no judgement about any of them. The boundaries follow
- * the bands Philippine barangay health reporting already uses, so a MABISA
- * summary lines up with the forms an LGU officer is used to.
- */
+/** Demographic age bands (not a health classification) matching the bands Philippine barangay health reporting already uses. */
 export const AGE_BANDS = [
   { label: 'Under 5', min: 0, max: 4 },
   { label: '5 to 9', min: 5, max: 9 },
@@ -188,7 +203,11 @@ export function ageBandOf(birthday: string): string | null {
   return AGE_BANDS.find((band) => age >= band.min && age <= band.max)?.label ?? null;
 }
 
-/** Stock at or below this is called out as an alert. Matches InventoryTable. */
+/**
+ * Unallocated stock at or below this is an alert (matches InventoryTable). Measures
+ * what's left to hand out, not total held — an item can read low here while its
+ * BHWs carry plenty, which is why every surface says "unallocated" not "on hand".
+ */
 export const LOW_STOCK_THRESHOLD = 10;
 
 export function lowStockItems(items: InventoryItem[]): InventoryItem[] {
@@ -209,12 +228,9 @@ export function disbursementsByItem(disbursements: SupplyDisbursement[], items: 
 }
 
 /**
- * BHW accounts with their current purok, for FR-08's read-only half.
- *
- * Three plain queries joined in memory rather than one PostgREST embed: the
- * `Database` type declares no relationships, so an embedded select would come
- * back untyped and defeat the point of the typed client. There are as many rows
- * here as there are health workers in one barangay.
+ * BHW accounts with their current purok. Three plain queries joined in memory,
+ * not a PostgREST embed — the `Database` type declares no relationships, so an
+ * embed would come back untyped.
  */
 export type AccountRow = {
   profile: Profile;
@@ -253,11 +269,7 @@ export type ResidentPage = {
   total: number;
 };
 
-/**
- * Strips the characters PostgREST reads as filter syntax. A search box feeds
- * straight into `.or()`, where a comma or a parenthesis is not a character in a
- * surname but a new condition.
- */
+/** Strips characters PostgREST reads as filter syntax before the search feeds into `.or()`. */
 function sanitizeSearch(query: string): string {
   return query
     .trim()
@@ -268,13 +280,9 @@ function sanitizeSearch(query: string): string {
 }
 
 /**
- * One page of the central resident registry.
- *
- * `household_number` lives on `households`, not on `individuals`, so it takes a
- * second query keyed by the page's household ids — ten of them, not the whole
- * barangay. The same lookup runs first when the search term might *be* a
- * household number, since PostgREST cannot filter a row by a column on its
- * parent without an embed.
+ * One page of the central resident registry. `household_number` lives on
+ * `households`, so it takes a second query keyed by the page's household ids —
+ * also run first, in case the search term is itself a household number.
  */
 export async function fetchResidentPage(query: string, limit: number, offset: number): Promise<ResidentPage> {
   const search = sanitizeSearch(query);
@@ -310,4 +318,57 @@ export async function fetchResidentPage(query: string, limit: number, offset: nu
     rows: rows.map((row) => ({ ...row, household_number: numbers.get(row.household_id) })),
     total: count ?? 0,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Supply stock — the barangay administrator's three write paths. All three are
+// RPCs, not table writes: `inventory_items` has no INSERT/UPDATE policy at all,
+// so a stock change is only ever possible through a function that also writes
+// the audit event. An RHU admin calling any of these gets `insufficient_privilege`.
+// -----------------------------------------------------------------------------
+
+/** The BHWs a barangay administrator may allocate to. RLS already limits the rows to their own barangay. */
+export async function fetchAllocatableBhws(): Promise<AccountRow[]> {
+  const accounts = await fetchAccounts();
+
+  // An unassigned BHW has no barangay and the RPC will refuse them — leave them
+  // out of the picker rather than surprise the admin after the form is filled in.
+  return accounts.filter((account) => account.profile.role === 'bhw' && account.purokName !== null);
+}
+
+export async function createInventoryItem(name: string, type: InventoryItemType, openingStock: number): Promise<void> {
+  const { error } = await supabase.rpc('barangay_admin_create_item', {
+    target_item_name: name,
+    target_type: type,
+    target_initial_stock: openingStock,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function restockInventoryItem(itemId: string, quantity: number, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('barangay_admin_restock_item', {
+    target_item_id: itemId,
+    target_quantity: quantity,
+    target_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function allocateStockToBhw(itemId: string, bhwId: string, quantity: number, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('barangay_admin_allocate_stock', {
+    target_item_id: itemId,
+    target_bhw_id: bhwId,
+    target_quantity: quantity,
+    target_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }

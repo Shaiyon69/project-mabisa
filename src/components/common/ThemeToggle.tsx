@@ -10,17 +10,13 @@ export function ThemeToggle() {
     setTheme(next);
   }
 
-  // Two labelled buttons rather than one that flips: a control whose icon is the
-  // theme you are in and whose action is the theme you are not is a coin-flip to
-  // read, and this one sits next to logout.
+  // Two labelled buttons, not one that flips — a flip-icon control is a coin-flip to read next to logout.
   return (
     <div className="theme-toggle" role="group" aria-label="Light or dark theme">
       <button type="button" className={theme === 'light' ? 'active' : ''} onClick={() => choose('light')}>
         Light
       </button>
-      {/* Tapping Dark a second time drops to the true-black OLED palette, and a third
-          returns. Undocumented on purpose — it is a battery trick for whoever finds
-          it, not a third choice everyone has to decide between (Hick's Law). */}
+      {/* A second tap on Dark drops to true-black OLED; undocumented on purpose (a battery trick, not a third menu choice). */}
       <button
         type="button"
         className={theme === 'light' ? '' : 'active'}

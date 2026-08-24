@@ -40,3 +40,8 @@ service-account*.json
 .mcp.json
 user_roles.sql
 data_policies.sql
+
+# Claude Code local config and instructions — never checked in.
+.claude/
+CLAUDE.md
+CLAUDE.local.md

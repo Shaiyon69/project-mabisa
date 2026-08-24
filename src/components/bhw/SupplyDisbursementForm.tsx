@@ -9,7 +9,7 @@ import { FormActions, FormField } from '../common/FormField';
 import { Combobox } from '../common/Combobox';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type SupplyDisbursementFormProps = {
   individualCount: number; 

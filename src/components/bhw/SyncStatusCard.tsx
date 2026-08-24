@@ -2,7 +2,7 @@ import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { formatDate } from '../../lib/utils';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 import type { DeadLetterEntry, LocalTableName } from '../../services/localDatabase';
 import type { SyncStatus } from '../../services/syncService';
 
@@ -41,11 +41,7 @@ const recordLabels: Record<LocalTableName, string> = {
   supply_disbursements: 'Supply release',
 };
 
-/**
- * Date and time, because "last synced Aug 18" is not an answer to the question a
- * BHW is asking — whether the records they entered this morning have left the
- * phone. `formatDate` carries no clock, so this one is written here.
- */
+/** Date and time — a BHW needs to know if this morning's records have left the phone, not just the day. `formatDate` carries no clock. */
 function formatSyncMoment(value: string): string {
   return new Intl.DateTimeFormat('en-PH', {
     month: 'short',
@@ -68,9 +64,7 @@ export function SyncStatusCard({
 }: SyncStatusCardProps) {
   const { t } = useBhwLanguage();
 
-  // Was a substring match on the status text, which meant a change of wording
-  // silently changed the UI — and painted the whole card red for a `deferred`
-  // pass that was only waiting out a 30-second backoff.
+  // Exact status match, not a substring of the message — a `deferred` backoff must not paint the card red.
   const isError = syncStatus === 'failed';
   const isPending = pendingQueueCount > 0;
   const setAsideCount = deadLetterEntries.length;
@@ -79,9 +73,7 @@ export function SyncStatusCard({
   const syncedLabel = t(isError ? 'Sync Failed' : hasSetAside ? 'Needs Review' : isPending ? 'Pending Sync' : 'Synced');
   const badgeTone = isError ? 'danger' : (!isOnline || isPending || hasSetAside) ? 'warning' : 'success';
 
-  // FIX: The button is now ONLY disabled if the app is actively syncing,
-  // or if the device has no internet connection.
-  // We removed the "empty queue" restriction so BHWs can pull updates anytime.
+  // Disabled only while syncing or offline — not on an empty queue, so a BHW can pull updates anytime.
   const isButtonDisabled = syncingManually || !isOnline;
 
   return (
