@@ -6,13 +6,9 @@ export type CsvColumn<Row> = {
 };
 
 /**
- * One cell, quoted only when it has to be.
- *
- * The leading apostrophe on `=`, `+`, `-` and `@` is not cosmetic: a spreadsheet
- * treats a cell starting with one as a formula, so a resident whose occupation
- * was typed as `=cmd|...` becomes code the moment an LGU officer opens the file.
- * Every value here originates in a free-text field a BHW filled in on a phone,
- * which makes the export the trust boundary.
+ * One cell, quoted only when it has to be. The leading apostrophe on `=+-@` guards
+ * against formula injection — a resident's free-text field becomes the cell's
+ * first character, and a spreadsheet treats one starting with those as a formula.
  */
 export function escapeCsvCell(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) {
@@ -33,21 +29,13 @@ export function toCsv<Row>(rows: Row[], columns: CsvColumn<Row>[]): string {
 }
 
 /**
- * What an export has to say about itself before its first data row, from FR-09:
- * report title, barangay, date range, generation timestamp, and the filters that
- * were active. Without these a saved CSV is a column of numbers nobody can tie
- * back to a question.
+ * What an export says about itself before its first data row: title, barangay,
+ * date range, generation timestamp, active filters — so a saved CSV isn't just
+ * a column of numbers nobody can tie back to a question.
  */
 export type ReportContext = {
   title: string;
-  /**
-   * The area covered, per FR-09. Travels with the rows rather than coming from
-   * the build: this used to read `VITE_BARANGAY_NAME`, which was right while one
-   * deployment served one barangay and wrong the moment the database began
-   * holding several — an RHU export spanning all of them printed whichever name
-   * that bundle happened to be compiled with. `describeBarangayScope` derives it
-   * from the same query that produced the numbers.
-   */
+  /** The area covered — derived from the same query that produced the numbers, not the build. */
   barangay: string;
   from: string;
   to: string;
@@ -81,12 +69,7 @@ export function reportFileName(title: string): string {
   return `${slug || 'report'}-${new Date().toISOString().slice(0, 10)}.csv`;
 }
 
-/**
- * Hands the finished CSV to the browser's download flow.
- *
- * The BOM is what makes Excel read the file as UTF-8 rather than the local code
- * page; without it a resident named Peña arrives mangled in the LGU's copy.
- */
+/** Hands the finished CSV to the browser's download flow. The BOM makes Excel read it as UTF-8, not the local code page. */
 export function downloadCsv(fileName: string, content: string): void {
   const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);

@@ -1,11 +1,9 @@
 import { createContext, useContext } from 'react';
 
 /**
- * The BHW app's language, its dictionary, and the hook that reads them.
- *
- * Split from `BhwLanguageContext.tsx`, which keeps the provider component: a
- * file exporting a component may export nothing else without breaking Fast
- * Refresh, and that file had been exporting this hook alongside the provider.
+ * The BHW app's language, its dictionary, and the hook that reads them — split
+ * from the provider in `BhwLanguageContext.tsx` since a component-exporting file
+ * can't also export a hook without breaking Fast Refresh.
  */
 
 export type Language = 'en' | 'fil';
@@ -167,8 +165,7 @@ export const filipino: Record<string, string> = {
   'Select at least one toilet facility.': 'Pumili ng kahit isang uri ng palikuran.',
   'Select at least one food-production option.': 'Pumili ng kahit isang paraan ng produksyon ng pagkain.',
 
-  // Duplicate warning. MABISA only warns — the BHW confirms identity in person —
-  // so the Filipino has to read as a question, never as a refusal.
+  // Duplicate warning — the Filipino must read as a question, never a refusal.
   'Someone here may already be registered': 'May kaparehong nakatala na',
   'Check these records before saving. If this is a different person, say so and the app will keep your reason with the new record.':
     'Suriin ang mga talang ito bago mag-save. Kung ibang tao ito, sabihin at itatabi ng app ang inyong dahilan kasama ng bagong tala.',

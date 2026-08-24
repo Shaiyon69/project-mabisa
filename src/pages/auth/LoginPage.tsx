@@ -8,12 +8,7 @@ type LoginPageProps = {
   password: string;
   authMessage: string | null;
   authLoading: boolean;
-  /**
-   * Records saved on this device that have not reached the server, or null when
-   * the count could not be read. A session that expires in the field drops the
-   * BHW back here holding a phone full of unsent work, and the first thing they
-   * need to know is that signing in again is not going to cost them any of it.
-   */
+  /** Records saved on this device that haven't reached the server, or null if unreadable — reassures a BHW dropped back here that nothing is lost. */
   pendingRecordCount: number | null;
   onEmailChange: (email: string) => void;
   onPasswordChange: (password: string) => void;
@@ -30,8 +25,7 @@ export function LoginPage({
   onPasswordChange,
   onSubmit,
 }: LoginPageProps) {
-  // A single-surface build already knows which portal it is. Only the combined
-  // development build has to read the path to decide which one is being opened.
+  // Only the combined dev build needs the path — a single-surface build already knows which portal it is.
   const [showPassword, setShowPassword] = useState(false);
   const isAdminPortal = surface === 'admin' || (surface === 'both' && window.location.pathname.startsWith('/admin'));
   const portalName = isAdminPortal ? 'MABISA Admin Portal' : 'MABISA BHW Mobile';
@@ -76,11 +70,7 @@ export function LoginPage({
             required
           />
 
-          {/*
-            A password typed on a phone keyboard, by someone who cannot see what
-            they typed, is the most common reason a correct password is reported
-            as wrong. The default stays hidden; this only offers the choice.
-          */}
+          {/* Default stays hidden — this only offers the choice, for phone keyboards where typos are easy to miss. */}
           <label className="check-option">
             <input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />
             <span>Show password</span>

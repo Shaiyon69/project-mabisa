@@ -35,9 +35,7 @@ const FOOD_OPTIONS = [
   { label: 'None', value: 'none' }
 ];
 
-// PhilHealth numbers get written with dashes or spaces on paper forms. Accept both
-// on input, reject anything that is clearly not a number, and store digits only so
-// the same person cannot end up under two spellings of one ID.
+// Accepts dashes/spaces on input (as written on paper forms); digits-only storage prevents two spellings of one ID.
 const PHILHEALTH_ALLOWED = /^[\d\s-]+$/;
 
 /** Blank optional text is stored as NULL rather than an empty string. */
@@ -61,12 +59,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const { t } = useBhwLanguage();
   const [household, setHousehold] = useState<Partial<Household>>({
     household_number: '',
-    // Housing type, electric service and fuel are not health data and are not
-    // asked here. They are still `not null` on the SQLite mirror and the central
-    // table, so a placeholder rides along to satisfy the constraint; a device
-    // installed before any column drop keeps its own schema either way.
-    // TODO: drop the three columns in a migration once the live database can
-    // take it, and remove these placeholders with them.
+    // Not asked here (not health data) but `not null` on the schema — placeholders satisfy the constraint.
+    // TODO: drop these three columns in a migration and remove the placeholders with them.
     dwelling_type: 'concrete',
     electric_service: 'iselco',
     fuel_used: 'wood',
@@ -96,9 +90,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
-  // Members that look like someone already on this device, and the reason the BHW
-  // gives for saving them anyway. Non-empty `flagged` is what holds the save: the
-  // warning is raised before anything is written, never after.
+  // Members that look like an existing record, plus the BHW's reason for saving anyway.
+  // Non-empty `flagged` holds the save — the warning is raised before anything is written.
   const [flagged, setFlagged] = useState<FlaggedMember[]>([]);
   const [overrideReason, setOverrideReason] = useState('');
   const missingRequirements = [
@@ -138,14 +131,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   }
 
   /**
-   * Members who look like a record already on this device, checked before a single
-   * row is written.
-   *
-   * Candidates come from the same search the resident picker uses rather than a
-   * query of its own, so a name that can be found here is a name that could be
-   * found there. Only local SQLite is consulted: a resident profiled by a BHW in
-   * another purok is not on this device and RLS will not put them there, so
-   * cross-purok duplicates are the admin portal's to catch.
+   * Members who look like an existing record, checked before anything is written.
+   * Only local SQLite is consulted — a resident in another purok isn't on this
+   * device, so cross-purok duplicates are the admin portal's to catch.
    */
   async function scanForDuplicates(): Promise<FlaggedMember[]> {
     const scans = await Promise.all(
@@ -172,11 +160,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   }
 
   /**
-   * Writes the household and every member.
-   *
-   * `overriddenMembers` is empty on the clean path and carries the flagged members
-   * when the BHW has said they are different people — each of those gets the
-   * record they were shown, their reason, and their own account stamped on it.
+   * Writes the household and every member. `overriddenMembers` carries the
+   * flagged members once the BHW confirms they're different people — each gets
+   * the record they were shown, the reason, and who confirmed it stamped on.
    */
   async function persistHousehold(overriddenMembers: FlaggedMember[], reason: string): Promise<void> {
     const householdId = createId();
@@ -204,9 +190,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         occupation: emptyToNull(member.occupation),
         educational_attainment: emptyToNull(member.educational_attainment),
         philhealth_number: philhealthDigits(member.philhealth_number),
-        // The head has no relationship to themself. Stripped here rather than when
-        // the head box is ticked, so a member ticked and unticked again keeps the
-        // answer the BHW already gave.
+        // Stripped here, not when the head box is ticked, so ticking and unticking keeps the answer already given.
         relationship_to_head: member.is_household_head ? null : member.relationship_to_head ?? null,
         created_at: timestamp,
         updated_at: timestamp,
@@ -244,9 +228,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     setSaving(true);
     setFormError(null);
 
-    // Every rejection ends the same way: stop saving, then put the reason on
-    // screen. The form is taller than the phone, so leaving that to the render
-    // alone would show the person nothing.
+    // Scrolls to the reason — the form is taller than the phone, so rendering it alone shows nothing.
     function reject(reason: string | null) {
       setFormError(reason);
       setSaving(false);
@@ -283,9 +265,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     }
 
     try {
-      // The warning comes before the write, not after it. A save that had already
-      // landed would leave the BHW deleting a record they were never offered the
-      // chance to decline.
+      // Before the write, not after — a landed save would leave the BHW deleting a record they never got to decline.
       const flaggedMembers = await scanForDuplicates();
 
       if (flaggedMembers.length > 0) {

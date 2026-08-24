@@ -23,15 +23,9 @@ type ReportCardsProps = {
 };
 
 /**
- * The four summaries FR-09 asks for, each with the CSV that reproduces it.
- *
- * These used to be the five most recent assessment rows and the five most recent
- * disbursements, which is a feed rather than a report: it answers "what happened
- * last" when an LGU officer needs "how many, over what period". Every panel here
- * is an aggregate over the selected period, states that period, and exports the
- * rows the aggregate was computed from — so the acceptance criterion that export
- * totals match the filtered source records is a property of the code rather than
- * a thing to check by hand.
+ * The four summaries FR-09 asks for, each with the CSV that reproduces it. Every
+ * panel is an aggregate over the selected period and exports the exact rows it
+ * was computed from, so the export can't drift from what's on screen.
  */
 export function ReportCards({ snapshot, filters }: ReportCardsProps) {
   const lowStock = lowStockItems(snapshot.inventoryItems);

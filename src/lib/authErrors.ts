@@ -1,13 +1,6 @@
 /**
- * Turns a Supabase auth error into a sentence a Barangay Health Worker can act on.
- *
- * The login screen used to print `error.message` straight through, which meant a
- * middle-aged field worker on a borrowed Android phone read "Invalid login
- * credentials" or "Failed to fetch". Neither says what to do next, and the second
- * one does not even say the problem is the connection.
- *
- * Every message here names the thing to try. The raw text is still logged through
- * `logDev`, so nothing is lost for whoever is debugging.
+ * Turns a Supabase auth error into a sentence naming what to try next, rather
+ * than raw GoTrue text like "Invalid login credentials". Raw text still reaches `logDev`.
  */
 export function describeAuthError(rawMessage: string): string {
   const message = rawMessage.toLowerCase();
