@@ -48,14 +48,20 @@ describe('toCsv', () => {
 
 describe('buildReportCsv', () => {
   const csv = buildReportCsv(
-    { title: 'Nutrition Status Summary', from: '2026-01-01', to: '2026-08-22', filters: [{ label: 'Sex', value: 'Female' }] },
+    {
+      title: 'Nutrition Status Summary',
+      barangay: 'Barangay San Isidro',
+      from: '2026-01-01',
+      to: '2026-08-22',
+      filters: [{ label: 'Sex', value: 'Female' }],
+    },
     [{ name: 'normal', count: 12 }],
     columns,
   );
 
   it('carries every field FR-09 requires on an export', () => {
     expect(csv).toContain('Report,Nutrition Status Summary');
-    expect(csv).toContain('Barangay,');
+    expect(csv).toContain('Barangay,Barangay San Isidro');
     expect(csv).toContain('Date range,2026-01-01 to 2026-08-22');
     expect(csv).toContain('Generated,');
     expect(csv).toContain('Filters,Sex: Female');
@@ -66,7 +72,7 @@ describe('buildReportCsv', () => {
   });
 
   it('says so plainly when no filter beyond the date range is active', () => {
-    const unfiltered = buildReportCsv({ title: 'All', from: '2026-01-01', to: '2026-08-22' }, [], columns);
+    const unfiltered = buildReportCsv({ title: 'All', barangay: 'Barangay San Isidro', from: '2026-01-01', to: '2026-08-22' }, [], columns);
 
     expect(unfiltered).toContain('Filters,None');
   });

@@ -2,15 +2,11 @@ import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { Combobox, type ComboboxOption } from '../common/Combobox';
 import { readLocalIndividuals } from '../../services/localDatabase';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type IndividualSearchProps = {
   selectedResidentId: string;
-  /**
-   * The whole row comes back, not just the id: this component has already read
-   * the person out of SQLite, so a caller that needs their age or flags should
-   * not go back to the database for a row that is sitting right here.
-   */
+  /** The whole row comes back, not just the id — already read from SQLite, no reason to query again. */
   onChange: (residentId: string, person: Individual | null) => void;
   error?: string;
 };
@@ -31,9 +27,7 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
   const [isLoading, setIsLoading] = useState(false);
   const [selected, setSelected] = useState<Individual | null>(null);
 
-  // Directly query SQLite when the search query changes (with a 300ms debounce).
-  // The loading flag is raised inside the timeout rather than in the effect body, so
-  // typing does not force a synchronous re-render on every keystroke.
+  // Debounced SQLite query — loading is set inside the timeout, not the effect body, so typing doesn't force a re-render per keystroke.
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setIsLoading(true);
@@ -48,10 +42,8 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
     return () => clearTimeout(timeoutId);
   }, [query]);
 
-  // The chosen person has to stay in the list even once the search moves on,
-  // otherwise the field has an id it cannot render a name for. Matching against
-  // the prop rather than clearing the cache means the parent resetting the
-  // selection (as it does after a save) drops the stale name on its own.
+  // The chosen person stays in the list even once the search moves on, or the
+  // field would have an id it can't render a name for.
   const options = searchResults.map(toOption);
   if (selected && selected.resident_id === selectedResidentId && !searchResults.some((person) => person.resident_id === selectedResidentId)) {
     options.unshift(toOption(selected));

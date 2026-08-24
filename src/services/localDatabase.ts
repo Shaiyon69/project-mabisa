@@ -38,17 +38,14 @@ export type LocalTableName =
   | 'inventory_items'
   | 'supply_disbursements';
 
-// Device-local bookkeeping tables. These mirror no Supabase table and are never
-// pushed, so they are deliberately kept out of LocalTableName — but they still
-// need to be reachable by the column-upgrade machinery.
+// Mirror no Supabase table and are never pushed — kept out of LocalTableName but reachable by column upgrades.
 export type LocalBookkeepingTableName = 'sync_queue' | 'sync_dead_letter';
 
 type MigratableTableName = LocalTableName | LocalBookkeepingTableName;
 
 export type SyncOperationType = 'INSERT' | 'UPDATE';
 
-// Maps each local table to its corresponding "Insert" TypeScript interface.
-// Ensures type safety when pushing new records to the sync queue.
+/** Insert payload shape per table, for type-safe sync_queue writes. */
 export type LocalInsertPayloadByTable = {
   households: HouseholdInsert;
   individuals: IndividualInsert;
@@ -57,8 +54,7 @@ export type LocalInsertPayloadByTable = {
   supply_disbursements: SupplyDisbursementInsert;
 };
 
-// Maps each local table to its corresponding "Update" TypeScript interface.
-// Pick<> is used to enforce that an update payload MUST contain the primary key.
+/** Update payload per table; Pick<> forces the primary key to be present. */
 export type LocalUpdatePayloadByTable = {
   households: HouseholdUpdate & Pick<Household, 'household_id'>;
   individuals: IndividualUpdate & Pick<Individual, 'resident_id'>;
@@ -67,13 +63,10 @@ export type LocalUpdatePayloadByTable = {
   supply_disbursements: SupplyDisbursementUpdate & Pick<SupplyDisbursement, 'log_id'>;
 };
 
-// A generic type that dynamically determines the correct payload interface 
-// based on the Table Name and the Operation Type provided.
 export type SyncPayload<TTable extends LocalTableName, TOperation extends SyncOperationType> =
   TOperation extends 'INSERT' ? LocalInsertPayloadByTable[TTable] : LocalUpdatePayloadByTable[TTable];
 
-// Represents a single row in the local `sync_queue` table.
-// This is the staging area for data waiting to be pushed to Supabase.
+/** One row of the local sync_queue — the staging area for pushes to Supabase. */
 export type SyncQueueEntry<TTable extends LocalTableName = LocalTableName> = {
   queue_id: number;
   operation_type: SyncOperationType;
@@ -82,15 +75,12 @@ export type SyncQueueEntry<TTable extends LocalTableName = LocalTableName> = {
   created_at: string;
   attempts: number; // Tracks retry counts if the network fails
   last_error: string | null;
-  // Earliest ISO timestamp at which this entry may be retried. Null means "now".
-  // Persisted rather than held in memory because the app is killed constantly in
-  // the field — in-memory backoff would reset on every cold start.
+  // Earliest retry time, null means "now". Persisted, not in-memory — the app is
+  // killed constantly in the field and would reset the backoff on cold start.
   next_attempt_at: string | null;
 };
 
-// A queue entry that exhausted its retries and was set aside so the rest of the
-// queue can keep draining. Nothing is deleted: the payload is preserved in full
-// so a BHW or admin can requeue it once the underlying cause is fixed.
+// A queue entry that exhausted its retries. Preserved in full so it can be requeued once the cause is fixed.
 export type DeadLetterEntry<TTable extends LocalTableName = LocalTableName> = {
   dead_letter_id: number;
   original_queue_id: number;
@@ -116,9 +106,7 @@ let localDatabaseSetup: Promise<SQLiteDBConnection> | null = null;
 
 // The schema definitions for the local offline database.
 const migrations = [
-  // Households Table
-  // Note: toilet_type, water_source, and food_production are arrays in Supabase,
-  // but SQLite doesn't support arrays. We define them as 'text' here to store JSON strings.
+  // toilet_type/water_source/food_production are arrays in Supabase; stored as JSON text here (SQLite has no array type).
   `create table if not exists households (
     household_id text primary key,
     household_number text not null,
@@ -133,9 +121,7 @@ const migrations = [
     updated_at text not null
   )`,
   
-  // Individuals Table
-  // Note: SQLite does not have a boolean type. We use integers (0 or 1) and 
-  // enforce it with check constraints (e.g., check (is_household_head in (0, 1))).
+  // Booleans stored as 0/1 integers — SQLite has no boolean type.
   `create table if not exists individuals (
     resident_id text primary key,
     household_id text not null,
@@ -205,9 +191,7 @@ const migrations = [
     next_attempt_at text
   )`,
 
-  // Sync Dead Letter Table
-  // Entries that exhausted their retries, moved aside so the main queue keeps
-  // draining. Health records are never discarded — only quarantined for review.
+  // Sync Dead Letter Table — exhausted retries, moved aside to keep the main queue draining. Quarantined, never discarded.
   `create table if not exists sync_dead_letter (
     dead_letter_id integer primary key autoincrement,
     original_queue_id integer not null,
@@ -230,36 +214,25 @@ const migrations = [
   'create index if not exists local_sync_dead_letter_failed_at_idx on sync_dead_letter(failed_at)',
 ];
 
-// Columns introduced after the first release. Every migration above is
-// `create table if not exists`, so a device that installed earlier keeps its original
-// schema forever — each later column has to be added explicitly when it is missing.
+// Columns added after first release — `create table if not exists` never adds them
+// to an existing install, so each has to be added explicitly here.
 const columnUpgrades: { table: MigratableTableName; column: string; definition: string }[] = [
   { table: 'individuals', column: 'middle_name', definition: 'text' },
-  // Retry backoff. Devices installed before the resilience work have a sync_queue
-  // without this column, and `create table if not exists` will never add it.
+  // Retry backoff column — absent on devices installed before it existed.
   { table: 'sync_queue', column: 'next_attempt_at', definition: 'text' },
-  // Who last wrote the row, so an authorized correction to a saved profile is
-  // attributable. `updated_at` already carries the when.
+  // Who last wrote the row (updated_at already carries the when).
   { table: 'individuals', column: 'updated_by', definition: 'text' },
-  // Duplicate-override provenance — see 202608200001. Deliberately carries no
-  // foreign key: the record a BHW was warned about is usually one this device
-  // pulled rather than wrote, and a device that has not pulled it yet must still
-  // be able to save the override rather than fail on a constraint.
+  // Duplicate-override provenance. No foreign key on purpose — the referenced
+  // record may not be pulled to this device yet.
   { table: 'individuals', column: 'duplicate_override_of', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_reason', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_by', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_at', definition: 'text' },
-  // How a member stands to the household head — see 202608200003. Nullable and
-  // unconstrained: the head has no value, every row written before the column has
-  // none either, and a check constraint here would only duplicate the one the
-  // central table already enforces.
+  // Relation to household head. Nullable and unconstrained — the central table already enforces the check.
   { table: 'individuals', column: 'relationship_to_head', definition: 'text' },
 ];
 
-/**
- * Adds any post-release column that this device's database predates.
- * Idempotent: `pragma table_info` is checked first, so re-running is a no-op.
- */
+/** Adds any post-release column this device's database predates. Idempotent via `pragma table_info`. */
 async function applyColumnUpgrades(database: SQLiteDBConnection): Promise<void> {
   for (const upgrade of columnUpgrades) {
     const info = await database.query(`pragma table_info(${upgrade.table})`);
@@ -271,19 +244,14 @@ async function applyColumnUpgrades(database: SQLiteDBConnection): Promise<void> 
   }
 }
 
-/**
- * Bootstraps the local SQLite connection and runs all migrations.
- * This is called automatically when the app starts.
- */
+/** Bootstraps the local SQLite connection and runs all migrations. */
 export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
   if (localDatabase) {
     return localDatabase;
   }
 
-  // Cache the in-flight promise, not just the resolved connection. refreshLocalData()
-  // fans out several accessors at once and useBackgroundSync initializes in parallel,
-  // so without this every concurrent caller clears the check above and opens its own
-  // connection to `mabisa_local`, re-running the migrations on each one.
+  // Cache the in-flight promise, not just the connection — concurrent callers
+  // (refreshLocalData, useBackgroundSync) would otherwise each open their own connection.
   if (!localDatabaseSetup) {
     localDatabaseSetup = openLocalDatabase().catch((error: unknown) => {
       localDatabaseSetup = null; // allow a later call to retry after a failed open
@@ -295,22 +263,9 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
 }
 
 /**
- * Decides how this device's database is opened, and encrypts it the first time.
- *
- * A field phone carries a barangay's health register offline. On Android that
- * file is now SQLCipher-encrypted with a passphrase generated on the device and
- * held by the plugin's own secure store, so a lost handset is a lost handset
- * rather than a lost register.
- *
- * Three states, and the mode is read from stored fact rather than guessed:
- *
- * - **web** — `no-encryption`. `jeep-sqlite` has no SQLCipher and a browser has
- *   no keystore, so the development build stays exactly as it was.
- * - **native, no secret yet** — generate one, store it, and open with
- *   `encryption`, which converts the existing plaintext file in place. This is
- *   the one-time upgrade path for a device already carrying records; it must not
- *   be reached twice, which is what `isSecretStored()` guarantees.
- * - **native, secret stored** — `secret`, the ordinary open.
+ * Which SQLCipher mode to open with, read from stored fact rather than guessed:
+ * web has no keystore (`no-encryption`); a native device with no secret yet
+ * generates one and encrypts in place (`encryption`, one-time only); otherwise `secret`.
  */
 async function prepareEncryption(): Promise<'no-encryption' | 'encryption' | 'secret'> {
   if (isWebPlatform) {
@@ -329,9 +284,7 @@ async function prepareEncryption(): Promise<'no-encryption' | 'encryption' | 'se
 }
 
 async function openLocalDatabase(): Promise<SQLiteDBConnection> {
-  // 2. THE WEB POLYFILL
-  // This block ONLY runs in the browser. It ensures the emulator is injected
-  // exactly when needed, preventing Vite HMR race conditions.
+  // Web only: injects the jeep-sqlite emulator element, timed to avoid Vite HMR races.
   if (isWebPlatform) {
     try {
       let jeepEl = document.querySelector('jeep-sqlite');
@@ -348,13 +301,12 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
       await sqlite.initWebStore();
 
     } catch (error) {
-      // If Vite Hot-Reloads, initWebStore might throw an "already initialized" error.
-      // We catch it here so it doesn't crash your React app.
+      // A Vite HMR reload can throw "already initialized" here — safe to ignore.
       console.warn('SQLite Web Store warning (safe to ignore during dev):', error);
     }
   }
 
-  // 3. CREATE & OPEN CONNECTION
+  // Create & open connection
   const encryption = await prepareEncryption();
   const database = await sqlite.createConnection(
     'mabisa_local',
@@ -387,11 +339,8 @@ export async function getLocalDatabase(): Promise<SQLiteDBConnection> {
 }
 
 /**
- * Flushes the database to durable storage.
- *
- * Web builds hold the whole database in memory and write nothing to IndexedDB until
- * the store is saved explicitly, so without this every record is lost on reload.
- * Native platforms persist on write, where this is a no-op.
+ * Flushes the database to IndexedDB. Web builds hold it in memory otherwise and
+ * lose everything on reload; native platforms persist on write, so this is a no-op there.
  */
 export async function persistLocalDatabase(): Promise<void> {
   if (!isWebPlatform) {
@@ -405,10 +354,7 @@ export async function persistLocalDatabase(): Promise<void> {
 // Sync Queue Management
 // -----------------------------------------------------------------------------
 
-/**
- * Takes a valid payload, stringifies it, and drops it into the sync_queue table.
- * This happens immediately after updating a local table (the "Double-Write" pattern).
- */
+/** Stringifies the payload and queues it — called right after the local write ("double-write"). */
 export async function enqueueSyncOperation<TTable extends LocalTableName, TOperation extends SyncOperationType>(
   targetTable: TTable,
   operationType: TOperation,
@@ -422,10 +368,15 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
   );
 }
 
-/**
- * Fetches all pending jobs in chronological order.
- * The syncService loops through this list when the device connects to the internet.
- */
+/** Count only — avoids JSON-parsing every payload just to get a number (called from the login screen). */
+export async function countPendingQueueEntries(): Promise<number> {
+  const database = await getLocalDatabase();
+  const result = await database.query('select count(*) as pending from sync_queue');
+
+  return Number(result.values?.[0]?.pending ?? 0);
+}
+
+/** All pending jobs in chronological order — what the sync loop drains. */
 export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
   const database = await getLocalDatabase();
   const result = await database.query(
@@ -438,7 +389,7 @@ export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
     queue_id: Number(row.queue_id),
     operation_type: parseOperationType(String(row.operation_type)),
     target_table: parseLocalTableName(String(row.target_table)),
-    payload: JSON.parse(String(row.payload)), // Parse the raw string back into a JS object
+    payload: JSON.parse(String(row.payload)),
     created_at: String(row.created_at),
     attempts: Number(row.attempts),
     last_error: nullableText(row.last_error),
@@ -446,20 +397,15 @@ export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
   }));
 }
 
-/**
- * Deletes a job from the queue. Called after a successful Supabase upsert.
- */
+/** Deletes a job from the queue after a successful push. */
 export async function removeSyncQueueEntry(queueId: number): Promise<void> {
   const database = await getLocalDatabase();
   await database.run('delete from sync_queue where queue_id = ?', [queueId]);
 }
 
 /**
- * Increments the attempt counter, logs the error, and schedules the next retry.
- *
- * `nextAttemptAt` is what stops a failing entry from being hammered on every
- * single network-status change — the sync loop skips entries whose retry time
- * has not arrived yet.
+ * Increments attempts, logs the error, and schedules the next retry —
+ * `nextAttemptAt` stops a failing entry being hammered on every network flap.
  */
 export async function markSyncQueueEntryFailed(
   queueId: number,
@@ -474,12 +420,8 @@ export async function markSyncQueueEntryFailed(
 }
 
 /**
- * Moves an entry out of the live queue and into quarantine, preserving its
- * payload verbatim. Called once an entry has exhausted its retries, or when it
- * depends on a record that is itself quarantined.
- *
- * This is the whole point of the dead-letter design: the main queue can always
- * drain, and no health record is ever silently dropped.
+ * Moves an entry into quarantine, payload preserved verbatim, so the main queue
+ * can keep draining and no health record is ever silently dropped.
  */
 export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, errorMessage: string): Promise<void> {
   const database = await getLocalDatabase();
@@ -528,13 +470,7 @@ export async function countDeadLetterEntries(): Promise<number> {
   return Number(result.values?.[0]?.total ?? 0);
 }
 
-/**
- * Puts every quarantined entry back on the live queue with a fresh attempt count.
- *
- * Entries are reinserted in their original queue order so parents are pushed
- * before their children again — requeueing an individual ahead of its household
- * would just recreate the orphan the quarantine existed to prevent.
- */
+/** Puts every quarantined entry back on the queue, in original order so a parent is pushed before its children again. */
 export async function requeueDeadLetterEntries(): Promise<number> {
   const database = await getLocalDatabase();
   const entries = await readDeadLetterEntries();
@@ -553,43 +489,23 @@ export async function requeueDeadLetterEntries(): Promise<number> {
 }
 
 // -----------------------------------------------------------------------------
-// Column Maps
+// Column Maps — one list per table drives both the local write and the server-pull
+// upsert, so a column added here reaches every path or none of them. Leaf tables
+// (health_assessments, supply_disbursements) skip this and keep `insert or replace`
+// since nothing references them.
 // -----------------------------------------------------------------------------
-// Every parent table is written from two directions — the device's own forms and
-// the server pull — and each direction used to carry its own hand-maintained
-// column list. They drifted: the `individuals` pull was missing occupation,
-// educational_attainment and philhealth_number, so a resident downloaded from
-// Supabase arrived with those blank, and because the conflict clause did not
-// mention them either, no later pull ever repaired it.
-//
-// Both statements and the value array are now generated from one list per table,
-// so a column added here reaches every path or none of them.
-//
-// Leaf tables (health_assessments, supply_disbursements) deliberately keep
-// `insert or replace`: nothing references them, so REPLACE destroys nothing and a
-// column map would prevent no defect.
 
 type ColumnDescriptor<TRow> = {
   name: string;
   value: (row: TRow) => SqlValue;
-  /**
-   * Refreshed from the server row when a pull lands on a record this device
-   * already knows. Identity and first-seen stamps are not: the primary key is the
-   * conflict target, and created_at records when this device first saw the row.
-   */
+  /** Refreshed on conflict — false for the primary key and created_at, which must not change. */
   mutableOnConflict: boolean;
 };
 
 /**
- * Builds the single upsert used by every write to a table, local or pulled.
- *
- * Deliberately not `insert or replace`: with `pragma foreign_keys = on`, REPLACE
- * deletes the existing row before reinserting it, and the child tables declare
- * `on delete cascade` — so re-saving a household would silently take its members
- * and their health assessments with it, two levels deep. Where a child instead
- * has a plain FK (supply_disbursements), the cascade is *blocked* and the
- * statement throws a constraint error. `on conflict do update` edits in place and
- * leaves children untouched, which is neither.
+ * Builds the upsert used by every write to a table, local or pulled. Not
+ * `insert or replace`: with cascading FKs, REPLACE would delete-then-reinsert the
+ * row and take its children with it. `on conflict do update` edits in place instead.
  */
 function buildUpsert<TRow>(
   table: MigratableTableName,
@@ -607,13 +523,7 @@ function buildUpsert<TRow>(
     statement,
     /** Row values in the exact order `statement` binds them. */
     values: (row: TRow): SqlValue[] => columns.map((column) => column.value(row)),
-    /**
-     * DEV-only check that the map still describes the real table.
-     *
-     * There is no test suite, so this is what catches a column added to the schema
-     * but not to the map, or the reverse — the exact drift that left the individuals
-     * pull silently dropping three columns for as long as it did.
-     */
+    /** DEV-only check that this column list still matches the real table schema. */
     verify: async (database: SQLiteDBConnection): Promise<void> => {
       if (!import.meta.env.DEV) {
         return;
@@ -635,8 +545,7 @@ function buildUpsert<TRow>(
 
 const individualColumns: ColumnDescriptor<Individual>[] = [
   { name: 'resident_id', value: (individual) => individual.resident_id, mutableOnConflict: false },
-  // Mutable on purpose: a resident who transfers household on the server has to
-  // be refiled here too, which the previous conflict clause never did.
+  // Mutable — a resident who transfers household must be refiled here too.
   { name: 'household_id', value: (individual) => individual.household_id, mutableOnConflict: true },
   { name: 'first_name', value: (individual) => individual.first_name, mutableOnConflict: true },
   { name: 'middle_name', value: (individual) => individual.middle_name ?? null, mutableOnConflict: true },
@@ -670,9 +579,7 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
   { name: 'created_at', value: (individual) => individual.created_at, mutableOnConflict: false },
   { name: 'updated_at', value: (individual) => individual.updated_at, mutableOnConflict: true },
   { name: 'updated_by', value: (individual) => individual.updated_by ?? null, mutableOnConflict: true },
-  // Mutable like any other column: the central row is the one the admin portal
-  // will eventually merge from, so a pull must be able to bring an override
-  // recorded on another device down to this one.
+  // Mutable — a pull must be able to bring an override recorded on another device down to this one.
   {
     name: 'duplicate_override_of',
     value: (individual) => individual.duplicate_override_of ?? null,
@@ -697,11 +604,8 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
 
 const individualUpsert = buildUpsert('individuals', 'resident_id', individualColumns);
 
-// SQLite has no array type, so these three columns hold JSON strings. The `?? []`
-// matters: JSON.stringify(undefined) returns undefined rather than a string, and
-// every one of these columns is `not null` — a missing array was a runtime
-// constraint failure that TypeScript could not see, because JSON.stringify is
-// typed as returning string. The pull path already guarded it; the save path did not.
+// JSON-string columns (no array type in SQLite). `?? []` matters: these columns
+// are `not null`, and `JSON.stringify(undefined)` returns undefined, not a string.
 const householdColumns: ColumnDescriptor<Household>[] = [
   { name: 'household_id', value: (household) => household.household_id, mutableOnConflict: false },
   { name: 'household_number', value: (household) => household.household_number, mutableOnConflict: true },
@@ -737,33 +641,23 @@ const inventoryUpsert = buildUpsert('inventory_items', 'item_id', inventoryColum
 // Write Operations (The "Double-Write" Pattern)
 // -----------------------------------------------------------------------------
 
-/**
- * Writes household data to local storage and queues it for the cloud.
- */
+/** Writes household data to local storage and queues it for the cloud. */
 export async function saveHouseholdLocally(household: Household, operationType: SyncOperationType = 'INSERT'): Promise<void> {
   const database = await getLocalDatabase();
   await database.run(householdUpsert.statement, householdUpsert.values(household));
 
-  // Note: We queue the raw 'household' object here, NOT the stringified version.
-  // This ensures Supabase receives actual arrays when the payload is processed.
+  // Queues the raw object, not the JSON string, so Supabase gets real arrays.
   await enqueueSyncOperation('households', operationType, household);
   await persistLocalDatabase();
 }
 
-/**
- * Writes individual data to local storage and queues it for the cloud.
- */
+/** Writes individual data to local storage and queues it for the cloud. */
 export async function saveIndividualLocally(individual: Individual, operationType: SyncOperationType = 'INSERT'): Promise<void> {
   const database = await getLocalDatabase();
   await database.run(individualUpsert.statement, individualUpsert.values(individual));
 
-  // household_number rides along on every read — readLocalIndividuals joins it so
-  // a list can show a household without a second query — but it is a column on
-  // `households`, not on `individuals`. The local write ignores it because the
-  // column map names its columns explicitly; the queued payload does not, and
-  // Supabase rejects the whole row over one unknown column. Anything editing a
-  // resident read back from SQLite would hit this, so it is dropped here rather
-  // than at each call site.
+  // household_number is joined in on read but lives on `households`, not
+  // `individuals` — Supabase rejects the row over the unknown column if it rides along.
   const syncable = { ...individual };
   delete syncable.household_number;
 
@@ -797,17 +691,9 @@ export async function saveHealthAssessmentLocally(
   await persistLocalDatabase();
 }
 
-export async function saveInventoryItemLocally(item: InventoryItem, operationType: SyncOperationType = 'INSERT'): Promise<void> {
-  const database = await getLocalDatabase();
-  await database.run(inventoryUpsert.statement, inventoryUpsert.values(item));
-  await enqueueSyncOperation('inventory_items', operationType, item);
-  await persistLocalDatabase();
-}
-
 /**
- * Reads one inventory item, or null if this device has never seen it.
- * Separate from readLocalInventoryItems() because the disbursement path needs the
- * authoritative current row, not whatever the UI snapshot last loaded.
+ * One inventory item, or null. Separate from readLocalInventoryItems() — the
+ * disbursement path needs the current row, not a stale UI snapshot.
  */
 export async function readLocalInventoryItem(itemId: string): Promise<InventoryItem | null> {
   const database = await getLocalDatabase();
@@ -818,28 +704,13 @@ export async function readLocalInventoryItem(itemId: string): Promise<InventoryI
 }
 
 /**
- * Records a supply release and moves the stock it came out of, as one call.
+ * Records a supply release and decrements the device's local stock in one call.
  *
- * The two used to be separate: this wrote the ledger row and nothing decremented
- * `current_stock`, so the quantity check in the form was reading a figure only the
- * admin surface could ever change.
- *
- * Only the disbursement is queued. The stock move is applied locally — a BHW
- * offline for three days has to see what is actually left — but it is deliberately
- * *not* pushed. Two reasons, and either alone would settle it:
- *
- * - `inventory_items` is admin-only for writes under the purok RLS, so a queued
- *   stock update from a phone would be rejected every pass and quarantine.
- * - An absolute stock number is the wrong thing to send anyway. Two devices
- *   releasing offline from the same base would each push their own total and the
- *   later one would win, silently erasing the other's release.
- *
- * Centrally the decrement rides on the ledger row instead: an `after insert`
- * trigger on `supply_disbursements` (202608200002) subtracts the quantity from
- * the item. That is relative, so concurrent offline releases add up rather than
- * overwrite, and it does not fire on the `on conflict do update` path a replayed
- * queue entry takes — so a retried push cannot decrement twice. The next pull
- * brings the reconciled figure back down to the device.
+ * Only the disbursement is queued; the decrement stays local and is never pushed —
+ * `inventory_items` has no BHW write policy, and an absolute total would let two
+ * offline devices overwrite each other's release. The server reconciles the real
+ * figure live via the `bhw_item_stock` view (allocations minus disbursements),
+ * which the next pull brings back down.
  */
 export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
@@ -847,8 +718,7 @@ export async function saveSupplyDisbursementLocally(
 ): Promise<void> {
   const database = await getLocalDatabase();
 
-  // Only a new release moves stock. An edit to an existing log row would have to
-  // reverse the original quantity first, and nothing in the app offers that yet.
+  // Only a new release moves stock — editing an existing log has no reversal path yet.
   const item = operationType === 'INSERT' ? await readLocalInventoryItem(disbursement.item_id) : null;
 
   if (operationType === 'INSERT') {
@@ -856,9 +726,7 @@ export async function saveSupplyDisbursementLocally(
       throw new Error('That supply item is not on this device yet. Sync before releasing it.');
     }
 
-    // `check (current_stock >= 0)` on both SQLite and Postgres is the real
-    // backstop. This is here so the BHW reads a sentence instead of a constraint
-    // violation, and so the reason names the number they are short by.
+    // The real backstop is the DB check constraint — this just gives a readable message first.
     if (disbursement.quantity > item.current_stock) {
       throw new Error(
         `Only ${item.current_stock} of ${item.item_name} left on this device — ${disbursement.quantity} cannot be released.`,
@@ -883,9 +751,8 @@ export async function saveSupplyDisbursementLocally(
   await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
 
   if (item) {
-    // Local only, and not enqueued — see the note above. `updated_at` is left on
-    // the item's own value rather than stamped forward, so the pull that brings
-    // back the server's reconciled figure is not mistaken for stale data.
+    // Local only, not enqueued. `updated_at` stays on the item's own value so the
+    // server's reconciled figure isn't mistaken for stale data on the next pull.
     const movedStock: InventoryItem = {
       ...item,
       current_stock: item.current_stock - disbursement.quantity,
@@ -920,11 +787,7 @@ export async function getIndividualCount(options?: Pick<PaginatedQuery, 'searchQ
   return result.values?.[0]?.total || 0;
 }
 
-/**
- * Builds the shared search predicate for individual lookups.
- * Kept in one place so the row query and the count query cannot drift apart —
- * if they do, the pager offers pages the filtered result set does not have.
- */
+/** Shared search predicate for individual lookups — one place so the row and count queries can't drift apart. */
 function buildIndividualSearch(searchQuery?: string): { clause: string; params: SqlValue[] } {
   const term = searchQuery?.trim();
 
@@ -985,11 +848,8 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
 }
 
 /**
- * One resident by id, or null if this device has never seen them.
- *
- * Goes through readLocalIndividuals rather than its own select so the boolean
- * coercion and the household_number join stay in one place — a second query here
- * is how the detail screen would end up showing `1` where the list shows `Head`.
+ * One resident by id, or null if this device has never seen them. Duplicates the
+ * boolean coercion and household_number join from readLocalIndividuals inline.
  */
 export async function readLocalIndividual(residentId: string): Promise<Individual | null> {
   const db = await initializeLocalDatabase();
@@ -1100,11 +960,7 @@ export async function readLocalSupplyDisbursements(residentId?: string): Promise
 // Parsers & Type Guards
 // -----------------------------------------------------------------------------
 
-/**
- * Normalizes a nullable SQLite text column into `string | null`.
- * A column added by `alter table` reads back as undefined on rows written before
- * the upgrade, so undefined has to collapse to null alongside a real NULL.
- */
+/** Normalizes a nullable SQLite text column — `alter table` columns read back as undefined on older rows, so that collapses to null too. */
 function nullableText(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
 }
@@ -1152,8 +1008,7 @@ export async function pullInventoryFromServer(cloudItems: InventoryItem[]): Prom
   if (!cloudItems.length) return; // Skip if nothing to pull
   const db = await initializeLocalDatabase();
 
-  // Same statement and same value order as the local write path — see the column
-  // maps above for why these are no longer written out twice.
+  // Same statement/value order as the local write path — see the column maps above.
   const values = cloudItems.map((item) => inventoryUpsert.values(item));
 
   try {
@@ -1169,8 +1024,7 @@ export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Pr
   if (!cloudHouseholds.length) return;
   const db = await initializeLocalDatabase();
   
-  // Same statement and same value order as the local write path — see the column
-  // maps above for why these are no longer written out twice.
+  // Same statement/value order as the local write path — see the column maps above.
   const values = cloudHouseholds.map((household) => householdUpsert.values(household));
 
   try {
@@ -1186,8 +1040,7 @@ export async function pullIndividualsFromServer(cloudIndividuals: Individual[]):
   if (!cloudIndividuals.length) return;
   const db = await initializeLocalDatabase();
 
-  // Same statement and same value order as the local write path — see the column
-  // maps above for why these are no longer written out twice.
+  // Same statement/value order as the local write path — see the column maps above.
   const values = cloudIndividuals.map((individual) => individualUpsert.values(individual));
 
   try {

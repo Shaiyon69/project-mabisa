@@ -8,15 +8,14 @@ import {
   ProfilePage,
   RegisterResidentPage,
   ResidentDetailPage,
-  // The admin tree exports a ResidentsPage too, and they are different screens:
-  // one browses this device's SQLite, the other is the portal's registry.
+  // The admin tree exports a ResidentsPage too — different screen, this device's SQLite vs. the portal's registry.
   ResidentsPage as BhwResidentsPage,
   SupplyDisbursementPage,
 } from '../pages/bhw/BHWPages';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { buildsAdmin, buildsBhw, isSingleSurface } from './surface';
-import type { UserRole } from '../types/database';
+import { isDeskRole, type UserRole } from '../types/database';
 
 type AppRoutesProps = {
   logout: () => Promise<void>;
@@ -26,24 +25,16 @@ type AppRoutesProps = {
 };
 
 export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
-  // Both surfaces are gated, and on the same flag rather than one test per role: an
-  // unknown role has to land somewhere, and giving each surface its own predicate
-  // would leave a null role rejected by both and bouncing between them forever.
-  //
-  // One value to test, because public.app_role has exactly two members. An LGU
-  // official is an `admin` row in public.profiles.
-  const isAdmin = role === 'admin';
+  // One flag for both surfaces — a per-role predicate would leave a null (not-yet-known)
+  // role rejected by both and bouncing between them. The portal itself doesn't branch
+  // on admin vs. barangay_admin; RLS draws that line, not this flag.
+  const isAdmin = isDeskRole(role);
   const belongsHere = isAdmin ? buildsAdmin : buildsBhw;
 
-  // What a non-admin sees when it reaches the admin portal, in either build. The
-  // portal is not somewhere a BHW account can be redirected out of: on the admin
-  // deployment the field app is a different machine entirely, and in a combined
-  // build a silent bounce to /bhw means someone who signed in at the portal ends
-  // up in the phone app with no explanation. Say so instead.
-  //
-  // Held until `roleChecked`, because a session resolves to no role while the
-  // profile lookup is in flight — the same value a genuinely role-less account
-  // has. Rendering the rejection early would greet every admin with it.
+  // What a non-admin sees at the admin portal — never a silent bounce to /bhw,
+  // since on the admin deployment the field app is a different machine entirely.
+  // Held until roleChecked, since an in-flight lookup and a genuinely role-less
+  // account both resolve to null.
   const adminRejection = roleChecked ? (
     <SurfaceNotice
       title="This is the MABISA admin portal"
@@ -54,8 +45,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
     <SurfaceNotice title="Checking your account" body="One moment." />
   );
 
-  // A single-surface BHW build has nowhere to send an admin: the portal is another
-  // deployment, not another path here.
+  // A single-surface BHW build has nowhere to send an admin — the portal is another deployment, not another path here.
   if (isSingleSurface && !belongsHere) {
     return buildsAdmin ? (
       adminRejection
@@ -89,7 +79,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       ) : null}
 
       {buildsAdmin ? (
-        <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} /> : adminRejection}>
+        <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} role={role} /> : adminRejection}>
           <Route index element={<AdminDashboardPage />} />
           <Route path="residents" element={<ResidentsPage />} />
           <Route path="inventory" element={<InventoryPage />} />

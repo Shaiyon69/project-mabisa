@@ -1,18 +1,10 @@
 import type { Individual } from '../types/database';
 
 /**
- * Likely-duplicate detection for resident profiles.
- *
- * MABISA does not verify physical identity and never blocks a save on a suspected
- * duplicate — the BHW is standing in the household and is the one who can tell.
- * This only produces the warning they judge: a short list of records that look
- * like the person being registered, ordered most convincing first.
- *
- * Deliberately not fuzzy. Edit distance would need every candidate row in memory
- * and a threshold nobody has agreed, and it buys little against the case that
- * actually happens — the same person entered twice, spelled the same way, on two
- * visits. Normalisation covers the variation that does occur: casing, an accent
- * typed once and not the next time, a stray hyphen, doubled spaces.
+ * Likely-duplicate detection for resident profiles. Never blocks a save — the BHW
+ * standing in the household is the one who can tell. Deliberately not fuzzy
+ * (edit distance): normalization already covers the variation that actually
+ * occurs — casing, a missed accent, a stray hyphen, doubled spaces.
  */
 
 export type DuplicateConfidence = 'exact' | 'likely';
@@ -43,13 +35,7 @@ type NameAndBirthday = {
   birthday: string;
 };
 
-/**
- * Records among `existing` that look like `candidate`, most convincing first.
- *
- * Middle name is not compared: it is optional on the form, so a blank one would
- * either miss real duplicates or manufacture false ones depending on which way
- * the comparison fell.
- */
+/** Records among `existing` that look like `candidate`, most convincing first. Middle name isn't compared — it's optional, so a blank one would skew the result either way. */
 export function findLikelyDuplicates(candidate: NameAndBirthday, existing: Individual[]): DuplicateMatch[] {
   const first = normalizeName(candidate.first_name);
   const last = normalizeName(candidate.last_name);

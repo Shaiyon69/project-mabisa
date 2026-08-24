@@ -1,5 +1,7 @@
 import { AccountsTable } from '../../components/admin/AccountsTable';
 import { AdminDashboard } from '../../components/admin/AdminDashboard';
+import { useAdminRole } from '../../components/admin/adminRole';
+import { InventoryControls } from '../../components/admin/InventoryControls';
 import { AdminFilterBar } from '../../components/admin/AdminFilterBar';
 import { InventoryTable } from '../../components/admin/InventoryTable';
 import { ReportCards } from '../../components/admin/ReportCards';
@@ -49,15 +51,24 @@ export function ResidentsPage() {
 }
 
 export function InventoryPage() {
-  const { snapshot, loading, error } = useAdminData();
+  const { snapshot, loading, error, refresh } = useAdminData();
+  const role = useAdminRole();
 
   return (
     <>
       <PageHeader
         eyebrow="Inventory"
         title="Supply Inventory"
-        description="Central supply stock levels and low-stock indicators."
+        description="Stock the barangay still holds unallocated, and what is left to hand out. Quantities already allocated to a health worker are counted against that worker, not here."
       />
+      {/*
+        Stock controls belong to the barangay administrator alone. An RHU account
+        is an oversight surface: it reads every barangay and writes to none, and
+        the three RPCs behind these forms refuse it regardless of what is on
+        screen. Hiding them keeps the portal honest about that rather than
+        offering a button whose only outcome is a permission error.
+      */}
+      {role === 'barangay_admin' ? <InventoryControls items={snapshot.inventoryItems} onChanged={refresh} /> : null}
       <Card className="admin-monitor">
         {error ? <ErrorState title="Could not read inventory" text={error} /> : null}
         <InventoryTable inventoryItems={snapshot.inventoryItems} loading={loading} />

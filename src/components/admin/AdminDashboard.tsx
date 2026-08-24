@@ -34,7 +34,7 @@ export function AdminDashboard({ snapshot, filters, loading, error }: AdminDashb
         <StatCard label="Residents" value={snapshot.residentCount} detail="Profiled centrally" tone="blue" />
         <StatCard label="Assessments" value={snapshot.assessments.length} detail="In selected period" tone="green" />
         <StatCard label="Units released" value={releasedTotal} detail="In selected period" tone="amber" />
-        <StatCard label="Low stock" value={lowStock.length} detail={`Items at or below 10`} tone="red" />
+        <StatCard label="Low unallocated stock" value={lowStock.length} detail="Items with 10 or fewer left to hand out" tone="red" />
       </section>
 
       <Card className="admin-monitor">

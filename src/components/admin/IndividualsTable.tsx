@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { fetchResidentPage } from '../../services/adminData';
+import { fetchBarangayScope, fetchResidentPage } from '../../services/adminData';
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
@@ -53,17 +53,9 @@ const exportColumns: CsvColumn<Individual>[] = [
 ];
 
 /**
- * The central resident registry.
- *
- * Reads Supabase, not this browser's SQLite mirror: on an LGU workstation that
- * mirror is empty, and on a shared machine it holds whatever the last field
- * device left behind — which is exactly the FR-06 defect. Search, paging and the
- * total are all resolved server-side, so the registry is not bounded by what one
- * page happened to download.
- *
- * The "Pending Sync" column is gone with it. It was derived from this browser's
- * own queue length and applied to every row alike, so on the portal it said
- * nothing about the record it sat beside.
+ * The central resident registry. Reads Supabase, not this browser's SQLite
+ * mirror — search, paging and the total are all resolved server-side, so the
+ * registry isn't bounded by what one page happened to download.
  */
 export function IndividualsTable() {
   const [query, setQuery] = useState('');
@@ -75,9 +67,7 @@ export function IndividualsTable() {
     settledFor: '',
   });
 
-  // What this render is asking for. `loading` is derived from it rather than
-  // held in its own state, so a keystroke marks the table busy on the same
-  // render that changed the query.
+  // `loading` is derived from this key, not its own state, so a keystroke marks the table busy immediately.
   const requestKey = `${query}|${page}`;
   const { rows, total, error } = result;
   const loading = result.settledFor !== requestKey;
@@ -118,19 +108,16 @@ export function IndividualsTable() {
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
 
-  /**
-   * Exports the whole filtered set, not the ten rows on screen — an export whose
-   * totals disagree with the count above it is the failure FR-09 names. The page
-   * is refetched at full size for the same search term.
-   */
+  /** Exports the whole filtered set, refetched at full size, not just the ten rows on screen. */
   async function exportResidents() {
-    const all = await fetchResidentPage(query, Math.max(total, 1), 0);
+    const [all, barangay] = await Promise.all([fetchResidentPage(query, Math.max(total, 1), 0), fetchBarangayScope()]);
 
     downloadCsv(
       reportFileName('Resident Registry'),
       buildReportCsv(
         {
           title: 'Resident Registry',
+          barangay,
           from: 'all dates',
           to: 'all dates',
           filters: query.trim() ? [{ label: 'Search', value: query.trim() }] : [],

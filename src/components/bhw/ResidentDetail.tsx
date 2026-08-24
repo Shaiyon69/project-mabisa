@@ -15,7 +15,7 @@ import { FormActions } from '../common/FormField';
 import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
 import { MemberChoice, MemberFields } from './MemberFields';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type ResidentDetailProps = {
   residentId: string;
@@ -43,13 +43,7 @@ type ResidentRecord = {
   disbursements: SupplyDisbursement[];
 };
 
-/**
- * Everything this screen shows about one resident, read in one go.
- *
- * Outside the component on purpose: the effect below then hands state-setting to
- * a `.then` callback rather than doing it in the effect body, which is the same
- * shape `BHWDashboard` and `IndividualSearch` already use.
- */
+/** Everything this screen shows about one resident, read in one go — same shape as BHWDashboard/IndividualSearch. */
 async function readResident(residentId: string): Promise<ResidentRecord> {
   const [person, assessments, disbursements] = await Promise.all([
     readLocalIndividual(residentId),
@@ -61,24 +55,18 @@ async function readResident(residentId: string): Promise<ResidentRecord> {
 }
 
 /**
- * One resident: who they are, every assessment recorded for them, every supply
- * released to them, and a corrections path for the profile.
- *
- * The two histories are read-only by design, not by omission. "History is
- * appended, never overwritten" is an acceptance condition, and an assessment is
- * a measurement taken on a day — a wrong one is corrected by taking another, not
- * by editing the record of what the scale said.
+ * One resident: who they are, every assessment and supply release, and a
+ * corrections path for the profile. The two histories are read-only by design —
+ * a wrong measurement is corrected by taking another, not by editing the record.
  */
 export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: ResidentDetailProps) {
   const { t, isFilipino } = useBhwLanguage();
   const [resident, setResident] = useState<Individual | null>(null);
   const [assessments, setAssessments] = useState<HealthAssessment[]>([]);
   const [disbursements, setDisbursements] = useState<SupplyDisbursement[]>([]);
-  // Which resident the three lists above actually describe. Loading is derived
-  // from it rather than held as its own flag: navigating from one resident to
-  // another reuses this component, and a separate flag raised in the effect body
-  // would show the previous person's history under the new person's name for a
-  // frame.
+  // Which resident the three lists above describe. `loading` is derived from this
+  // rather than its own flag, or navigating between residents would flash the
+  // previous person's history under the new name for a frame.
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
   const [draft, setDraft] = useState<Individual | null>(null);
@@ -86,8 +74,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
   const [showValidation, setShowValidation] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Applying the three reads is one step, so a half-loaded screen — this person's
-  // name over the last one's assessments — is not a state this component has.
+  // Applying the three reads in one step — no state where this name pairs with the last person's assessments.
   const apply = useCallback((loaded: ResidentRecord) => {
     setResident(loaded.person);
     setAssessments(loaded.assessments);

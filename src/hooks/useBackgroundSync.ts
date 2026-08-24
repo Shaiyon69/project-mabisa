@@ -96,16 +96,11 @@ export function useBackgroundSync(): BackgroundSyncState {
     };
   }, [runSync]);
 
-  // Wake deferred entries. `next_attempt_at` schedules a 30s->4m ladder, but the
-  // only triggers above are mount and networkStatusChange — so a device sitting
-  // online with a failed entry never advanced that ladder at all, and the queue
-  // stayed stuck until the BHW tapped the button or the connection flapped.
-  //
-  // Each pass produces a fresh `lastResult`, which re-runs this effect and arms
-  // the next timer, so it walks itself forward while anything is still waiting
-  // and stops as soon as a pass comes back clean. Gated on `deferred` rather
-  // than running unconditionally: an idle device would otherwise re-pull every
-  // table on a timer, which is real cellular cost in the field.
+  // Wakes deferred entries — without a timer here, a device sitting online with a
+  // failed entry would never retry until the BHW tapped the button or the
+  // connection flapped. Each pass's fresh `lastResult` re-arms the next timer, so
+  // this walks itself forward and stops once a pass comes back clean. Gated on
+  // `deferred` so an idle device doesn't re-pull every table on a timer.
   //
   // ponytail: fixed interval, not aligned to the earliest next_attempt_at. Costs
   // a few no-op local reads during a long backoff — no network traffic, since a

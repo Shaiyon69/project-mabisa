@@ -1,10 +1,26 @@
 import { useEffect, useState } from 'react';
 import { formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { fetchAccounts, type AccountRow } from '../../services/adminData';
+import { fetchAccounts, type AccountRow, fetchBarangayScope } from '../../services/adminData';
+import type { UserRole } from '../../types/database';
 import { Button } from '../common/Button';
 import { ErrorState } from '../common/StateMessage';
 import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
+
+/** Every role spelled out as a map, not a ternary — a ternary can't warn when a fourth role appears. */
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'RHU Administrator',
+  barangay_admin: 'Barangay Administrator',
+  bhw: 'Barangay Health Worker',
+};
+
+/** What the purok column means for a role that is not assigned to one. */
+const SCOPE_WITHOUT_PUROK: Record<UserRole, string> = {
+  admin: 'All barangays',
+  barangay_admin: 'Whole barangay',
+  // An unassigned BHW can't read or write a field row — this is why their signed-in device sees nothing.
+  bhw: 'None — cannot sync',
+};
 
 const columns: TableColumn<AccountRow>[] = [
   {
@@ -15,16 +31,12 @@ const columns: TableColumn<AccountRow>[] = [
   {
     key: 'role',
     header: 'Role',
-    render: (account) => (account.profile.role === 'admin' ? 'Admin / LGU' : 'Barangay Health Worker'),
+    render: (account) => ROLE_LABELS[account.profile.role],
   },
   {
     key: 'assigned-purok',
     header: 'Assigned Purok',
-    // A BHW with no active assignment can neither read nor write a field row
-    // under the purok policies, so an empty cell here is the reason a device
-    // that signs in successfully still sees nothing.
-    render: (account) =>
-      account.purokName ?? (account.profile.role === 'admin' ? 'All puroks' : 'None — cannot sync'),
+    render: (account) => account.purokName ?? SCOPE_WITHOUT_PUROK[account.profile.role],
   },
   {
     key: 'assigned-since',
@@ -56,13 +68,8 @@ const exportColumns: CsvColumn<AccountRow>[] = [
 
 /**
  * Accounts and their current purok, read from `public.profiles` — the same table
- * the route guard and every RLS helper read, so what this screen shows about an
- * account is what the database will actually enforce for it.
- *
- * Read-only on purpose. FR-08's mutations (create, assign, deactivate, reset)
- * all go through the `admin_*` SECURITY DEFINER RPCs so they carry an audit
- * event; wiring those is a separate change, and a direct-table write from here
- * would bypass the audit trail the foundation slice exists to guarantee.
+ * every RLS helper reads. Read-only: mutations go through the `admin_*` RPCs so
+ * they carry an audit event, which a direct-table write here would bypass.
  */
 export function AccountsTable() {
   const [rows, setRows] = useState<AccountRow[]>([]);
@@ -95,17 +102,23 @@ export function AccountsTable() {
     };
   }, []);
 
+  async function exportAccounts() {
+    downloadCsv(
+      reportFileName('Accounts'),
+      buildReportCsv(
+        { title: 'Accounts', barangay: await fetchBarangayScope(), from: 'all dates', to: 'all dates' },
+        rows,
+        exportColumns,
+      ),
+    );
+  }
+
   return (
     <div className="ui-table-stack">
       <TableToolbar>
         <Button
           variant="ghost"
-          onClick={() =>
-            downloadCsv(
-              reportFileName('Accounts'),
-              buildReportCsv({ title: 'Accounts', from: 'all dates', to: 'all dates' }, rows, exportColumns),
-            )
-          }
+          onClick={() => void exportAccounts()}
           disabled={loading || !rows.length}
         >
           Export CSV

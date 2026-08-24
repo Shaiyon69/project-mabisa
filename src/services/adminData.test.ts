@@ -4,6 +4,7 @@ import {
   NUTRITION_ORDER,
   ageBandOf,
   defaultAdminFilters,
+  describeBarangayScope,
   describePeriod,
   disbursementsByItem,
   lowStockItems,
@@ -144,5 +145,31 @@ describe('nutrition order', () => {
     const statuses: HealthAssessment['nutrition_status'][] = ['underweight', 'normal', 'overweight', 'obese'];
 
     expect([...NUTRITION_ORDER].sort()).toEqual([...statuses].sort());
+  });
+});
+
+describe('describeBarangayScope', () => {
+  const barangays = [
+    { barangay_id: 'a', name: 'Barangay San Isidro' },
+    { barangay_id: 'b', name: 'Barangay Poblacion' },
+  ];
+
+  it('names the one barangay an administrator is confined to', () => {
+    expect(describeBarangayScope('b', barangays)).toBe('Barangay Poblacion');
+  });
+
+  // The failure this guards: an RHU export spans every barangay, and captioning
+  // it with any single name puts a false heading on a true report.
+  it('does not name a single barangay on an unconfined RHU export', () => {
+    expect(describeBarangayScope(null, barangays)).toBe('All barangays (2) — Rural Health Unit');
+  });
+
+  it('names it anyway when the whole database is one barangay', () => {
+    expect(describeBarangayScope(null, barangays.slice(0, 1))).toBe('Barangay San Isidro');
+  });
+
+  it('says the name is missing rather than inventing one', () => {
+    expect(describeBarangayScope(null, [])).toBe('Barangay name not configured');
+    expect(describeBarangayScope('gone', barangays)).toBe('Barangay name not configured');
   });
 });

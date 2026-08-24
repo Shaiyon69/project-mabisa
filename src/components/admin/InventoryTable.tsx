@@ -25,7 +25,7 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
     },
     {
       key: 'current-stock',
-      header: 'Current Stock',
+      header: 'Unallocated',
       render: (item) => item.current_stock,
     },
     {
@@ -61,10 +61,20 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
         rows={filteredItems}
         getRowKey={(item) => item.item_id}
         emptyTitle={loading ? 'Reading central inventory' : 'No inventory rows'}
-        emptyText={loading ? 'One moment.' : 'Inventory items in the central database will appear here.'}
-        limit={10}
+        emptyText={
+          loading
+            ? 'One moment.'
+            : 'Nothing has been stocked yet. A barangay administrator adds supplies from this screen.'
+        }
       />
-      <TableMeta shown={Math.min(filteredItems.length, 10)} total={filteredItems.length} label="central inventory" />
+      {/*
+        No `limit`. It used to cut the list at ten with no pager, so an eleventh
+        item was unreachable — harmless while nothing could create one, and a real
+        loss now that a barangay administrator can. A barangay stocks tens of
+        items, not thousands, and the search box above narrows them; server-side
+        paging here would be machinery for a list that fits on a screen.
+      */}
+      <TableMeta shown={filteredItems.length} total={inventoryItems.length} label="central inventory" />
     </div>
   );
 }

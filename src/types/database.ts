@@ -1,16 +1,24 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-// Mirrors public.app_role from the foundation slice, which is the only role
-// enum the database has. There is no separate `lgu` role: an LGU official signs
-// in as `admin`, and every RLS helper (`is_admin()`, `current_app_role()`) tests
-// exactly these two values.
-export type UserRole = 'admin' | 'bhw';
+// Mirrors public.app_role.
+//
+//   admin          RHU. Reads every barangay, writes nothing anywhere.
+//   barangay_admin One barangay. Reads its residents; owns its supply stock and
+//                  allocates quantities to its own BHWs. Writes no field data.
+//   bhw            One purok. Records field data there, and releases only from
+//                  what a barangay_admin allocated to them personally.
+//
+// `is_admin()` means RHU specifically, not "a desk account" — use `is_rhu_or_barangay_admin()` for both.
+export type UserRole = 'admin' | 'barangay_admin' | 'bhw';
+
+/** True for the two roles that sign in to the admin portal rather than the phone. */
+export function isDeskRole(role: UserRole | null): boolean {
+  return role === 'admin' || role === 'barangay_admin';
+}
 export type IndividualSex = 'male' | 'female';
-// How a member stands to the household head. The head themself carries no value:
-// `is_household_head` already says it, and a second column asserting the same
-// fact is a second column to keep in step.
-// The tuple is the list; the union is read off it, so a category added for the
-// picker and the check constraint cannot go missing from the type.
+// How a member stands to the household head — the head itself carries no value
+// (is_household_head already says it). Union is read off the tuple, so a
+// category added here can't go missing from the type.
 export const RELATIONSHIPS_TO_HEAD = [
   'spouse',
   'child',
@@ -26,12 +34,13 @@ export type DwellingType = 'concrete' | 'wood' | 'mixed' | 'makeshift';
 export type ElectricService = 'lamp' | 'gas' | 'iselco' | 'none';
 export type FuelUsed = 'wood' | 'charcoal' | 'lpg' | 'electricity';
 
-// public.profiles from 202607160001_foundation_slice_a.sql -- the single source
-// of a session's role. Writes go through the admin_* RPCs, never through the
-// table, so there is no Insert/Update variant here.
+// public.profiles — the single source of a session's role. Writes go through
+// the admin_* RPCs, not the table, so there is no Insert/Update variant here.
 export type Profile = {
   user_id: string;
   role: UserRole;
+  /** Set on a barangay_admin, null otherwise (`profiles_barangay_scope` enforces it). A BHW's barangay is read through their purok assignment, not stored here. */
+  barangay_id: string | null;
   full_name: string;
   is_active: boolean;
   created_at: string;
@@ -41,12 +50,22 @@ export type Profile = {
   disabled_by: string | null;
 };
 
-// public.puroks and public.bhw_purok_assignments, also from the foundation
-// slice. Like profiles they are read-only to the client — every write goes
-// through an admin_* RPC so it carries an audit event — so both are typed with
-// `never` for Insert and Update.
+// Read-only to the client, like puroks and bhw_purok_assignments below — every
+// write goes through an admin_* RPC so it carries an audit event.
+export type Barangay = {
+  barangay_id: string;
+  name: string;
+  code: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+};
+
 export type Purok = {
   purok_id: string;
+  /** The purok's barangay, and through it every household recorded in it. */
+  barangay_id: string;
   name: string;
   code: string | null;
   is_active: boolean;
@@ -70,11 +89,10 @@ export type BhwPurokAssignment = {
 
 export type Household = {
   household_id: string;
-  // Server-stamped from the writer's active assignment by 202608160002 and the
-  // only place purok membership is recorded. Optional here because a device
-  // form never supplies it — accepting it from a sync payload would let a
-  // client choose its own scope.
+  // Server-stamped by the `households_stamp_scope` trigger from the writer's
+  // purok assignment. Optional here — a device form never supplies these; the trigger overwrites whatever arrives.
   purok_id?: string;
+  barangay_id?: string;
   household_number: string;
   dwelling_type: DwellingType;
   electric_service: ElectricService;
@@ -97,8 +115,7 @@ export type Individual = {
   sex: IndividualSex;
   birthday: string;
   is_household_head: boolean;
-  // Null on the head, and on every row written before the column existed. Until
-  // this was added a spouse, a child and a boarder were indistinguishable.
+  // Null on the head and on rows predating this column.
   relationship_to_head?: RelationshipToHead | null;
   occupation: string | null;
   educational_attainment: string | null;
@@ -107,13 +124,10 @@ export type Individual = {
   philhealth_number: string | null;
   created_at: string;
   updated_at: string;
-  // The account behind the most recent write, so an authorized correction to a
-  // saved profile is attributable. Null on every row written before the column.
+  // Who last wrote the row, for attribution. Null on rows predating this column.
   updated_by?: string | null;
-  // Duplicate-override provenance. MABISA only ever warns about a likely
-  // duplicate — the BHW confirms identity in person — so when they say it is a
-  // different person, these four record which record they were shown, why they
-  // overrode it, who they were, and when.
+  // Duplicate-override provenance — which record the BHW was warned about, why
+  // they overrode it, by whom, and when.
   duplicate_override_of?: string | null;
   duplicate_override_reason?: string | null;
   duplicate_override_by?: string | null;
@@ -132,12 +146,43 @@ export type HealthAssessment = {
   updated_at: string;
 };
 
+/**
+ * Barangay supply stock, as the admin portal sees it. `current_stock` is what
+ * the barangay holds **unallocated**, not the total — an allocated quantity
+ * moves to `BhwItemStock` instead. `barangay_id` optional: the phone's local mirror has no such column.
+ */
 export type InventoryItem = {
   item_id: string;
   item_name: string;
   type: InventoryItemType;
   current_stock: number;
+  barangay_id?: string;
   created_at: string;
+  updated_at: string;
+};
+
+/**
+ * One hand-out from barangay stock to a named BHW. Append-only — no UPDATE/DELETE
+ * policy, since rewriting history would silently change a running total someone already acted on.
+ */
+export type InventoryAllocation = {
+  allocation_id: string;
+  item_id: string;
+  bhw_id: string;
+  quantity: number;
+  reason: string;
+  allocated_by: string;
+  allocated_at: string;
+};
+
+/** public.bhw_item_stock — one BHW's allocations minus releases, per item. What a phone pulls in place of `inventory_items`. */
+export type BhwItemStock = {
+  bhw_id: string;
+  item_id: string;
+  item_name: string;
+  type: InventoryItemType;
+  barangay_id: string;
+  current_stock: number;
   updated_at: string;
 };
 
@@ -147,6 +192,8 @@ export type SupplyDisbursement = {
   resident_id: string;
   disbursement_date: string;
   quantity: number;
+  /** Who released it, stamped server-side — without it allocation can't be enforced. Optional: the local mirror doesn't carry it. */
+  bhw_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -205,6 +252,7 @@ export type Database = {
   public: {
     Tables: {
       profiles: RowDefinition<Profile, ProfileInsert, ProfileUpdate>;
+      barangays: RowDefinition<Barangay, never, never>;
       puroks: RowDefinition<Purok, never, never>;
       bhw_purok_assignments: RowDefinition<BhwPurokAssignment, never, never>;
       households: RowDefinition<Household, HouseholdInsert, HouseholdUpdate>;
@@ -212,10 +260,14 @@ export type Database = {
       health_assessments: RowDefinition<HealthAssessment, HealthAssessmentInsert, HealthAssessmentUpdate>;
       inventory_items: RowDefinition<InventoryItem, InventoryItemInsert, InventoryItemUpdate>;
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
+      // Written only by barangay_admin_allocate_stock — never for both write shapes.
+      inventory_allocations: RowDefinition<InventoryAllocation, never, never>;
     };
-    Views: Record<string, never>;
-    // The helpers the foundation slice actually defines and grants to
-    // `authenticated`. The admin_* RPCs are omitted until a surface calls one.
+    Views: {
+      bhw_item_stock: RowDefinition<BhwItemStock, never, never>;
+    };
+    // The helpers the database defines and grants to `authenticated`. The admin_*
+    // RPCs are omitted until a surface calls one.
     Functions: {
       current_app_role: {
         Args: Record<string, never>;
@@ -228,6 +280,22 @@ export type Database = {
       current_bhw_purok_id: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      current_barangay_id: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
+      barangay_admin_create_item: {
+        Args: { target_item_name: string; target_type: InventoryItemType; target_initial_stock?: number };
+        Returns: InventoryItem;
+      };
+      barangay_admin_restock_item: {
+        Args: { target_item_id: string; target_quantity: number; target_reason: string };
+        Returns: InventoryItem;
+      };
+      barangay_admin_allocate_stock: {
+        Args: { target_item_id: string; target_bhw_id: string; target_quantity: number; target_reason: string };
+        Returns: InventoryAllocation;
       };
     };
     Enums: {
