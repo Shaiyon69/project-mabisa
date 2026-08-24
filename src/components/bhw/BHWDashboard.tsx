@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { LocalSnapshot } from '../../app/mabisaData';
 import type { Individual } from '../../types/database';
@@ -21,6 +21,7 @@ type BHWDashboardProps = {
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
   onRetryDeadLetters: () => Promise<void>;
+  onSignInAgain: () => Promise<void>;
 };
 
 export function BHWDashboard({
@@ -32,6 +33,7 @@ export function BHWDashboard({
   syncingManually,
   onManualSync,
   onRetryDeadLetters,
+  onSignInAgain,
 }: BHWDashboardProps) {
   const { t } = useBhwLanguage();
   // 1. Replaced the useMemo slice with a local state for our SQLite query
@@ -43,7 +45,6 @@ export function BHWDashboard({
       .catch(console.error);
   }, [snapshot.individualCount]);
 
-  const latestAssessments = useMemo(() => snapshot.assessments.slice(0, 3), [snapshot.assessments]);
 
   return (
     <div className="dashboard-grid">
@@ -57,6 +58,7 @@ export function BHWDashboard({
         syncingManually={syncingManually}
         onManualSync={onManualSync}
         onRetryDeadLetters={onRetryDeadLetters}
+        onSignInAgain={onSignInAgain}
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
@@ -70,8 +72,8 @@ export function BHWDashboard({
           tone="green"
           to="/bhw/residents"
         />
-        <Metric label={t('Assessments')} value={snapshot.assessments.length} detail={t('Health records')} tone="amber" />
-        <Metric label={t('Released')} value={snapshot.disbursements.length} detail={t('Supply logs')} tone="red" />
+        <Metric label={t('Assessments')} value={snapshot.assessmentCount} detail={t('Health records')} tone="amber" />
+        <Metric label={t('Released')} value={snapshot.disbursementCount} detail={t('Supply logs')} tone="red" />
       </section>
 
       <Card className="list-section">
@@ -109,9 +111,9 @@ export function BHWDashboard({
             <h2>{t('Health Assessments')}</h2>
           </div>
         </div>
-        {latestAssessments.length ? (
+        {snapshot.latestAssessments.length ? (
           <ul className="compact-list">
-            {latestAssessments.map((assessment) => (
+            {snapshot.latestAssessments.map((assessment) => (
               <li key={assessment.assessment_id}>
                 <span>{titleCase(assessment.nutrition_status)}</span>
                 <small>

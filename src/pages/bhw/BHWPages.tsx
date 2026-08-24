@@ -23,6 +23,8 @@ import { supabase } from '../../lib/supabase';
 export function BHWHomePage() {
   const { snapshot, isOnline, syncStatus, syncError, lastSyncAt, syncingManually, runManualSync, retryDeadLetters } =
     useMabisaData();
+  // Signing out is how the app returns to the sign-in screen; the local database is untouched by it.
+  const { logout } = useOutletContext<BhwOutletContext>();
 
   return (
     <BHWDashboard
@@ -34,6 +36,7 @@ export function BHWHomePage() {
       syncingManually={syncingManually}
       onManualSync={runManualSync}
       onRetryDeadLetters={retryDeadLetters}
+      onSignInAgain={logout}
     />
   );
 }

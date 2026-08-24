@@ -1,14 +1,16 @@
 import { createContext, useContext } from 'react';
-import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
+import type { HealthAssessment, InventoryItem } from '../types/database';
 import type { DeadLetterEntry } from '../services/localDatabase';
 import type { SyncStatus } from '../services/syncService';
 
 export type LocalSnapshot = {
   householdCount: number;
   individualCount: number;
-  assessments: HealthAssessment[];
+  assessmentCount: number;
+  disbursementCount: number;
+  /** The few rows the dashboard actually renders — the rest of the history stays in SQLite. */
+  latestAssessments: HealthAssessment[];
   inventoryItems: InventoryItem[];
-  disbursements: SupplyDisbursement[];
   pendingQueueCount: number;
   // Exhausted retries, set aside — surfaced so a stuck record is visible.
   deadLetterEntries: DeadLetterEntry[];
@@ -36,9 +38,10 @@ export type MabisaDataContextValue = {
 export const emptySnapshot: LocalSnapshot = {
   householdCount: 0,
   individualCount: 0,
-  assessments: [],
+  assessmentCount: 0,
+  disbursementCount: 0,
+  latestAssessments: [],
   inventoryItems: [],
-  disbursements: [],
   pendingQueueCount: 0,
   deadLetterEntries: [],
 };

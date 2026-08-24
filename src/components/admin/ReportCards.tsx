@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
-import { formatDate, titleCase } from '../../lib/utils';
+import { ADULT_BMI_MIN_AGE, formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
 import {
   AGE_BANDS,
   NUTRITION_ORDER,
   ageBandOf,
+  assessmentsBelowAdultBmiAge,
   disbursementsByItem,
   lowStockItems,
   tally,
@@ -62,7 +63,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
 
       <ReportPanel
         title="Nutrition Status Summary"
-        note={`${snapshot.assessments.length} assessment(s) recorded in this period. A status is the reading the measurements produced, not a diagnosis.`}
+        note={nutritionNote(snapshot)}
         filters={filters}
         onExport={() =>
           exportReport('Nutrition Status Summary', snapshot.barangayLabel, filters, snapshot.assessments, assessmentColumns)
@@ -141,6 +142,21 @@ function ReportPanel({ title, note, filters, filterNote, onExport, children }: R
       <p className="muted report-note">{note}</p>
     </Card>
   );
+}
+
+/**
+ * The nutrition panel's note. Says how many of the assessments are of residents the
+ * adult cut-points do not classify, because the bars cannot show it themselves — a
+ * child's reading stacks into the same four bands as everyone else's, and the reader
+ * here never saw the caveat the BHW saw at the point of measurement.
+ */
+function nutritionNote(snapshot: AdminSnapshot): string {
+  const belowAge = assessmentsBelowAdultBmiAge(snapshot.assessments, snapshot.residents);
+  const caveat = belowAge
+    ? ` ${belowAge} of them are of residents under ${ADULT_BMI_MIN_AGE}, whose measurements adult BMI does not classify — read those against the DOH/WHO growth charts, not these bands.`
+    : '';
+
+  return `${snapshot.assessments.length} assessment(s) recorded in this period. A status is the reading the measurements produced, not a diagnosis.${caveat}`;
 }
 
 function exportReport<Row>(

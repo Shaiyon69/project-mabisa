@@ -30,9 +30,6 @@ export const RELATIONSHIPS_TO_HEAD = [
 export type RelationshipToHead = (typeof RELATIONSHIPS_TO_HEAD)[number];
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
-export type DwellingType = 'concrete' | 'wood' | 'mixed' | 'makeshift';
-export type ElectricService = 'lamp' | 'gas' | 'iselco' | 'none';
-export type FuelUsed = 'wood' | 'charcoal' | 'lpg' | 'electricity';
 
 // public.profiles — the single source of a session's role. Writes go through
 // the admin_* RPCs, not the table, so there is no Insert/Update variant here.
@@ -94,9 +91,14 @@ export type Household = {
   purok_id?: string;
   barangay_id?: string;
   household_number: string;
-  dwelling_type: DwellingType;
-  electric_service: ElectricService;
-  fuel_used: FuelUsed;
+  /**
+   * Who profiled the household and who last edited it, stamped by
+   * `households_stamp_actor` from the session. Optional here for the same reason as
+   * the scope columns above — a device never supplies them, and the phone's mirror is
+   * built from the local table, which does not carry them.
+   */
+  recorded_by?: string;
+  updated_by?: string;
   toilet_type: string[];
   water_source: string[];
   food_production: string[];
@@ -156,6 +158,12 @@ export type InventoryItem = {
   item_name: string;
   type: InventoryItemType;
   current_stock: number;
+  /**
+   * Warn at or below this. Per item because five sachets and five sacks are not the
+   * same situation. Absent on a device: its rows come from `bhw_item_stock`, which
+   * carries a worker's holding rather than the barangay's reorder policy.
+   */
+  reorder_level?: number;
   barangay_id?: string;
   created_at: string;
   updated_at: string;
@@ -293,6 +301,10 @@ export type Database = {
         Args: { target_item_id: string; target_quantity: number; target_reason: string };
         Returns: InventoryItem;
       };
+      barangay_admin_set_reorder_level: {
+        Args: { target_item_id: string; target_level: number };
+        Returns: InventoryItem;
+      };
       barangay_admin_allocate_stock: {
         Args: { target_item_id: string; target_bhw_id: string; target_quantity: number; target_reason: string };
         Returns: InventoryAllocation;
@@ -304,9 +316,6 @@ export type Database = {
       relationship_to_head: RelationshipToHead;
       inventory_item_type: InventoryItemType;
       nutrition_status: NutritionStatus;
-      dwelling_type: DwellingType;
-      electric_service: ElectricService;
-      fuel_used: FuelUsed;
     };
     CompositeTypes: Record<string, never>;
   };
