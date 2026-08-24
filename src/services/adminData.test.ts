@@ -3,6 +3,7 @@ import {
   AGE_BANDS,
   NUTRITION_ORDER,
   ageBandOf,
+  assessmentsBelowAdultBmiAge,
   defaultAdminFilters,
   describeBarangayScope,
   describePeriod,
@@ -171,5 +172,37 @@ describe('describeBarangayScope', () => {
   it('says the name is missing rather than inventing one', () => {
     expect(describeBarangayScope(null, [])).toBe('Barangay name not configured');
     expect(describeBarangayScope('gone', barangays)).toBe('Barangay name not configured');
+  });
+});
+
+describe('assessmentsBelowAdultBmiAge', () => {
+  const on = new Date('2026-08-24T00:00:00.000Z');
+  const residents = [
+    { resident_id: 'child', birthday: '2023-01-01' },
+    { resident_id: 'teen', birthday: '2010-01-01' },
+    { resident_id: 'adult', birthday: '1980-01-01' },
+    // Turns 20 the day after the report is read — still a child by these cut-points.
+    { resident_id: 'almost', birthday: '2006-08-25' },
+  ];
+
+  it('counts only the assessments the adult bands do not classify', () => {
+    const assessments = [
+      { resident_id: 'child' },
+      { resident_id: 'teen' },
+      { resident_id: 'adult' },
+      { resident_id: 'almost' },
+    ];
+
+    expect(assessmentsBelowAdultBmiAge(assessments, residents, on)).toBe(3);
+  });
+
+  it('says nothing when every assessment is of an adult', () => {
+    expect(assessmentsBelowAdultBmiAge([{ resident_id: 'adult' }], residents, on)).toBe(0);
+  });
+
+  // A resident the portal did not read back is unknown, not young — counting them
+  // would put a caveat on a report that has no children in it.
+  it('does not treat an unknown resident as a child', () => {
+    expect(assessmentsBelowAdultBmiAge([{ resident_id: 'nobody' }], residents, on)).toBe(0);
   });
 });

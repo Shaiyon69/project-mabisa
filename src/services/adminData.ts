@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { ageInYears } from '../lib/utils';
+import { ADULT_BMI_MIN_AGE, ageInYears } from '../lib/utils';
 import type {
   HealthAssessment,
   Individual,
@@ -156,6 +156,33 @@ export function describeBarangayScope(scopeId: string | null, barangays: { baran
 /** How recently a field device actually contributed something, vs. just when the portal asked. */
 function newest(rows: { updated_at: string }[]): string | null {
   return rows.reduce<string | null>((latest, row) => (!latest || row.updated_at > latest ? row.updated_at : latest), null);
+}
+
+/**
+ * How many assessments in this set were taken on someone under `ADULT_BMI_MIN_AGE`.
+ *
+ * The status column is an adult BMI band on every row, so these are the rows where
+ * it classifies nothing. The portal reader never saw the caveat the BHW saw at the
+ * point of measurement, and a bar chart hides ages entirely — so the count is
+ * reported alongside the summary rather than quietly folded into it.
+ */
+export function assessmentsBelowAdultBmiAge(
+  assessments: { resident_id: string }[],
+  residents: { resident_id: string; birthday: string }[],
+  on: Date = new Date(),
+): number {
+  const birthdays = new Map(residents.map((resident) => [resident.resident_id, resident.birthday]));
+
+  return assessments.filter((assessment) => {
+    const birthday = birthdays.get(assessment.resident_id);
+    // An unknown resident is not evidence of a child — don't inflate the caveat.
+    if (!birthday) {
+      return false;
+    }
+
+    const age = ageInYears(birthday, on);
+    return age !== null && age < ADULT_BMI_MIN_AGE;
+  }).length;
 }
 
 /** One row of a distribution summary. */

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { HealthAssessment, Individual, NutritionStatus } from '../../types/database';
 import {
+  ADULT_BMI_MIN_AGE,
   ageInYears,
   calculateBmi,
   createId,
@@ -38,9 +39,7 @@ const BMI_BANDS = [
 const BMI_TICKS = [18.5, 25, 30];
 
 
-// WHO reads under-20s off BMI-for-age z-scores, not these fixed cut-points, and
-// BMI isn't a nutrition measure during pregnancy/nursing — recorded anyway, but flagged as not applying.
-const ADULT_BMI_MIN_AGE = 20;
+// BMI also isn't a nutrition measure during pregnancy/nursing — recorded anyway, but flagged as not applying.
 
 // Written per language here (not the flat dictionary) since both lines interpolate the resident's age.
 function bmiCaveats(person: Individual | null, isFilipino: boolean): string[] {
