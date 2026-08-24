@@ -18,6 +18,8 @@ type SyncStatusCardProps = {
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
   onRetryDeadLetters: () => Promise<void>;
+  /** Returns to the sign-in screen. Local records and the queue survive it — nothing is uploaded or cleared. */
+  onSignInAgain: () => Promise<void>;
 };
 
 // Raw SyncStatus values are engine vocabulary. Exhaustive over the union, so a
@@ -61,11 +63,17 @@ export function SyncStatusCard({
   syncingManually,
   onManualSync,
   onRetryDeadLetters,
+  onSignInAgain,
 }: SyncStatusCardProps) {
   const { t } = useBhwLanguage();
 
   // Exact status match, not a substring of the message — a `deferred` backoff must not paint the card red.
   const isError = syncStatus === 'failed';
+  // A device offline for days comes back with a refresh token the server no longer
+  // accepts. Nothing on the phone is lost, but nothing leaves it either until the
+  // BHW signs in again — and the only route back used to be the logout button on
+  // another tab, which reads like the one action that would throw the records away.
+  const needsSignIn = syncStatus === 'unauthenticated';
   const isPending = pendingQueueCount > 0;
   const setAsideCount = deadLetterEntries.length;
   const hasSetAside = setAsideCount > 0;
@@ -109,6 +117,16 @@ export function SyncStatusCard({
           ? `${t('Last synced')} ${formatSyncMoment(lastSyncAt)}`
           : t('This device has not completed a sync yet.')}
       </p>
+
+      {needsSignIn && (
+        <section className="sync-signin" aria-label={t('Sign in needed')}>
+          <p className="alert sync-alert">
+            <strong>{t('Sign in needed:')}</strong>{' '}
+            {t('This device was signed out. Records already saved here stay on the phone and sync once you are back in.')}
+          </p>
+          <Button onClick={() => void onSignInAgain()}>{t('Sign in again')}</Button>
+        </section>
+      )}
 
       {isError && (
         <p className="alert sync-alert">
