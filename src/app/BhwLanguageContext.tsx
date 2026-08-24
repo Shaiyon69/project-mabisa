@@ -1,19 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { BhwLanguageContext, filipino, type BhwLanguageValue, type Language } from './bhwLanguage';
 
-/**
- * Only the provider lives here. The context object, the Filipino dictionary and
- * `useBhwLanguage` moved to `bhwLanguage.ts` because a file that exports a
- * component may export nothing else without breaking Fast Refresh, and this file
- * had been exporting the hook alongside it.
- */
+/** Only the provider lives here — the context, dictionary and hook moved to `bhwLanguage.ts` for Fast Refresh. */
 export function BhwLanguageProvider({ children }: { children: ReactNode }) {
-  // The language switch is withdrawn from the UI while the Filipino copy is
-  // decided on, so the app is English-only for now. The dictionary, `t()` and
-  // `setLanguage` are all still here and still wired — restoring the feature is
-  // reading `mabisa-language` again here and putting the toggle back in
-  // BHWLayout. Ignoring the stored value is deliberate: a device left on 'fil'
-  // would otherwise be stuck there with no control to change it.
+  // App is English-only for now (the toggle is withdrawn from the UI, not removed
+  // — see BHWLayout). The stored value is deliberately ignored so a device left on 'fil' isn't stuck with no control.
   const [language, setLanguageState] = useState<Language>('en');
 
   const value = useMemo<BhwLanguageValue>(() => ({

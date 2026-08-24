@@ -18,11 +18,9 @@ type ComboboxProps = {
 };
 
 /**
- * Type-ahead select: the visible control is a text input, the choices drop
- * below it, and the value handed back is always an option's id — never the
- * text that was typed. A native <datalist> would be less code but matches on
- * the label only, so it cannot carry the id, and Android WebView renders it
- * inconsistently.
+ * Type-ahead select — value handed back is always an option's id, never the
+ * typed text. Not a native <datalist>: it can't carry an id separate from the
+ * label, and Android WebView renders it inconsistently.
  */
 export function Combobox({
   label,
@@ -45,10 +43,8 @@ export function Combobox({
   const matches = term ? options.filter((option) => option.label.toLowerCase().includes(term)) : options;
   const selectedLabel = options.find((option) => option.value === value)?.label ?? '';
 
-  // A tap or a Tab anywhere else closes the list, so it never sits over the
-  // fields below it. Pointer events fire before focus moves, which covers
-  // tapping straight into another control; focusin covers keyboard-only moves
-  // and the scroll/zoom gestures that never produce a click.
+  // Closes on a tap or Tab anywhere else. pointerdown covers tapping into another
+  // control; focusin covers keyboard-only moves that never produce a click.
   useEffect(() => {
     if (!isOpen) {
       return;

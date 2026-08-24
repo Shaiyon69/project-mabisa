@@ -7,12 +7,7 @@ import { Button } from '../common/Button';
 import { ErrorState } from '../common/StateMessage';
 import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
 
-/**
- * Every role spelled out. A lookup rather than a ternary, because the ternary
- * this replaced read `role === 'admin' ? … : 'Barangay Health Worker'` and so
- * labelled a barangay administrator as a health worker the moment a third role
- * existed. A map cannot silently absorb a fourth.
- */
+/** Every role spelled out as a map, not a ternary — a ternary can't warn when a fourth role appears. */
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'RHU Administrator',
   barangay_admin: 'Barangay Administrator',
@@ -23,8 +18,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 const SCOPE_WITHOUT_PUROK: Record<UserRole, string> = {
   admin: 'All barangays',
   barangay_admin: 'Whole barangay',
-  // A BHW with no active assignment can neither read nor write a field row, so an
-  // empty cell here is the reason a device that signs in successfully sees nothing.
+  // An unassigned BHW can't read or write a field row — this is why their signed-in device sees nothing.
   bhw: 'None — cannot sync',
 };
 
@@ -74,13 +68,8 @@ const exportColumns: CsvColumn<AccountRow>[] = [
 
 /**
  * Accounts and their current purok, read from `public.profiles` — the same table
- * the route guard and every RLS helper read, so what this screen shows about an
- * account is what the database will actually enforce for it.
- *
- * Read-only on purpose. FR-08's mutations (create, assign, deactivate, reset)
- * all go through the `admin_*` SECURITY DEFINER RPCs so they carry an audit
- * event; wiring those is a separate change, and a direct-table write from here
- * would bypass the audit trail the foundation slice exists to guarantee.
+ * every RLS helper reads. Read-only: mutations go through the `admin_*` RPCs so
+ * they carry an audit event, which a direct-table write here would bypass.
  */
 export function AccountsTable() {
   const [rows, setRows] = useState<AccountRow[]>([]);

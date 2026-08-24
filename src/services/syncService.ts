@@ -23,11 +23,7 @@ import {
   pullIndividualsFromServer
 } from './localDatabase';
 
-/**
- * `deferred` is a normal outcome, not a failure: entries are waiting out a retry
- * backoff, or held back behind one that is. Kept distinct from `failed` so a
- * 30-second wait does not raise the same alarm as a quarantined record.
- */
+/** `deferred` is a normal outcome (retry backoff), distinct from `failed` (quarantined). */
 export type SyncStatus =
   | 'idle'
   | 'offline'
@@ -58,11 +54,8 @@ const RETRY_BASE_DELAY_MS = 30_000;
 const RETRY_MAX_DELAY_MS = 15 * 60_000;
 
 // -----------------------------------------------------------------------------
-// Pass bookkeeping
+// Pass bookkeeping — survives app restarts: last drain time, and how far the pull has read.
 // -----------------------------------------------------------------------------
-// Two facts outlive a pass and have to survive the app being closed: when the
-// queue last drained, which the BHW is shown, and how far the pull has read,
-// which keeps the next pull from re-downloading every table over cellular.
 
 const LAST_SYNC_AT_KEY = 'mabisa.last_sync_at';
 const PULLED_THROUGH_KEY = 'mabisa.pulled_through';
@@ -79,8 +72,7 @@ function writeStored(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch {
-    // Storage unavailable. The pass still succeeded; the next pull just reads
-    // the full tables again instead of the changed rows.
+    // Storage unavailable — next pull just re-reads everything.
   }
 }
 
@@ -90,11 +82,8 @@ export function readLastSyncAt(): string | null {
 }
 
 /**
- * Forgets how far the pull has read, so the next one re-reads every row.
- *
- * Called when quarantined entries are requeued: their server rows were skipped
- * by the pull that quarantined them, and the watermark has since moved past
- * those timestamps, so an incremental pull would never offer them again.
+ * Forgets how far the pull has read. Called when requeuing quarantined entries —
+ * the watermark has moved past their server rows, so a filtered pull would never re-offer them.
  */
 export function resetPullWatermark(): void {
   try {
@@ -105,11 +94,8 @@ export function resetPullWatermark(): void {
 }
 
 /**
- * The central row changed after this device based its edit on it.
- *
- * Retrying cannot win that race — the server copy will still be newer next pass
- * — so a conflict skips the retry ladder and goes straight to the dead letter,
- * where `SyncStatusCard` shows it and an admin decides which version is right.
+ * The central row changed after this device's edit. Retrying can't win that race,
+ * so a conflict skips straight to the dead letter for a human to resolve.
  */
 export class SyncConflictError extends Error {
   constructor(table: LocalTableName) {
@@ -119,11 +105,8 @@ export class SyncConflictError extends Error {
 }
 
 // -----------------------------------------------------------------------------
-// Primary Key Mappings
+// Primary key column name per table, used by `updatePayload` to target the right row.
 // -----------------------------------------------------------------------------
-// This maps every local table to its exact primary key column name.
-// This is critical for the generic `updatePayload` function to know 
-// which row it is actually targeting in Supabase.
 
 type PrimaryKeyByTable = {
   households: 'household_id';
@@ -145,8 +128,7 @@ const primaryKeys: PrimaryKeyByTable = {
 // Sync Engine State
 // -----------------------------------------------------------------------------
 
-// A concurrency lock to prevent the app from accidentally starting 
-// two sync loops at the exact same time (e.g., if the user mashes a "Sync" button).
+/** Guards against two sync loops running at once (e.g. a mashed "Sync" button). */
 let syncInProgress = false;
 
 export async function isNetworkConnected(): Promise<boolean> {
@@ -155,26 +137,19 @@ export async function isNetworkConnected(): Promise<boolean> {
 }
 
 // -----------------------------------------------------------------------------
-// Dependency Tracking
-// -----------------------------------------------------------------------------
-// The queue is ordered so parents reach Supabase before their children. Once an
-// entry is held back, everything referencing it has to be held back too —
-// otherwise we push rows whose foreign key does not exist remotely, which is
-// either a second failure or a silent orphan.
+// Dependency Tracking — a held-back entry holds back everything that references it,
+// so a child is never pushed with a foreign key the server doesn't have yet.
 //
 //   households      <- individuals            (household_id)
 //   individuals     <- health_assessments     (resident_id)
 //   individuals     <- supply_disbursements   (resident_id)
 //   inventory_items <- supply_disbursements   (item_id)
+// -----------------------------------------------------------------------------
 
 /** `table:primary_key` — identifies the record an entry writes or depends on. */
 type EntityKey = string;
 
-/**
- * Why a record is being held back. A transient failure defers its dependants to
- * the next pass; a quarantined record takes its dependants into quarantine with
- * it, so they stay together and can be requeued as one consistent set.
- */
+/** Why a record is held back: `deferred` retries next pass; `quarantined` takes its dependants with it. */
 type HoldReason = 'deferred' | 'quarantined';
 
 function entityKey(table: LocalTableName, id: string): EntityKey {
@@ -202,10 +177,8 @@ export function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
     case 'inventory_items':
       return [];
     case 'individuals':
-      // duplicate_override_of points at another resident, so it is a second
-      // parent. Without it, a resident saved over a duplicate warning can be
-      // pushed ahead of the record they were warned about and land on a foreign
-      // key the server does not have yet.
+      // duplicate_override_of is a second parent — without it a resident saved
+      // over a duplicate warning can be pushed ahead of the record it references.
       return [...reference('household_id', 'households'), ...reference('duplicate_override_of', 'individuals')];
     case 'health_assessments':
       return reference('resident_id', 'individuals');
@@ -223,18 +196,10 @@ export function nextAttemptTimestamp(attempts: number): string {
   return new Date(Date.now() + delay).toISOString();
 }
 
-/**
- * The main background loop that reads the local SQLite queue and pushes 
- * pending operations to the Supabase PostgreSQL database.
- */
+/** Reads the local sync queue and pushes pending operations to Supabase. */
 export async function syncPendingQueue(): Promise<SyncResult> {
-  // 1. Claim the concurrency lock. This has to happen before the first await,
-  // not after the checks below: every one of them yields, so a second trigger
-  // landing in that window (a network flap alongside the mount pass, or the
-  // manual button alongside either) would clear the same check and run a
-  // parallel loop. Remote writes survive that — every push is an upsert — but
-  // both passes increment `attempts` on the same entries, so they quarantine at
-  // roughly half the intended retry budget.
+  // Claim the lock before the first await — after it, a second trigger landing in
+  // that window would pass the same check and double-count retry attempts.
   if (syncInProgress) {
     return idleResult('syncing');
   }
@@ -249,15 +214,14 @@ export async function syncPendingQueue(): Promise<SyncResult> {
   try {
     await initializeLocalDatabase();
 
-    // 2. Hardware network check before attempting any API calls
+    // Hardware network check before attempting any API calls
     const connected = await isNetworkConnected();
     if (!connected) {
       return idleResult('offline');
     }
 
-    // 3. Auth check. Row-level security denies every write from an anonymous
-    // client, so pushing without a session burns retry attempts on failures that
-    // are guaranteed. Defer instead — nothing is lost, the queue is durable.
+    // RLS rejects every write from an anonymous client, so defer rather than
+    // burn retry attempts on a guaranteed failure.
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
       return {
@@ -266,7 +230,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       };
     }
 
-    // 4. Fetch all pending jobs in exact chronological order
+    // Fetch all pending jobs in exact chronological order
     const queue = await readSyncQueue();
     const now = Date.now();
 
@@ -279,19 +243,17 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       }
     };
 
-    // 5. Process sequentially to maintain relational integrity
-    // (e.g., Household must be inserted before its Individuals)
+    // Process sequentially so a household lands before its individuals.
     for (const entry of queue) {
       const own = ownEntityKey(entry);
 
-      // 5a. Held back behind an earlier entry? Either because a parent record is
-      // held back, or because an earlier operation on this same record is.
+      // Held back behind an earlier entry? Either its parent is held back,
+      // or an earlier operation on this same record is.
       const blockingKey = [...parentEntityKeys(entry), ...(own ? [own] : [])].find((key) => heldBack.has(key));
 
       if (blockingKey) {
         if (heldBack.get(blockingKey) === 'quarantined') {
-          // Follow the parent into quarantine so the set stays consistent and can
-          // be requeued together once the underlying cause is fixed.
+          // Follow the parent into quarantine so the set requeues together later.
           await moveSyncQueueEntryToDeadLetter(
             entry,
             `Quarantined alongside ${blockingKey}, which could not be synced.`,
@@ -305,7 +267,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
         continue;
       }
 
-      // 5b. Still inside its retry backoff window.
+      // Still inside its retry backoff window.
       if (entry.next_attempt_at && Date.parse(entry.next_attempt_at) > now) {
         deferred += 1;
         hold(own, 'deferred');
@@ -319,8 +281,8 @@ export async function syncPendingQueue(): Promise<SyncResult> {
         await removeSyncQueueEntry(entry.queue_id);
         processed += 1;
       } catch (error) {
-        // A failure no longer halts the pass. The entry is held back along with
-        // anything downstream of it, and the rest of the queue keeps draining.
+        // A failure holds back this entry and its dependants; the rest of the
+        // queue keeps draining.
         const errorMessage = error instanceof Error ? error.message : 'Sync failed';
         const attempts = entry.attempts + 1;
 
@@ -337,11 +299,8 @@ export async function syncPendingQueue(): Promise<SyncResult> {
           firstErrorMessage = errorMessage;
         }
 
-        // A conflict is not a transient failure: the server row is already newer
-        // than the edit this entry carries, and every retry would compare against
-        // a row that is newer still. Quarantine it now rather than five passes
-        // from now, so the person who has to choose between the two versions
-        // sees it while they still remember the visit.
+        // A conflict can't resolve by retrying — quarantine immediately rather
+        // than after five wasted passes.
         if (error instanceof SyncConflictError || attempts >= MAX_SYNC_ATTEMPTS) {
           await moveSyncQueueEntryToDeadLetter({ ...entry, attempts }, errorMessage);
           deadLettered += 1;
@@ -354,22 +313,17 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       }
     }
 
-    // Flush the queue deletions once rather than per entry — saving the web store
-    // serializes the whole database, so doing it inside the loop would be O(n) rewrites.
-    // A crash before this point simply replays the entries, which is safe because
-    // every push is an upsert.
+    // Flush once rather than per-entry — saving the web store serializes the whole
+    // database. A crash before this replays safely since every push is an upsert.
     await persistLocalDatabase();
 
-    // 6. Pull only once the queue has actually drained. Entries still waiting on a
-    // retry mean the remote copy is behind the device, and overwriting local rows
-    // with stale server data would undo edits that have not shipped yet.
-    // Quarantined entries do not block this — they are out of the queue by design.
+    // Pull only once the queue has drained — pulling while entries are still
+    // deferred would overwrite local edits that haven't shipped yet.
     if (deferred === 0) {
       try {
         await pullRemoteUpdates();
       } catch (pullError) {
-        // If the pull fails, we still want to acknowledge the push succeeded,
-        // but we warn the user that they might not have the latest inventory.
+        // Push succeeded even though the pull failed — say so, don't hide it as a full failure.
         const errorMessage = pullError instanceof Error ? pullError.message : 'Pull failed';
         return {
           status: 'failed', // Triggers the red UI state so the BHW knows to try again
@@ -382,9 +336,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       }
     }
 
-    // Quarantine is the only outcome here that needs a human: those changes have
-    // left the queue and will not retry on their own. Entries merely waiting out
-    // a backoff report as `deferred`, which the UI treats as a normal state.
+    // Only quarantine needs a human — deferred entries just retry automatically.
     if (deadLettered > 0) {
       return {
         status: 'failed',
@@ -418,7 +370,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       errorMessage: null,
     };
   } finally {
-    // 7. Release the concurrency lock regardless of success or failure
+    // Release the concurrency lock regardless of success or failure
     syncInProgress = false;
   }
 }
@@ -434,10 +386,7 @@ function idleResult(status: SyncStatus): SyncResult {
   };
 }
 
-/**
- * Turns the pass counters into something a BHW can act on, rather than a raw
- * Postgres error string.
- */
+/** Turns the pass counters into something a BHW can act on, rather than a raw Postgres error string. */
 function describeIncompletePass(deferred: number, deadLettered: number, firstError: string | null): string {
   const parts: string[] = [];
 
@@ -466,24 +415,15 @@ async function pushQueueEntry(entry: SyncQueueEntry): Promise<void> {
   await updatePayload(entry.target_table, entry.payload);
 }
 
-/**
- * Handles all new record creations.
- * CRITICAL: Uses `.upsert()` instead of `.insert()`. If the network drops right 
- * after sending data, the device will retry later. Upsert prevents fatal 
- * "Duplicate Primary Key" errors by simply overwriting the row.
- */
+/** Uses `.upsert()`, not `.insert()` — a retried push after a dropped connection must not fatal on a duplicate primary key. */
 async function insertPayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
   switch (targetTable) {
     case 'households': {
-      // The payload arrays (toilet_type, etc.) are native JS arrays here, 
-      // which Supabase perfectly translates to text[] in Postgres.
       const { error } = await supabase.from('households').upsert(payload as Household, { onConflict: 'household_id' });
       if (error) throw error;
       return;
     }
     case 'individuals': {
-      // The payload boolean (is_household_head) is a native JS boolean here,
-      // which Supabase perfectly translates to boolean in Postgres.
       const { error } = await supabase.from('individuals').upsert(payload as Individual, { onConflict: 'resident_id' });
       if (error) throw error;
       return;
@@ -507,16 +447,12 @@ async function insertPayload(targetTable: LocalTableName, payload: SyncQueueEntr
 }
 
 /**
- * The moment the device last touched this record. Every update is filtered on
- * `updated_at <= this`, which is the conflict rule: a central row someone else
- * changed afterwards is newer than the edit being pushed, matches nothing, and
- * comes back as a conflict instead of silently overwriting their work.
+ * The device's edit timestamp. Updates filter on `updated_at <= this`, so a
+ * central row changed since matches nothing and surfaces as a conflict.
  */
 function editedAt(payload: SyncQueueEntry['payload']): string {
   const value = (payload as Record<string, unknown>).updated_at;
-  // Every save*Locally helper stamps updated_at. A payload without one was
-  // queued before this rule existed, so let it through rather than quarantining
-  // a record for a column it never carried.
+  // A payload predating this rule has no updated_at — let it through rather than quarantine it.
   return typeof value === 'string' ? value : '9999-12-31T23:59:59.999Z';
 }
 
@@ -528,13 +464,8 @@ function assertApplied(targetTable: LocalTableName, rows: unknown[] | null): voi
 }
 
 /**
- * Handles modifying existing records.
- * Extracts the primary key dynamically and strips it from the update payload
- * to prevent accidentally altering IDs in the cloud database.
- *
- * Each statement returns the primary key it wrote, because an update that
- * changed nothing is indistinguishable from a successful one otherwise — and
- * "changed nothing" is exactly what a concurrent central edit looks like.
+ * Strips the primary key from the payload before updating, and selects it back —
+ * a no-op update (a concurrent central edit) is otherwise indistinguishable from success.
  */
 async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
   const primaryKey = primaryKeys[targetTable];
@@ -613,10 +544,7 @@ async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntr
 // Utilities
 // -----------------------------------------------------------------------------
 
-/**
- * Safely removes the primary key from an object before sending it to a 
- * Supabase UPDATE function. Modifying primary keys directly is an anti-pattern.
- */
+/** Removes the primary key before an UPDATE payload is sent. */
 function withoutPrimaryKey<T extends Record<string, unknown>, K extends keyof T>(payload: T, key: K): Omit<T, K> {
   const copy: Partial<T> = { ...payload };
   delete copy[key];
@@ -628,13 +556,8 @@ function withoutPrimaryKey<T extends Record<string, unknown>, K extends keyof T>
 // -----------------------------------------------------------------------------
 
 /**
- * Primary keys of the records sitting in the dead letter, grouped by table.
- *
- * The pull only runs once `deferred === 0`, which means the live queue has fully
- * drained — but quarantined entries deliberately do not block it. Those are the
- * only records where the device copy can still be ahead of the server, so they
- * are also the only ones a server row must not overwrite: doing so would discard
- * the very edit the quarantine was holding on to.
+ * Primary keys of dead-lettered records, grouped by table. These are the only
+ * records where the device can be ahead of the server, so a pull must not overwrite them.
  */
 async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> {
   const quarantined = new Map<LocalTableName, Set<string>>();
@@ -662,19 +585,9 @@ async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> 
 }
 
 /**
- * Rows whose *server* value is computed from this entry, and which are therefore
- * stale for as long as the entry has not shipped.
- *
- * One relationship qualifies today, and it is a real hole without this: a
- * quarantined release has already been subtracted from the device's stock, but
- * the server has never seen it, so `bhw_item_stock` still counts the quantity as
- * held. Pulling that figure hands the BHW back medicine they physically gave
- * away, and nothing stops them releasing it a second time.
- *
- * Deliberately narrower than `parentEntityKeys`. A disbursement also points at a
- * resident, but a resident's *profile* is not derived from it — holding that back
- * would block an unrelated central correction to the person's record for as long
- * as one release sits in quarantine.
+ * Rows whose server value is derived from this entry, so pulling them back while
+ * it's quarantined would double-release stock. Narrower than `parentEntityKeys`:
+ * a disbursement's resident isn't derived from it, so that stays pullable.
  */
 export function derivedEntityKeys(entry: {
   target_table: LocalTableName;
@@ -690,15 +603,9 @@ export function derivedEntityKeys(entry: {
 }
 
 /**
- * How far the next filtered pull may start from: the newest `updated_at` the
- * server actually handed over, or the previous watermark when it handed over
- * nothing.
- *
- * Only rows that were themselves read *through* the watermark belong here. A row
- * fetched unfiltered — `bhw_item_stock` is — carries a timestamp that proves
- * nothing about how far the filtered reads have got, and letting one in drags the
- * watermark past households this device has never seen, which skips them
- * permanently rather than late.
+ * Newest `updated_at` the server handed over, for the next watermark. Only rows
+ * read *through* the current watermark belong here — an unfiltered row (like
+ * `bhw_item_stock`) would drag it past records this device hasn't seen yet.
  */
 export function newestUpdatedAt(rows: { updated_at?: string }[], fallback: string | null): string | null {
   return rows.reduce<string | null>(
@@ -709,42 +616,23 @@ export function newestUpdatedAt(rows: { updated_at?: string }[], fallback: strin
 
 export async function pullRemoteUpdates(): Promise<void> {
   try {
-    // 1. Fetch tables sequentially to respect foreign key constraints.
-    //
-    // Which rows come back is not decided here. Every select runs under the
-    // purok policies in 202608160002, so a BHW's own assignment already bounds
-    // the result to their households and everything hanging off them; repeating
-    // that as a client filter would be a second copy of the rule to keep in step
-    // with the first. What this device does decide is how much of that scope it
-    // needs again: rows it has already read are re-read only if they changed.
-    //
+    // Row scope is enforced entirely by RLS, not repeated here as a client filter.
     // `gte`, not `gt`: a row written in the same millisecond as the watermark
-    // would otherwise be skipped forever. Re-reading a handful of boundary rows
-    // costs one upsert each.
+    // must not be skipped forever.
     const pulledThrough = readStored(PULLED_THROUGH_KEY);
     const changedSince = <TQuery extends { gte(column: string, value: string): TQuery }>(query: TQuery): TQuery =>
       pulledThrough ? query.gte('updated_at', pulledThrough) : query;
 
-    // Fetch Households
     const { data: cloudHouseholds, error: hError } = await changedSince(supabase.from('households').select('*'));
     if (hError) throw new Error(`Household Pull Error: ${hError.message}`);
 
-    // Fetch Individuals
     const { data: cloudIndividuals, error: iError } = await changedSince(supabase.from('individuals').select('*'));
     if (iError) throw new Error(`Individual Pull Error: ${iError.message}`);
 
-    // Fetch Inventory — from `bhw_item_stock`, not `inventory_items`.
-    //
-    // Those are two different numbers. `inventory_items.current_stock` is what
-    // the barangay still holds unallocated, which is the admin portal's figure
-    // and is not releasable by anyone in the field. The view is allocations to
-    // *this* signed-in BHW minus what they have already released, which is the
-    // only quantity a phone should ever show or spend. It lands in the same
-    // local `inventory_items` table because to a device "stock" means theirs.
-    //
-    // Not filtered by `changedSince`: the view is derived, so a release by this
-    // BHW changes their balance for an item whose allocation row is older than
-    // the watermark. It is a handful of rows per device — pull all of them.
+    // Pulls `bhw_item_stock` (this BHW's allocations minus releases), not
+    // `inventory_items` (the barangay's unallocated total) — a phone only ever
+    // shows its own holding. Unfiltered: the view is derived, so its timestamps
+    // don't track the watermark.
     const { data: cloudStock, error: invError } = await supabase.from('bhw_item_stock').select('*');
     if (invError) throw new Error(`Inventory Pull Error: ${invError.message}`);
 
@@ -760,9 +648,7 @@ export async function pullRemoteUpdates(): Promise<void> {
       updated_at: stock.updated_at,
     }));
 
-    // 2. Drop any row whose local copy is quarantined. The server's version of it
-    // is stale by definition — the edit that would have updated it is the one that
-    // failed to push.
+    // Drop rows whose local copy is quarantined — the server version is stale by definition.
     const quarantined = await readQuarantinedKeys();
 
     const withoutQuarantined = <TRow>(table: LocalTableName, rows: TRow[] | null): TRow[] => {
@@ -785,19 +671,14 @@ export async function pullRemoteUpdates(): Promise<void> {
       return kept;
     };
 
-    // 3. Upsert data into local SQLite in the exact order of their dependencies
+    // Upsert data into local SQLite in the exact order of their dependencies
     await pullHouseholdsFromServer(withoutQuarantined('households', cloudHouseholds));
     await pullIndividualsFromServer(withoutQuarantined('individuals', cloudIndividuals));
     await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
 
-    // 4. Advance the watermark to the newest row the server handed over, rather
-    // than to this device's clock: a phone whose time is a minute fast would
-    // otherwise skip every row written in that minute.
-    //
-    // Inventory is deliberately not in this list. It is pulled unfiltered, so its
-    // timestamps are not evidence of how far the *filtered* reads have got — an
-    // allocation stamped later than every household would drag the watermark past
-    // households this device has never seen and skip them permanently.
+    // Advance the watermark to the server's newest row, not this device's clock
+    // (clock drift would skip rows). Inventory is excluded — it's pulled
+    // unfiltered, so its timestamps aren't evidence of the filtered reads' progress.
     const pulledRows: { updated_at?: string }[] = [
       ...(cloudHouseholds ?? []),
       ...(cloudIndividuals ?? []),

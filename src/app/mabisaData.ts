@@ -10,9 +10,7 @@ export type LocalSnapshot = {
   inventoryItems: InventoryItem[];
   disbursements: SupplyDisbursement[];
   pendingQueueCount: number;
-  // Changes that exhausted their sync retries and were set aside so the queue
-  // could keep draining. Surfaced in the UI so a stuck record is visible rather
-  // than just a frozen count.
+  // Exhausted retries, set aside — surfaced so a stuck record is visible.
   deadLetterEntries: DeadLetterEntry[];
 };
 
@@ -21,11 +19,7 @@ export type MabisaDataContextValue = {
   snapshot: LocalSnapshot;
   message: string | null;
   setMessage: (message: string | null) => void;
-  /**
-   * The engine status, kept as the union. It used to be flattened into
-   * `Error: ${message}` here, which left consumers substring-sniffing prose to
-   * decide whether to show an alarm — so rewording a message changed the UI.
-   */
+  /** The engine status, kept as the union rather than flattened into a message string consumers would have to sniff. */
   syncStatus: SyncStatus;
   /** Text for the failure banner, or null when the last pass was not a failure. */
   syncError: string | null;

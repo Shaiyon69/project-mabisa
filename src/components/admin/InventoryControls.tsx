@@ -21,17 +21,10 @@ type InventoryControlsProps = {
 };
 
 /**
- * Stock management, for a barangay administrator only.
- *
- * Two things happen here and they are deliberately separate. **Receiving** adds
- * to what the barangay holds. **Allocating** moves a quantity out of that and
- * into one named BHW's hands, which is the only way a field device ever comes to
- * have anything to release. The number in the table is what is left after
- * allocations, not the total that exists.
- *
- * Every submission goes to a database function that re-checks the same rules, so
- * this component's job is to make a refusal readable rather than to be the thing
- * that prevents it.
+ * Stock management, barangay administrator only. **Receiving** adds to the
+ * barangay's holding; **allocating** moves a quantity into one named BHW's hands —
+ * the only way a field device gets anything to release. Every submission goes to
+ * a database function that re-checks the same rules; this just makes a refusal readable.
  */
 export function InventoryControls({ items, onChanged }: InventoryControlsProps) {
   const [bhws, setBhws] = useState<AccountRow[]>([]);

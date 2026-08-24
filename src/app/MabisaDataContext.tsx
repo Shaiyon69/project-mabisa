@@ -57,10 +57,8 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     };
   }, [refreshLocalData, backgroundSync.lastResult]);
 
-  // A confirmation is the end of an action, not a permanent part of the screen:
-  // left up, "Saved Offline" is still sitting above the next household an hour
-  // later and stops meaning anything. Nothing is lost when it goes — the rail and
-  // SyncStatusCard carry any state that still needs attention.
+  // A confirmation auto-clears rather than sitting on screen forever — the rail
+  // and SyncStatusCard carry any state that still needs attention.
   useEffect(() => {
     if (!message) {
       return;
@@ -78,10 +76,7 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       const result = await backgroundSync.runSync();
       await refreshLocalData();
 
-      // Only a genuine 'failed' raises the red banner. 'syncing' (the concurrency
-      // lock was already held), 'offline', 'unauthenticated' and 'deferred' are
-      // normal states with no error text — treating them as failures showed
-      // "Action Required" for a sync that had simply been deferred.
+      // Only 'failed' raises the red banner — the other statuses are normal states with no error text.
       switch (result.status) {
         case 'synced':
           setMessage(`Synced ${result.processed} queued change(s).`);
@@ -117,9 +112,7 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     setSyncError(null);
 
     try {
-      // The pull skipped these records' server rows while they sat quarantined,
-      // and its watermark has moved past them since. Forget it so the retry pass
-      // reads the central copies again and the two versions can be compared.
+      // Forgets the pull watermark so the retry pass re-reads the central copies these records missed while quarantined.
       resetPullWatermark();
       const requeued = await requeueDeadLetterEntries();
       setMessage(`Returned ${requeued} set-aside change(s) to the sync queue.`);
@@ -141,14 +134,11 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       message,
       setMessage,
       syncStatus: backgroundSync.status,
-      // `syncError` only covers the manual path. A background pass that fails
-      // carries its reason on the result instead, so fall back to that rather
-      // than showing a bare "Action Required" with nothing to act on.
+      // Manual failures set syncError directly; a background failure falls back to lastResult's reason.
       syncError:
         syncError ?? (backgroundSync.status === 'failed' ? backgroundSync.lastResult?.errorMessage ?? null : null),
       isOnline: backgroundSync.isOnline,
-      // Re-read rather than held in state: the engine writes it, and `lastResult`
-      // in the dependency list below means a finished pass re-reads it.
+      // Re-read, not held in state — lastResult in the deps below triggers a re-read after each pass.
       lastSyncAt: readLastSyncAt(),
       syncingManually,
       refreshLocalData,

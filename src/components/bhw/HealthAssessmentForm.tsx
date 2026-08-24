@@ -38,15 +38,11 @@ const BMI_BANDS = [
 const BMI_TICKS = [18.5, 25, 30];
 
 
-// WHO reads 5-19 year olds off BMI-for-age z-scores, not these fixed cut-points,
-// and BMI is not a nutrition measure at all during pregnancy or nursing. The form
-// still records the reading in both cases — a number on file beats a blank — but
-// the person entering it has to know the verdict beside it does not apply.
+// WHO reads under-20s off BMI-for-age z-scores, not these fixed cut-points, and
+// BMI isn't a nutrition measure during pregnancy/nursing — recorded anyway, but flagged as not applying.
 const ADULT_BMI_MIN_AGE = 20;
 
-// Both lines carry the resident's own age, which the flat en/fil dictionary cannot
-// express, so they are written per language here the way other interpolated BHW
-// copy is.
+// Written per language here (not the flat dictionary) since both lines interpolate the resident's age.
 function bmiCaveats(person: Individual | null, isFilipino: boolean): string[] {
   if (!person) {
     return [];
@@ -60,9 +56,7 @@ function bmiCaveats(person: Individual | null, isFilipino: boolean): string[] {
       (isFilipino
         ? `${age} taong gulang ang residenteng ito. Hindi umaabot sa wastong pagsusuri ang adult BMI sa wala pang ${ADULT_BMI_MIN_AGE} — gamitin ang growth chart ng DOH/WHO.`
         : `This resident is ${age} years old. Adult BMI does not classify anyone under ${ADULT_BMI_MIN_AGE} — read the result against the DOH/WHO growth chart instead.`),
-    // One column carries pregnant, nursing and family planning together, so the
-    // copy cannot claim which of the three this is. Only the first two invalidate
-    // the reading; say that rather than assert something the data does not hold.
+    // One column covers all three (pregnant/nursing/family planning) — only the first two invalidate the reading.
     person.is_pregnant_nursing_fp &&
       (isFilipino
         ? 'Nakatala ang residenteng ito bilang buntis, nagpapasuso, o gumagamit ng family planning. Kung buntis o nagpapasuso, hindi sinusukat ng BMI ang kanyang nutrition status.'
@@ -214,9 +208,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           />
         </div>
         <BmiRail bmi={bmi} status={nutritionStatus} />
-        {/* Shown against the selected resident rather than on every assessment: a
-            caveat that is always on screen is read as decoration by the second
-            week, and this is the only standing warning the BHW surface has. */}
+        {/* Shown against the selected resident only — an always-on caveat reads as decoration by week two. */}
         {caveats.map((caveat) => (
           <p key={caveat} className="form-alert tone-warning" role="note">
             <Icon name="warning" size={18} />
@@ -234,9 +226,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   );
 }
 
-// The reading, on the scale that produced it. The numeric readout is the
-// authoritative answer; the scale is a second, faster way to reach the same one,
-// which is what makes it safe to hide from screen readers.
+// The numeric readout is authoritative; the scale is a faster second read of the same answer — safe to hide from screen readers.
 function BmiRail({ bmi, status }: { bmi: number | null; status: NutritionStatus | null }) {
   const { t } = useBhwLanguage();
 
