@@ -15,7 +15,7 @@ import { FormActions } from '../common/FormField';
 import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
 import { MemberChoice, MemberFields } from './MemberFields';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type ResidentDetailProps = {
   residentId: string;

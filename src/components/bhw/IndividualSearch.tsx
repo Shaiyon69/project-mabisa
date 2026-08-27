@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { Combobox, type ComboboxOption } from '../common/Combobox';
 import { readLocalIndividuals } from '../../services/localDatabase';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type IndividualSearchProps = {
   selectedResidentId: string;

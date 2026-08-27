@@ -9,7 +9,7 @@ import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
 import { readLocalIndividuals } from '../../services/localDatabase';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 import type { SyncStatus } from '../../services/syncService';
 
 type BHWDashboardProps = {
