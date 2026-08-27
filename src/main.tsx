@@ -10,18 +10,20 @@ import '@fontsource-variable/nunito/wght.css';
 import './index.css';
 import { Capacitor } from '@capacitor/core';
 import { App } from './App.tsx';
-import { defineCustomElements as jeepSqlite } from 'jeep-sqlite/loader';
 import { applyTheme, readTheme } from './lib/theme';
+import { buildsBhw } from './app/surface';
 
 // Before the first render, so the app never paints light and then correct.
 applyTheme(readTheme());
 
 // jeep-sqlite is the browser emulator for Capacitor SQLite; Android has the real
-// thing. Registering it unconditionally made the native build fetch a 292 kB chunk
-// it can never use, so this mirrors the isWebPlatform guard in localDatabase.ts —
-// change one, change the other.
-if (Capacitor.getPlatform() === 'web') {
-  jeepSqlite(window);
+// thing, and the admin portal opens no local database at all. Imported here
+// dynamically rather than at the top of the file because a static import is
+// bundled whatever the guard decides at runtime — the 292 kB chunk was still
+// being emitted into `dist-admin/`. This mirrors the isWebPlatform guard in
+// localDatabase.ts: change one, change the other.
+if (buildsBhw && Capacitor.getPlatform() === 'web') {
+  void import('jeep-sqlite/loader').then(({ defineCustomElements }) => defineCustomElements(window));
 }
 
 createRoot(document.getElementById('root')!).render(
