@@ -215,8 +215,13 @@ export type Database = {
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
     };
     Views: Record<string, never>;
-    // The helpers the foundation slice actually defines and grants to
-    // `authenticated`. The admin_* RPCs are omitted until a surface calls one.
+    // The helpers the foundation slice defines and grants to `authenticated`,
+    // plus the admin_* RPCs a surface actually calls. The rest stay out until
+    // one does — an unused entry here is a contract nothing checks.
+    //
+    // Argument names are the SQL parameter names, not a convenience renaming:
+    // the client sends them as named arguments, so a mismatch is a runtime
+    // 404 from PostgREST rather than a type error.
     Functions: {
       current_app_role: {
         Args: Record<string, never>;
@@ -229,6 +234,14 @@ export type Database = {
       current_bhw_purok_id: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      admin_set_profile_active: {
+        Args: { target_user_id: string; make_active: boolean; change_reason: string };
+        Returns: Profile;
+      };
+      admin_assign_bhw_to_purok: {
+        Args: { target_bhw_id: string; target_purok_id: string; assignment_reason: string };
+        Returns: BhwPurokAssignment;
       };
     };
     Enums: {

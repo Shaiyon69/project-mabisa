@@ -248,6 +248,56 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
   });
 }
 
+/**
+ * The puroks an assignment can name. Inactive ones are excluded rather than
+ * shown greyed out: `admin_assign_bhw_to_purok` rejects them, so offering one
+ * is offering a button that can only fail.
+ */
+export async function fetchActivePuroks(): Promise<Purok[]> {
+  const { data, error } = await supabase.from('puroks').select('*').eq('is_active', true).order('name');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+/**
+ * Account mutations, both through the `admin_*` SECURITY DEFINER RPCs.
+ *
+ * Never a direct table write. Each RPC asserts an active admin and writes an
+ * audit event in the same transaction as the change, which is the whole reason
+ * the foundation slice withholds table-level grants — a direct update from this
+ * client would succeed at nothing except losing the audit trail.
+ *
+ * The reason string is required by the function signature and is what the audit
+ * row carries, so the UI must collect it rather than send a placeholder.
+ */
+export async function setProfileActive(userId: string, makeActive: boolean, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_profile_active', {
+    target_user_id: userId,
+    make_active: makeActive,
+    change_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function assignBhwToPurok(bhwId: string, purokId: string, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_assign_bhw_to_purok', {
+    target_bhw_id: bhwId,
+    target_purok_id: purokId,
+    assignment_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export type ResidentPage = {
   rows: Individual[];
   total: number;
