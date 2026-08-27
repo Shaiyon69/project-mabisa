@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import './App.css';
 import { MabisaDataProvider } from './app/MabisaDataContext';
 import { AppRoutes } from './app/AppRoutes';
+import { buildsBhw } from './app/surface';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
 import { logDev } from './lib/utils';
@@ -189,11 +190,16 @@ export function App() {
     );
   }
 
+  const routes = <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} />;
+
   return (
     <BrowserRouter>
-      <MabisaDataProvider bhwId={bhwId}>
-        <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} />
-      </MabisaDataProvider>
+      {/* The provider owns local SQLite and the background sync engine, which only
+          the field app has any use for. An admin-only build carries no BHW route,
+          so mounting it would open a database, register the jeep-sqlite web
+          emulator and arm a sync timer on an LGU workstation that will never
+          enqueue a row. No admin screen reads it. */}
+      {buildsBhw ? <MabisaDataProvider bhwId={bhwId}>{routes}</MabisaDataProvider> : routes}
     </BrowserRouter>
   );
 }
