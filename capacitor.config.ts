@@ -5,9 +5,14 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // Android uses to decide whether an install is an upgrade or a second app: change it
 // after devices are in the field and the next APK installs alongside the old one,
 // with its own separate SQLite database.
+//
+// So the rename to BRHP-MSAM stops at appName, which is only the launcher label.
+// Carrying it into appId would buy a tidier package name at the price of every
+// installed device treating the next APK as a different app and starting from an
+// empty local database.
 const config: CapacitorConfig = {
   appId: 'ph.mabisa.app',
-  appName: 'MABISA',
+  appName: 'BRHP-MSAM',
   webDir: 'dist',
   plugins: {
     CapacitorSQLite: {

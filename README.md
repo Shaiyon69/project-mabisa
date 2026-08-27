@@ -1,6 +1,10 @@
-# Project MABISA
+# BRHP-MSAM
 
-Project MABISA is a Mobile-based Application for Assessment of Barangay Inhabitants and Supply Allocation. It supports Barangay Health Workers during field visits with offline resident profiling, BMI-based health assessments, and local supply disbursement logging, while preparing queued records for synchronization to the LGU Supabase backend.
+BRHP-MSAM is the Barangay Residents Health Profiling and Medical Supply Allocation Monitoring System. It supports Barangay Health Workers during field visits with offline resident profiling, BMI-based health assessments, and local supply disbursement logging, while preparing queued records for synchronization to the LGU Supabase backend.
+
+The two halves of the name are the two halves of the system: health profiling in the field, and supply allocation monitoring at the LGU.
+
+The system was previously called MABISA. The rename covers what people read — the launcher label, the sign-in screen, the two shells and the documents. It deliberately stops short of identifiers that would cost something to change: the Android `appId` (`ph.mabisa.app`, whose change makes every installed APK a separate app with an empty database), the npm package name, the `localStorage` keys (`mabisa.user_role`, `mabisa-language`, `mabisa.theme`, `mabisa.last_sync_at`, `mabisa.pulled_through`, whose change signs every device out and re-pulls every table), and the `MabisaData*` module names.
 
 ## Technical Stack
 

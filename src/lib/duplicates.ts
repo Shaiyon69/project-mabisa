@@ -3,7 +3,7 @@ import type { Individual } from '../types/database';
 /**
  * Likely-duplicate detection for resident profiles.
  *
- * MABISA does not verify physical identity and never blocks a save on a suspected
+ * The system does not verify physical identity and never blocks a save on a suspected
  * duplicate — the BHW is standing in the household and is the one who can tell.
  * This only produces the warning they judge: a short list of records that look
  * like the person being registered, ordered most convincing first.

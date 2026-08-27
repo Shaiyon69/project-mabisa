@@ -46,8 +46,8 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
   // has. Rendering the rejection early would greet every admin with it.
   const adminRejection = roleChecked ? (
     <SurfaceNotice
-      title="This is the MABISA admin portal"
-      body="This account signs in through the MABISA app on a Barangay Health Worker's phone. Nothing is wrong with your account — this is the wrong place for it."
+      title="This is the BRHP-MSAM admin portal"
+      body="This account signs in through the BRHP-MSAM app on a Barangay Health Worker's phone. Nothing is wrong with your account — this is the wrong place for it."
       logout={logout}
     />
   ) : (
@@ -63,7 +63,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       <SurfaceNotice title="Checking your account" body="One moment." />
     ) : (
       <SurfaceNotice
-        title="This is the MABISA field app"
+        title="This is the BRHP-MSAM field app"
         body="Administrator accounts sign in to the admin portal in a web browser, not on this phone."
         logout={logout}
       />
