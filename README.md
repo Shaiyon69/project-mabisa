@@ -68,6 +68,27 @@ npm test
 The suite covers the BMI and nutrition-status calculations and the sync queue's retry
 backoff and dependency ordering. The sync loop itself is not yet covered.
 
+## Admin Portal Deployment
+
+The LGU portal is a static bundle served by nginx. Fill in `.env` from
+`.env.example`, then:
+
+```bash
+docker compose up -d --build
+```
+
+The portal is on `http://localhost:8080`; override with `ADMIN_PORT` in `.env`.
+
+Vite substitutes `import.meta.env.VITE_*` at build time, so the Supabase URL, the
+publishable key and the barangay name are build arguments rather than runtime
+environment. Changing any of them requires `--build` again — a restart alone keeps
+serving the values that were baked in. Only the publishable (anon) key belongs
+here; it is exposed in the bundle by design and is safe only because row level
+security is enabled on every table. The service role key must never be passed.
+
+The BHW client is deliberately not containerised. It ships as an APK wrapping
+`dist/`, and nothing in the field workflow may depend on a server.
+
 ## Android Build
 
 The app is distributed as a sideloaded APK, not through Google Play.

@@ -1,0 +1,12 @@
+# Keep the local `.env` out of the image: the build reads its values from build
+# arguments, and a copied `.env` would override them from inside the container.
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+dist-admin
+android
+.git
+*.log
