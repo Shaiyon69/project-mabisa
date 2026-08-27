@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
-import { useBhwLanguage } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 import type { Individual } from '../../types/database';
 import { ageInYears } from '../../lib/utils';
 import { readLocalIndividuals } from '../../services/localDatabase';
@@ -206,7 +206,7 @@ export function ProfilePage() {
         {t('Log out')}
       </Button>
 
-      <Modal open={confirmingLogout} title={t('Log out of MABISA?')} onClose={() => setConfirmingLogout(false)}>
+      <Modal open={confirmingLogout} title={t('Log out of BRHP-MSAM?')} onClose={() => setConfirmingLogout(false)}>
         <p className="logout-warning"><Icon name="warning" size={20} />{t('Make sure pending records are synchronized before leaving this device.')}</p>
         <div className="modal-actions">
           <Button variant="ghost" onClick={() => setConfirmingLogout(false)}>{t('Stay logged in')}</Button>

@@ -5,7 +5,8 @@ import type { SyncStatus } from '../../services/syncService';
 import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
-import { BhwLanguageProvider, useBhwLanguage } from '../../app/BhwLanguageContext';
+import { BhwLanguageProvider } from '../../app/BhwLanguageContext';
+import { useBhwLanguage } from '../../app/bhwLanguage';
 
 const bhwNavItems = [
   { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', icon: 'home' as const, end: true },
@@ -101,7 +102,7 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
         {/* No header actions: connection state lives on the rail above, and theme
             and logout now live on the Profile tab so the top of every screen is
             content rather than controls. */}
-        <PageHeader eyebrow={t('Project MABISA')} title={t('BHW Mobile')} />
+        <PageHeader eyebrow={t('BRHP-MSAM')} title={t('BHW Mobile')} />
         {message ? <p className="notice">{message}</p> : null}
 
         <div className="bhw-mobile-content">
