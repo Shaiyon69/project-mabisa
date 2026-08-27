@@ -956,6 +956,14 @@ button:active,
   font-size: 12px;
 }
 
+/* Row actions. Wrapping rather than shrinking, so a narrow window stacks the
+   buttons instead of squeezing the label out of them. */
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 table {
   width: 100%;
   min-width: 640px;
