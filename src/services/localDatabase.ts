@@ -705,9 +705,21 @@ const individualUpsert = buildUpsert('individuals', 'resident_id', individualCol
 const householdColumns: ColumnDescriptor<Household>[] = [
   { name: 'household_id', value: (household) => household.household_id, mutableOnConflict: false },
   { name: 'household_number', value: (household) => household.household_number, mutableOnConflict: true },
-  { name: 'dwelling_type', value: (household) => household.dwelling_type, mutableOnConflict: true },
-  { name: 'electric_service', value: (household) => household.electric_service, mutableOnConflict: true },
-  { name: 'fuel_used', value: (household) => household.fuel_used, mutableOnConflict: true },
+  // Dead columns, still fed a constant.
+  //
+  // The central table dropped these three and `Household` no longer declares
+  // them, but `migrations` is `create table if not exists`, so every device
+  // installed before now keeps them — `not null`, with a check constraint and no
+  // default. SQLite cannot drop a column a check constraint names, so there is
+  // no upgrade that removes them; a household written without a value would just
+  // fail the constraint on those devices and be lost.
+  //
+  // Writing the constant satisfies the old schema in both directions, the form's
+  // and the server pull's, and nothing reads them back. They cost three columns
+  // of local disk until a device is reinstalled.
+  { name: 'dwelling_type', value: () => 'concrete', mutableOnConflict: false },
+  { name: 'electric_service', value: () => 'iselco', mutableOnConflict: false },
+  { name: 'fuel_used', value: () => 'wood', mutableOnConflict: false },
   { name: 'toilet_type', value: (household) => JSON.stringify(household.toilet_type ?? []), mutableOnConflict: true },
   { name: 'water_source', value: (household) => JSON.stringify(household.water_source ?? []), mutableOnConflict: true },
   {
@@ -746,7 +758,20 @@ export async function saveHouseholdLocally(household: Household, operationType: 
 
   // Note: We queue the raw 'household' object here, NOT the stringified version.
   // This ensures Supabase receives actual arrays when the payload is processed.
-  await enqueueSyncOperation('households', operationType, household);
+  //
+  // The three dropped housing columns are stripped first, for the same reason
+  // `household_number` is stripped in saveIndividualLocally: `readLocalHouseholds`
+  // spreads whatever columns the local table has, and on a device installed
+  // before the drop that still includes them. Supabase rejects the whole row over
+  // one unknown column, so a household read back and re-saved would never sync.
+  // Done here rather than at the call site because every caller routes through
+  // this function.
+  const syncable = { ...household } as Household & Record<string, unknown>;
+  delete syncable.dwelling_type;
+  delete syncable.electric_service;
+  delete syncable.fuel_used;
+
+  await enqueueSyncOperation('households', operationType, syncable);
   await persistLocalDatabase();
 }
 
