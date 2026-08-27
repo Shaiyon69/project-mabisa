@@ -62,14 +62,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const [household, setHousehold] = useState<Partial<Household>>({
     household_number: '',
     // Housing type, electric service and fuel are not health data and are not
-    // asked here. They are still `not null` on the SQLite mirror and the central
-    // table, so a placeholder rides along to satisfy the constraint; a device
-    // installed before any column drop keeps its own schema either way.
-    // TODO: drop the three columns in a migration once the live database can
-    // take it, and remove these placeholders with them.
-    dwelling_type: 'concrete',
-    electric_service: 'iselco',
-    fuel_used: 'wood',
+    // asked here. The central table has dropped them, so nothing is sent for
+    // them either — the placeholders that used to sit here were unknown columns
+    // by the time the queue drained, and Supabase rejects a whole row over one.
+    // The SQLite mirror still has the columns; `householdColumns` feeds them.
     toilet_type: [],
     water_source: [],
     food_production: [],

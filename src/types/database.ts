@@ -22,9 +22,6 @@ export const RELATIONSHIPS_TO_HEAD = [
 export type RelationshipToHead = (typeof RELATIONSHIPS_TO_HEAD)[number];
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
-export type DwellingType = 'concrete' | 'wood' | 'mixed' | 'makeshift';
-export type ElectricService = 'lamp' | 'gas' | 'iselco' | 'none';
-export type FuelUsed = 'wood' | 'charcoal' | 'lpg' | 'electricity';
 
 // public.profiles from 202607160001_foundation_slice_a.sql -- the single source
 // of a session's role. Writes go through the admin_* RPCs, never through the
@@ -76,9 +73,13 @@ export type Household = {
   // client choose its own scope.
   purok_id?: string;
   household_number: string;
-  dwelling_type: DwellingType;
-  electric_service: ElectricService;
-  fuel_used: FuelUsed;
+  // `dwelling_type`, `electric_service` and `fuel_used` are gone: the form
+  // stopped asking them because they are not health data, and the central table
+  // has since dropped the columns. They were still declared here and still rode
+  // along in the queued payload as placeholders, which Supabase rejects as
+  // unknown columns — one of them fails the whole household insert, so no field
+  // record synced at all. The local SQLite mirror still carries them; see the
+  // note on `householdColumns`.
   toilet_type: string[];
   water_source: string[];
   food_production: string[];
@@ -236,9 +237,6 @@ export type Database = {
       relationship_to_head: RelationshipToHead;
       inventory_item_type: InventoryItemType;
       nutrition_status: NutritionStatus;
-      dwelling_type: DwellingType;
-      electric_service: ElectricService;
-      fuel_used: FuelUsed;
     };
     CompositeTypes: Record<string, never>;
   };
