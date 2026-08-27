@@ -13,10 +13,10 @@ export function AdminSidebar() {
     <aside className="side-rail admin-sidebar" aria-label="Admin navigation">
       <div className="brand-lockup">
         <span className="brand-mark" aria-hidden="true">
-          M
+          B
         </span>
         <div>
-          <p className="eyebrow">Project MABISA</p>
+          <p className="eyebrow">BRHP-MSAM</p>
           <strong>Admin Dashboard</strong>
         </div>
       </div>

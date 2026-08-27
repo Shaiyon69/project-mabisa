@@ -167,7 +167,7 @@ export const NUTRITION_ORDER: readonly NutritionStatus[] = ['underweight', 'norm
 /**
  * Demographic age bands, not a health classification — they group residents for
  * a headcount and carry no judgement about any of them. The boundaries follow
- * the bands Philippine barangay health reporting already uses, so a MABISA
+ * the bands Philippine barangay health reporting already uses, so a BRHP-MSAM
  * summary lines up with the forms an LGU officer is used to.
  */
 export const AGE_BANDS = [

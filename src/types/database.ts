@@ -110,7 +110,7 @@ export type Individual = {
   // The account behind the most recent write, so an authorized correction to a
   // saved profile is attributable. Null on every row written before the column.
   updated_by?: string | null;
-  // Duplicate-override provenance. MABISA only ever warns about a likely
+  // Duplicate-override provenance. The system only ever warns about a likely
   // duplicate — the BHW confirms identity in person — so when they say it is a
   // different person, these four record which record they were shown, why they
   // overrode it, who they were, and when.
