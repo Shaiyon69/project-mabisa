@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -24,6 +24,12 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: surface === 'admin' ? 'dist-admin' : 'dist',
+    },
+    test: {
+      // `e2e/` is Playwright's, and its specs cannot run under Vitest — without
+      // this they are collected here and fail on an import that has no meaning
+      // outside a browser session.
+      include: ['src/**/*.test.{ts,tsx}'],
     },
   };
 })

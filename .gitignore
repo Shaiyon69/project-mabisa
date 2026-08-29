@@ -45,3 +45,9 @@ data_policies.sql
 .claude/
 CLAUDE.md
 CLAUDE.local.md
+
+# Playwright
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
