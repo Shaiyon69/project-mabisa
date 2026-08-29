@@ -1154,3 +1154,31 @@ drop trigger if exists individuals_stamp_actor on public.individuals;
 create trigger individuals_stamp_actor
   before insert or update on public.individuals
   for each row execute function private.stamp_individual_actor();
+
+-- =============================================================================
+-- MEMBER STATUS  (applied 2026-08-29, migration `individuals_status`)
+--
+-- A member who moved out, died or transferred is marked, never deleted. Her row
+-- is the parent of every weight, height and supply release ever recorded for
+-- her (`on delete cascade`), so deleting it to record that she left would take
+-- the history with it and leave no trace that she was ever here — the next round
+-- of profiling would add her back as a stranger.
+--
+-- Default lists filter to `active`, which is the part the field asked for. No
+-- DELETE policy is added: removal still goes through the SQL editor, by design.
+-- =============================================================================
+
+alter table public.individuals
+  add column if not exists status text not null default 'active',
+  add column if not exists status_changed_on date;
+
+alter table public.individuals drop constraint if exists individuals_status_check;
+alter table public.individuals add constraint individuals_status_check check (
+  status in ('active', 'moved_out', 'deceased', 'transferred')
+);
+
+comment on column public.individuals.status is
+  'Whether this person is still counted in the household. A member who left is marked, never deleted: their assessments and supply releases stay attached to a person who has a reason for being gone.';
+
+comment on column public.individuals.status_changed_on is
+  'The day the status last moved away from active. Null while active.';

@@ -323,7 +323,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   async function scanForDuplicates(): Promise<FlaggedMember[]> {
     const scans = await Promise.all(
       members.map(async (member, index) => {
-        const candidates = (await readLocalIndividuals({ searchQuery: member.last_name?.trim(), limit: 50 }))
+        // Former members included: someone who moved out and came back is exactly
+        // the person this warning exists to catch before she is entered twice.
+        const candidates = (await readLocalIndividuals({ searchQuery: member.last_name?.trim(), limit: 50, includeFormer: true }))
           // On a re-visit every member already on file matches themselves; only
           // people outside this household are a duplicate worth raising.
           .filter((candidate) => !household.household_id || candidate.household_id !== household.household_id);
@@ -538,7 +540,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         {isRevisit ? (
           <p className="form-alert tone-info" role="status">
             <Icon name="save" size={18} />
-            Updating the household already on file. Members already recorded cannot be removed here.
+            Updating the household already on file. Members already recorded stay: open a member's
+            own record to mark them moved out, deceased or transferred.
             <Button type="button" variant="ghost" onClick={startBlank}>Record a different household</Button>
           </p>
         ) : null}

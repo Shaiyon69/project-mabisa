@@ -84,6 +84,24 @@ export function today(): string {
 }
 
 /**
+ * The date to stamp on a member's status. A status that has just moved off
+ * `active` is dated today; one that has not moved keeps the date it already
+ * carried; returning to `active` clears it, because there is nothing to date.
+ */
+export function statusChangedOn(
+  previous: string | null | undefined,
+  next: string | null | undefined,
+  existing: string | null | undefined,
+  on: string = today(),
+): string | null {
+  if ((next ?? 'active') === 'active') {
+    return null;
+  }
+
+  return next === previous ? existing ?? on : on;
+}
+
+/**
  * Whole years completed, so a birthday later this year has not counted yet.
  *
  * The stored date is compared as calendar parts rather than through `new Date()`:

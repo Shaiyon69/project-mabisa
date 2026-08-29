@@ -30,6 +30,8 @@ export type PaginatedQuery = {
   searchQuery?: string;
   /** Individuals only: restricts the read to one household's members. */
   householdId?: string;
+  /** Individuals only: includes members who moved out, died or transferred. Off by default. */
+  includeFormer?: boolean;
 };
 
 // Defines the exact tables that exist in our local SQLite database.
@@ -135,6 +137,8 @@ const migrations = [
     is_out_of_school_youth integer not null default 0 check (is_out_of_school_youth in (0, 1)),
     is_pregnant_nursing_fp integer not null default 0 check (is_pregnant_nursing_fp in (0, 1)),
     philhealth_number text,
+    status text not null default 'active' check (status in ('active', 'moved_out', 'deceased', 'transferred')),
+    status_changed_on text,
     created_at text not null,
     updated_at text not null,
     foreign key (household_id) references households(household_id) on delete cascade
@@ -229,6 +233,11 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   { table: 'individuals', column: 'duplicate_override_at', definition: 'text' },
   // Relation to household head. Nullable and unconstrained — the central table already enforces the check.
   { table: 'individuals', column: 'relationship_to_head', definition: 'text' },
+  // Whether the member is still in the household. Every row that predates the
+  // column is active, which the default supplies; SQLite allows `not null` here
+  // only because the default is a constant.
+  { table: 'individuals', column: 'status', definition: "text not null default 'active'" },
+  { table: 'individuals', column: 'status_changed_on', definition: 'text' },
 ];
 
 /**
@@ -604,6 +613,8 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
     mutableOnConflict: true,
   },
   { name: 'philhealth_number', value: (individual) => individual.philhealth_number ?? null, mutableOnConflict: true },
+  { name: 'status', value: (individual) => individual.status ?? 'active', mutableOnConflict: true },
+  { name: 'status_changed_on', value: (individual) => individual.status_changed_on ?? null, mutableOnConflict: true },
   { name: 'created_at', value: (individual) => individual.created_at, mutableOnConflict: false },
   { name: 'updated_at', value: (individual) => individual.updated_at, mutableOnConflict: true },
   { name: 'updated_by', value: (individual) => individual.updated_by ?? null, mutableOnConflict: true },
@@ -805,17 +816,17 @@ export async function getHouseholdCount(): Promise<number> {
   return result.values?.[0]?.total || 0;
 }
 
-export async function getIndividualCount(options?: Pick<PaginatedQuery, 'searchQuery'>): Promise<number> {
+export async function getIndividualCount(options?: IndividualFilter): Promise<number> {
   const db = await initializeLocalDatabase();
-  const search = buildIndividualSearch(options?.searchQuery);
+  const filter = buildIndividualFilter(options);
 
   // Mirrors the FROM/WHERE of readLocalIndividuals so a filtered count always
   // matches the rows that query would return.
   const result = await db.query(
     `SELECT COUNT(*) as total
      FROM individuals i
-     LEFT JOIN households h ON i.household_id = h.household_id${search.clause}`,
-    search.params,
+     LEFT JOIN households h ON i.household_id = h.household_id${filter.clause}`,
+    filter.params,
   );
 
   return result.values?.[0]?.total || 0;
@@ -845,24 +856,39 @@ export async function getSyncQueueCount(): Promise<number> {
 }
 
 /** Shared search predicate for individual lookups — one place so the row and count queries can't drift apart. */
-function buildIndividualSearch(searchQuery?: string): { clause: string; params: SqlValue[] } {
-  const term = searchQuery?.trim();
+/** The filters both the individual read and its count apply, built once so the two cannot drift. */
+type IndividualFilter = Pick<PaginatedQuery, 'searchQuery' | 'householdId' | 'includeFormer'>;
 
-  if (!term) {
-    return { clause: '', params: [] };
-  }
+function buildIndividualFilter(options?: IndividualFilter): { clause: string; params: SqlValue[] } {
+  const conditions: string[] = [];
+  const params: SqlValue[] = [];
+  const term = options?.searchQuery?.trim();
 
-  // Escape LIKE wildcards so a typed % or _ matches literally instead of
-  // silently widening the search.
-  const pattern = `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+  if (term) {
+    // Escape LIKE wildcards so a typed % or _ matches literally instead of
+    // silently widening the search.
+    const pattern = `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
 
-  return {
-    clause: ` WHERE (i.first_name LIKE ? ESCAPE '\\'
+    conditions.push(`(i.first_name LIKE ? ESCAPE '\\'
                   OR i.middle_name LIKE ? ESCAPE '\\'
                   OR i.last_name LIKE ? ESCAPE '\\'
-                  OR h.household_number LIKE ? ESCAPE '\\')`,
-    params: [pattern, pattern, pattern, pattern],
-  };
+                  OR h.household_number LIKE ? ESCAPE '\\')`);
+    params.push(pattern, pattern, pattern, pattern);
+  }
+
+  if (options?.householdId) {
+    conditions.push('i.household_id = ?');
+    params.push(options.householdId);
+  }
+
+  // A member who moved out, died or transferred is off the lists by default —
+  // that is what marking her was for. Her row, and everything hanging off it,
+  // is untouched and still opens by id.
+  if (!options?.includeFormer) {
+    conditions.push("i.status = 'active'");
+  }
+
+  return { clause: conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '', params };
 }
 
 // -----------------------------------------------------------------------------
@@ -873,18 +899,13 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
   const db = await initializeLocalDatabase();
 
   // Use a LEFT JOIN to pull the readable household_number alongside the individual's data
-  const search = buildIndividualSearch(options?.searchQuery);
+  const filter = buildIndividualFilter(options);
   let query = `
     SELECT i.*, h.household_number
     FROM individuals i
-    LEFT JOIN households h ON i.household_id = h.household_id${search.clause}
+    LEFT JOIN households h ON i.household_id = h.household_id${filter.clause}
   `;
-  const params: SqlValue[] = [...search.params];
-
-  if (options?.householdId) {
-    query += search.clause ? ' AND i.household_id = ?' : ' WHERE i.household_id = ?';
-    params.push(options.householdId);
-  }
+  const params: SqlValue[] = [...filter.params];
 
   query += ' ORDER BY i.last_name ASC, i.first_name ASC';
 

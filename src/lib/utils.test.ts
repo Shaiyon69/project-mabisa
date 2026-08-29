@@ -6,6 +6,7 @@ import {
   HEIGHT_CM_RANGE,
   isMeasurementInRange,
   sameHouseholdNumber,
+  statusChangedOn,
   titleCase,
   WEIGHT_KG_RANGE,
 } from './utils';
@@ -103,5 +104,19 @@ describe('sameHouseholdNumber', () => {
   it('treats a blank number as matching nothing, including another blank', () => {
     expect(sameHouseholdNumber('', '')).toBe(false);
     expect(sameHouseholdNumber(null, 'HH-001')).toBe(false);
+  });
+});
+
+describe('statusChangedOn', () => {
+  it('dates a status that has just left active', () => {
+    expect(statusChangedOn('active', 'moved_out', null, '2026-08-29')).toBe('2026-08-29');
+  });
+
+  it('keeps the date a standing status already carried', () => {
+    expect(statusChangedOn('deceased', 'deceased', '2026-07-01', '2026-08-29')).toBe('2026-07-01');
+  });
+
+  it('clears the date when the member is active again', () => {
+    expect(statusChangedOn('moved_out', 'active', '2026-07-01', '2026-08-29')).toBeNull();
   });
 });

@@ -32,6 +32,12 @@ const columns: TableColumn<Individual>[] = [
     render: (individual) => individual.household_number || 'Unassigned',
   },
   {
+    key: 'status',
+    header: 'Membership',
+    render: (individual) =>
+      !individual.status || individual.status === 'active' ? 'Active' : titleCase(individual.status),
+  },
+  {
     key: 'updated',
     header: 'Last updated',
     render: (individual) => formatDate(individual.updated_at),
@@ -49,6 +55,8 @@ const exportColumns: CsvColumn<Individual>[] = [
   { header: 'Household number', value: (row) => row.household_number },
   { header: 'Household head', value: (row) => (row.is_household_head ? 'Yes' : 'No') },
   { header: 'Relationship to head', value: (row) => (row.relationship_to_head ? titleCase(row.relationship_to_head) : '') },
+  { header: 'Membership', value: (row) => titleCase(row.status ?? 'active') },
+  { header: 'Membership changed on', value: (row) => row.status_changed_on },
   { header: 'Last updated', value: (row) => row.updated_at },
 ];
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { HealthAssessment, Individual, InventoryItem, SupplyDisbursement } from '../../types/database';
-import { ageInYears, formatDate, scrollToFirstError, titleCase } from '../../lib/utils';
+import { RESIDENT_STATUSES, type HealthAssessment, type Individual, type InventoryItem, type SupplyDisbursement } from '../../types/database';
+import { ageInYears, formatDate, scrollToFirstError, statusChangedOn, titleCase } from '../../lib/utils';
 import {
   readLocalHealthAssessments,
   readLocalIndividual,
@@ -11,7 +11,7 @@ import {
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { FormActions } from '../common/FormField';
+import { FormActions, SelectField } from '../common/FormField';
 import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
 import { MemberChoice, MemberFields } from './MemberFields';
@@ -123,6 +123,10 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
           // does not move it forward is indistinguishable from no edit at all.
           updated_at: new Date().toISOString(),
           updated_by: bhwId,
+          // A member who left is marked here rather than deleted — her assessments
+          // and supply releases hang off this row.
+          status: draft.status ?? 'active',
+          status_changed_on: statusChangedOn(resident?.status, draft.status, draft.status_changed_on),
         },
         'UPDATE',
       );
@@ -175,7 +179,11 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               {resident.last_name}
             </h2>
           </div>
-          {resident.is_household_head ? <Badge label="Household Head" tone="info" /> : null}
+          {resident.status && resident.status !== 'active' ? (
+            <Badge label={titleCase(resident.status)} tone="warning" />
+          ) : resident.is_household_head ? (
+            <Badge label="Household Head" tone="info" />
+          ) : null}
         </div>
 
         {formError ? (
@@ -198,6 +206,19 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
                 onChange={(next) => setDraft({ ...draft, is_household_head: next })}
               />
             </MemberFields>
+
+            <SelectField
+              label="Still in this household?"
+              hint="A member who left stays on file — every check and supply release recorded for them stays attached."
+              value={draft.status ?? 'active'}
+              onChange={(event) => setDraft({ ...draft, status: event.target.value as Individual['status'] })}
+            >
+              {RESIDENT_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {status === 'active' ? 'Yes, still a member' : titleCase(status)}
+                </option>
+              ))}
+            </SelectField>
 
             <FormActions>
               <Button
@@ -224,6 +245,14 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               <Fact label="Birthdate" value={formatDate(resident.birthday)} />
               <Fact label="Sex" value={titleCase(resident.sex)} />
               <Fact label="Household" value={resident.household_number ?? '—'} />
+              <Fact
+                label="Household membership"
+                value={
+                  !resident.status || resident.status === 'active'
+                    ? 'Active member'
+                    : `${titleCase(resident.status)}${resident.status_changed_on ? ` • ${formatDate(resident.status_changed_on)}` : ''}`
+                }
+              />
               <Fact
                 label="Relationship to Household Head"
                 value={

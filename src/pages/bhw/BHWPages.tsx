@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
 import type { Individual } from '../../types/database';
-import { ageInYears } from '../../lib/utils';
+import { ageInYears, titleCase } from '../../lib/utils';
 import { readLocalIndividuals } from '../../services/localDatabase';
 import { BHWDashboard } from '../../components/bhw/BHWDashboard';
 import { HealthAssessmentForm } from '../../components/bhw/HealthAssessmentForm';
@@ -67,7 +67,9 @@ export function ResidentsPage() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setSearching(true);
-      readLocalIndividuals({ searchQuery: query, limit: 50 })
+      // The one list that keeps former members: a status set by mistake has to be
+      // reachable, and looking someone up by name is how a BHW would go find them.
+      readLocalIndividuals({ searchQuery: query, limit: 50, includeFormer: true })
         .then(setResults)
         .catch(console.error)
         .finally(() => setSearching(false));
@@ -100,6 +102,7 @@ export function ResidentsPage() {
                 <span>
                   {person.last_name}, {person.first_name}
                   {person.is_household_head ? ' (Head)' : ''}
+                  {person.status && person.status !== 'active' ? ` — ${titleCase(person.status)}` : ''}
                 </span>
                 <small>
                   {ageInYears(person.birthday) ?? '—'} years old
