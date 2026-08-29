@@ -1,0 +1,74 @@
+import { useCallback, useEffect, useState } from 'react';
+
+/** How long the screen may sit untouched before the PIN is asked for again. */
+const IDLE_LIMIT_MS = 15 * 60 * 1000;
+
+/**
+ * Backgrounding for less than this does not cost a PIN entry. Taking a call or
+ * glancing at a text mid-visit is constant in the field, and a lock that fires on
+ * every one of those is the kind people write their PIN on the case to survive.
+ */
+const BACKGROUND_GRACE_MS = 30 * 1000;
+
+const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart'] as const;
+
+/**
+ * When the app must ask for the device PIN again.
+ *
+ * Starts locked: a cold start is the stolen-phone case, and a lock that a
+ * force-quit walks straight past would not be a lock. Locking never signs anyone
+ * out and never touches the queue or SQLite — a health worker with unsent
+ * records and no signal has to be able to get back to them.
+ */
+export function useDeviceLock(): { locked: boolean; unlock: () => void } {
+  const [locked, setLocked] = useState(true);
+
+  const unlock = useCallback(() => setLocked(false), []);
+
+  useEffect(() => {
+    // Once locked, activity must not clear it — only a correct PIN does.
+    if (locked) {
+      return;
+    }
+
+    let handle = window.setTimeout(() => setLocked(true), IDLE_LIMIT_MS);
+    let hiddenAt: number | null = null;
+
+    const restart = () => {
+      window.clearTimeout(handle);
+      handle = window.setTimeout(() => setLocked(true), IDLE_LIMIT_MS);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        window.clearTimeout(handle);
+        return;
+      }
+
+      // Back in the foreground: lock only if it was away long enough to have left someone's hands.
+      if (hiddenAt !== null && Date.now() - hiddenAt >= BACKGROUND_GRACE_MS) {
+        setLocked(true);
+        return;
+      }
+
+      hiddenAt = null;
+      restart();
+    };
+
+    for (const event of ACTIVITY_EVENTS) {
+      window.addEventListener(event, restart, { passive: true });
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.clearTimeout(handle);
+      for (const event of ACTIVITY_EVENTS) {
+        window.removeEventListener(event, restart);
+      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [locked]);
+
+  return { locked, unlock };
+}
