@@ -1115,7 +1115,10 @@ tbody tr:hover {
   gap: 14px;
   /* viewport-fit=cover lets the webview paint under the status bar and the gesture
      handle, so the shell pays that back itself; env() is 0 on a browser. */
-  padding: calc(16px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
+  /* No bottom padding: the docked nav below runs to the edge and pays the
+     gesture-handle inset itself. A gap here would sit under the bar, showing —
+     and accepting taps for — whatever scrolled beneath it. */
+  padding: calc(16px + env(safe-area-inset-top)) 14px 0;
   background: var(--bg);
   font-size: 16px;
 }
@@ -1162,10 +1165,9 @@ tbody tr:hover {
   line-height: 1.55;
 }
 
-/* No bottom reserve for .bhw-bottom-nav: it is sticky, not fixed, so it keeps its
-   own space at the end of the column. Padding here would be counted twice and
-   leave a dead gap under the last element once the page is scrolled all the way
-   down. */
+/* No bottom reserve for .bhw-bottom-nav: it is sticky, not fixed, so it keeps
+   its own space at the end of the column, and it pays the safe-area inset itself
+   (see the shell's padding-bottom: 0 above). */
 .bhw-mobile-content {
   flex: 1;
 }
@@ -1345,17 +1347,22 @@ tbody tr:hover {
   width: 100%;
 }
 
+/* Docked to the bottom edge, not floating above it. A floated pill leaves a live
+   strip under it and open corners beside it, where a control that has scrolled
+   underneath is still visible and still takes the tap. */
 .bhw-bottom-nav {
   position: sticky;
   z-index: 5;
-  bottom: 12px;
+  bottom: 0;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
-  margin-top: auto;
-  padding: 8px;
+  /* Bleeds past the shell's 14px side padding so the bar meets both edges. */
+  margin: auto -14px 0;
+  padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-width: 1px 0 0;
+  border-radius: 0;
   /* Opaque, not frosted: backdrop-filter re-samples everything behind the bar on
      every frame, and this bar is sticky over a scrolling list. */
   background: var(--panel);
