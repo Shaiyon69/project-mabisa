@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 import type { Individual } from '../../types/database';
 import { ageInYears } from '../../lib/utils';
 import { readLocalIndividuals } from '../../services/localDatabase';
@@ -58,7 +57,6 @@ export function RegisterResidentPage() {
 }
 
 export function ResidentsPage() {
-  const { t } = useBhwLanguage();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Individual[]>([]);
@@ -82,16 +80,16 @@ export function ResidentsPage() {
     <Card className="list-section">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">{t('Registry')}</p>
-          <h2>{t('Residents')}</h2>
+          <p className="eyebrow">Registry</p>
+          <h2>Residents</h2>
         </div>
       </div>
 
       <FormField
-        label={t('Search residents')}
+        label="Search residents"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder={t('Search by name...')}
+        placeholder="Search by name..."
       />
 
       {results.length ? (
@@ -101,10 +99,10 @@ export function ResidentsPage() {
               <button type="button" onClick={() => navigate(`/bhw/residents/${person.resident_id}`)}>
                 <span>
                   {person.last_name}, {person.first_name}
-                  {person.is_household_head ? ` (${t('Head')})` : ''}
+                  {person.is_household_head ? ' (Head)' : ''}
                 </span>
                 <small>
-                  {ageInYears(person.birthday) ?? '—'} {t('years old')}
+                  {ageInYears(person.birthday) ?? '—'} years old
                   {person.household_number ? ` • ${person.household_number}` : ''}
                 </small>
                 <Icon name="chevron" size={16} />
@@ -114,8 +112,8 @@ export function ResidentsPage() {
         </ul>
       ) : (
         <EmptyState
-          title={t(searching ? 'Searching...' : 'No resident found')}
-          text={t('Register a household to start the offline-first BHW workflow.')}
+          title={searching ? 'Searching...' : 'No resident found'}
+          text="Register a household to start the offline-first BHW workflow."
         />
       )}
     </Card>
@@ -124,14 +122,13 @@ export function ResidentsPage() {
 
 export function ResidentDetailPage() {
   const { residentId } = useParams<{ residentId: string }>();
-  const { t } = useBhwLanguage();
   const { bhwId, snapshot, refreshLocalData, setMessage } = useMabisaData();
 
   return (
     <>
       <Link className="back-link" to="/bhw/residents">
         <Icon name="chevron" size={16} />
-        {t('Back to residents')}
+        Back to residents
       </Link>
       <ResidentDetail
         residentId={residentId ?? ''}
@@ -164,7 +161,6 @@ export function HealthAssessmentPage() {
 
 export function ProfilePage() {
   const { logout } = useOutletContext<BhwOutletContext>();
-  const { t } = useBhwLanguage();
   const { snapshot } = useMabisaData();
   const [email, setEmail] = useState<string | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
@@ -179,41 +175,41 @@ export function ProfilePage() {
     <Card>
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">{t('Account')}</p>
-          <h2>{t('Profile')}</h2>
+          <p className="eyebrow">Account</p>
+          <h2>Profile</h2>
         </div>
       </div>
 
       <dl className="profile-facts">
         <div>
-          <dt>{t('Signed in as')}</dt>
+          <dt>Signed in as</dt>
           <dd>{email ?? '—'}</dd>
         </div>
         <div>
-          <dt>{t('Role')}</dt>
-          <dd>{t('Barangay Health Worker')}</dd>
+          <dt>Role</dt>
+          <dd>Barangay Health Worker</dd>
         </div>
         <div>
-          <dt>{t('Records on this device')}</dt>
+          <dt>Records on this device</dt>
           <dd>{snapshot.householdCount + snapshot.individualCount}</dd>
         </div>
       </dl>
 
       <div className="profile-setting">
-        <span>{t('Appearance')}</span>
+        <span>Appearance</span>
         <ThemeToggle />
       </div>
 
       <Button variant="danger" className="profile-logout" onClick={() => setConfirmingLogout(true)}>
         <Icon name="logout" size={17} />
-        {t('Log out')}
+        Log out
       </Button>
 
-      <Modal open={confirmingLogout} title={t('Log out of MABISA?')} onClose={() => setConfirmingLogout(false)}>
-        <p className="logout-warning"><Icon name="warning" size={20} />{t('Make sure pending records are synchronized before leaving this device.')}</p>
+      <Modal open={confirmingLogout} title="Log out of MABISA?" onClose={() => setConfirmingLogout(false)}>
+        <p className="logout-warning"><Icon name="warning" size={20} />Make sure pending records are synchronized before leaving this device.</p>
         <div className="modal-actions">
-          <Button variant="ghost" onClick={() => setConfirmingLogout(false)}>{t('Stay logged in')}</Button>
-          <Button variant="danger" onClick={() => void logout()}><Icon name="logout" size={17} />{t('Log out')}</Button>
+          <Button variant="ghost" onClick={() => setConfirmingLogout(false)}>Stay logged in</Button>
+          <Button variant="danger" onClick={() => void logout()}><Icon name="logout" size={17} />Log out</Button>
         </div>
       </Modal>
     </Card>

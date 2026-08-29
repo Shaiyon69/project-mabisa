@@ -5,8 +5,6 @@ import type { SyncStatus } from '../../services/syncService';
 import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
-import { BhwLanguageProvider } from '../../app/BhwLanguageContext';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 
 const bhwNavItems = [
   { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', icon: 'home' as const, end: true },
@@ -59,16 +57,7 @@ function recordRail(
 }
 
 export function BHWLayout({ logout }: BHWLayoutProps) {
-  return (
-    <BhwLanguageProvider>
-      <BHWLayoutContent logout={logout} />
-    </BhwLanguageProvider>
-  );
-}
-
-function BHWLayoutContent({ logout }: BHWLayoutProps) {
   const { isOnline, message, syncStatus, snapshot } = useMabisaData();
-  const { t } = useBhwLanguage();
   const { locked, unlock } = useIdleLock();
   const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
 
@@ -78,17 +67,17 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
       <section className="bhw-mobile-shell" aria-label="BHW mobile app preview">
         {/* Records stay saved and queued underneath — the count is shown so nobody reads this as lost work. */}
         {locked ? (
-          <div className="idle-lock" role="dialog" aria-modal="true" aria-label={t('Screen locked')}>
+          <div className="idle-lock" role="dialog" aria-modal="true" aria-label="Screen locked">
             <span className="brand-mark" aria-hidden="true">
               M
             </span>
-            <h2>{t('Screen locked')}</h2>
+            <h2>Screen locked</h2>
             <p className="muted">
               {snapshot.pendingQueueCount
-                ? `${snapshot.pendingQueueCount} ${t('record(s) still saved on this device.')}`
-                : t('Nothing was lost. Your records are still on this device.')}
+                ? `${snapshot.pendingQueueCount} record(s) still saved on this device.`
+                : 'Nothing was lost. Your records are still on this device.'}
             </p>
-            <Button onClick={unlock}>{t('Continue')}</Button>
+            <Button onClick={unlock}>Continue</Button>
           </div>
         ) : null}
 
@@ -97,7 +86,7 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
         </p>
 
         {/* No header actions — connection state lives on the rail; theme/logout live on the Profile tab. */}
-        <PageHeader eyebrow={t('Project MABISA')} title={t('BHW Mobile')} />
+        <PageHeader eyebrow="Project MABISA" title="BHW Mobile" />
         {message ? <p className="notice">{message}</p> : null}
 
         <div className="bhw-mobile-content">
@@ -109,7 +98,7 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
             <NavLink key={item.to} to={item.to} end={item.end}>
               <Icon name={item.icon} size={19} />
               <span className="nav-full">{item.label}</span>
-              <span className="nav-short">{t(item.shortLabel)}</span>
+              <span className="nav-short">{item.shortLabel}</span>
             </NavLink>
           ))}
         </nav>
