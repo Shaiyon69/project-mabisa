@@ -44,8 +44,11 @@ export function InventoryControls({ items, onChanged }: InventoryControlsProps) 
     };
   }, []);
 
+  // activity-grid, not dashboard-grid: the twelve-column desktop grid gives a
+  // span to every child it knows about, and a card without one lands in a single
+  // 76px column. This is the same two-column row the report cards sit in.
   return (
-    <div className="dashboard-grid">
+    <div className="activity-grid">
       {loadError ? <ErrorState title="Could not read health worker accounts" text={loadError} /> : null}
       <ReceiveStockCard items={items} onChanged={onChanged} />
       <AllocateStockCard items={items} bhws={bhws} onChanged={onChanged} />
