@@ -1,7 +1,14 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminLayout } from '../components/admin/AdminLayout';
 import { BHWLayout } from '../components/bhw/BHWLayout';
-import { AccountsPage, AdminDashboardPage, InventoryPage, ReportsPage, ResidentsPage } from '../pages/admin/AdminPages';
+import {
+  AccountsPage,
+  AdminDashboardPage,
+  AnalyticsPage,
+  InventoryPage,
+  ReportsPage,
+  ResidentsPage,
+} from '../pages/admin/AdminPages';
 import {
   BHWHomePage,
   HealthAssessmentPage,
@@ -16,23 +23,28 @@ import {
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { buildsAdmin, buildsBhw, isSingleSurface } from './surface';
-import type { UserRole } from '../types/database';
+import { isPortalRole, type UserRole } from '../types/database';
 
 type AppRoutesProps = {
   logout: () => Promise<void>;
   role: UserRole | null;
   /** False until the profile lookup has settled, so a null role is not yet an answer. */
   roleChecked: boolean;
+  /** The signed-in account's name, from the same cached profile row as the role. */
+  fullName: string | null;
 };
 
-export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
-  // Both surfaces are gated, and on the same flag rather than one test per role: an
-  // unknown role has to land somewhere, and giving each surface its own predicate
-  // would leave a null role rejected by both and bouncing between them forever.
+export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProps) {
+  // Both surfaces are gated on one predicate rather than one test per role: an
+  // unknown role has to land somewhere, and giving each surface its own would
+  // leave a null role rejected by both and bouncing between them forever.
   //
-  // One value to test, because public.app_role has exactly two members. An LGU
-  // official is an `admin` row in public.profiles.
-  const isAdmin = role === 'admin';
+  // Two of the three roles in public.app_role belong here. `admin` is the RHU or
+  // LGU account that reads every barangay; `barangay_admin` runs one barangay and
+  // is the only role the stock-allocation RPCs accept. They share the portal and
+  // differ in what each screen offers, which is settled per screen from `role`
+  // rather than by a second route tree.
+  const isAdmin = isPortalRole(role);
   const belongsHere = isAdmin ? buildsAdmin : buildsBhw;
 
   // What a non-admin sees when it reaches the admin portal, in either build. The
@@ -77,7 +89,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       <Route path="/" element={<Navigate to={home} replace />} />
 
       {buildsBhw ? (
-        <Route path="/bhw" element={isAdmin && buildsAdmin ? <Navigate to="/admin" replace /> : <BHWLayout logout={logout} />}>
+        <Route path="/bhw" element={isAdmin && buildsAdmin ? <Navigate to="/admin" replace /> : <BHWLayout logout={logout} fullName={fullName} />}>
           <Route index element={<BHWHomePage />} />
           <Route path="register-resident" element={<RegisterResidentPage />} />
           <Route path="residents" element={<BhwResidentsPage />} />
@@ -89,10 +101,11 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       ) : null}
 
       {buildsAdmin ? (
-        <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} /> : adminRejection}>
+        <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} fullName={fullName} role={role} /> : adminRejection}>
           <Route index element={<AdminDashboardPage />} />
           <Route path="residents" element={<ResidentsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>

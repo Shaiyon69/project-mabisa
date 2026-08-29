@@ -74,6 +74,14 @@ export function buildReportCsv<Row>(context: ReportContext, rows: Row[], columns
   return `${preamble}\r\n\r\n${toCsv(rows, columns)}`;
 }
 
+/**
+ * Build and hand over in one call, so a panel's export button is one line and
+ * the file name is always derived from the same title the preamble carries.
+ */
+export function exportReport<Row>(context: ReportContext, rows: Row[], columns: CsvColumn<Row>[]): void {
+  downloadCsv(reportFileName(context.title), buildReportCsv(context, rows, columns));
+}
+
 /** `report-title-2026-08-22.csv`, with anything a filesystem dislikes removed. */
 export function reportFileName(title: string): string {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

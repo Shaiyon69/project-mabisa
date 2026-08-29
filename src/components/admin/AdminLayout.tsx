@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { AdminSidebar } from './AdminSidebar';
+import { AdminSidebar, AdminTabs } from './AdminSidebar';
 import { AdminTopbar } from './AdminTopbar';
+import type { UserRole } from '../../types/database';
 
 type AdminLayoutProps = {
   logout: () => Promise<void>;
+  /** The signed-in account's name, from the cached profile row read at sign-in. */
+  fullName: string | null;
+  /** `admin` or `barangay_admin` — both live here and each screen offers a different subset. */
+  role: UserRole | null;
 };
 
 /**
@@ -35,17 +40,32 @@ function useBrowserOnline(): boolean {
   return isOnline;
 }
 
-export function AdminLayout({ logout }: AdminLayoutProps) {
+export function AdminLayout({ logout, fullName, role }: AdminLayoutProps) {
   const isOnline = useBrowserOnline();
 
   // Admin screens are desktop-first because barangay officials use the web dashboard from an LGU workstation.
   return (
     <main className="mobile-shell app-layout admin-layout">
-      <AdminSidebar />
+      <AdminSidebar fullName={fullName} logout={logout} />
       <section className="workspace">
-        <AdminTopbar isOnline={isOnline} logout={logout} />
-        <Outlet />
+        {/* Narrow windows only — above 860px the rail carries the account and the
+            navigation and this whole block is hidden. Topbar and tabs stick as
+            one block: they are what must stay reachable from the middle of a
+            long table, and pinning them separately would mean guessing the
+            topbar's height in the tab bar's `top`. */}
+        <div className="admin-header">
+          <AdminTopbar isOnline={isOnline} fullName={fullName} logout={logout} />
+          <AdminTabs />
+        </div>
+        {/* The role reaches the pages through the outlet rather than a provider:
+            it is one value, it never changes inside a session, and a context for
+            it would be a second place the same profile row is remembered. */}
+        <Outlet context={{ role } satisfies AdminOutletContext} />
       </section>
     </main>
   );
 }
+
+export type AdminOutletContext = {
+  role: UserRole | null;
+};

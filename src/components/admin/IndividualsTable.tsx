@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import type { Individual } from '../../types/database';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import type { Barangay, Individual, NutritionStatus } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { fetchResidentPage } from '../../services/adminData';
+import { NUTRITION_ORDER, fetchAllResidents, fetchResidentPage, type ResidentStatusFilter } from '../../services/adminData';
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
@@ -32,6 +33,14 @@ const columns: TableColumn<Individual>[] = [
     render: (individual) => individual.household_number || 'Unassigned',
   },
   {
+    key: 'barangay',
+    header: 'Barangay',
+    // Joined in from the household, which is the only row that records it. A
+    // resident whose household carries no barangay is a backfill gap, and saying
+    // so is more useful than an empty cell.
+    render: (individual) => individual.barangay_name || 'Unassigned',
+  },
+  {
     key: 'updated',
     header: 'Last updated',
     render: (individual) => formatDate(individual.updated_at),
@@ -47,6 +56,7 @@ const exportColumns: CsvColumn<Individual>[] = [
   { header: 'Birthday', value: (row) => row.birthday },
   { header: 'Age', value: (row) => ageInYears(row.birthday) },
   { header: 'Household number', value: (row) => row.household_number },
+  { header: 'Barangay', value: (row) => row.barangay_name },
   { header: 'Household head', value: (row) => (row.is_household_head ? 'Yes' : 'No') },
   { header: 'Relationship to head', value: (row) => (row.relationship_to_head ? titleCase(row.relationship_to_head) : '') },
   { header: 'Last updated', value: (row) => row.updated_at },
@@ -64,10 +74,51 @@ const exportColumns: CsvColumn<Individual>[] = [
  * The "Pending Sync" column is gone with it. It was derived from this browser's
  * own queue length and applied to every row alike, so on the portal it said
  * nothing about the record it sat beside.
+ *
+ * The barangay narrows the registry through the household, which is the only row
+ * that records membership. It comes from the page's filter bar rather than a
+ * control of its own, so the scope an officer chose on the dashboard is still in
+ * force on the list they drilled into.
  */
-export function IndividualsTable() {
+type IndividualsTableProps = {
+  barangayId: string | null;
+  /** Only to name the active scope in the chip and the export preamble. */
+  barangays: Barangay[];
+};
+
+export function IndividualsTable({ barangayId, barangays }: IndividualsTableProps) {
+  const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
+
+  // Arrived here from a dashboard bar. The band and the period that produced it
+  // both come from the link, so the list answers the same question the bar did
+  // rather than a similar one over a different range.
+  const statusFilter = useMemo<ResidentStatusFilter | undefined>(() => {
+    const status = params.get('status');
+    const from = params.get('from');
+    const to = params.get('to');
+
+    if (!status || !from || !to || !NUTRITION_ORDER.includes(status as NutritionStatus)) {
+      return undefined;
+    }
+
+    return { status: status as NutritionStatus, from, to };
+  }, [params]);
+
+  function clearStatusFilter() {
+    setParams(
+      (current) => {
+        const updated = new URLSearchParams(current);
+
+        updated.delete('status');
+
+        return updated;
+      },
+      { replace: true },
+    );
+    setPage(1);
+  }
   const [result, setResult] = useState<{ rows: Individual[]; total: number; error: string | null; settledFor: string }>({
     rows: [],
     total: 0,
@@ -78,7 +129,10 @@ export function IndividualsTable() {
   // What this render is asking for. `loading` is derived from it rather than
   // held in its own state, so a keystroke marks the table busy on the same
   // render that changed the query.
-  const requestKey = `${query}|${page}`;
+  const requestKey = `${query}|${page}|${barangayId ?? 'all'}|${statusFilter ? `${statusFilter.status}:${statusFilter.from}:${statusFilter.to}` : ''}`;
+  const barangayName = barangayId
+    ? barangays.find((barangay) => barangay.barangay_id === barangayId)?.name ?? 'Selected barangay'
+    : null;
   const { rows, total, error } = result;
   const loading = result.settledFor !== requestKey;
 
@@ -93,7 +147,7 @@ export function IndividualsTable() {
     let current = true;
 
     const timeoutId = setTimeout(() => {
-      fetchResidentPage(query, ITEMS_PER_PAGE, (page - 1) * ITEMS_PER_PAGE)
+      fetchResidentPage(query, ITEMS_PER_PAGE, (page - 1) * ITEMS_PER_PAGE, statusFilter, barangayId)
         .then((next) => {
           if (current) {
             setResult({ rows: next.rows, total: next.total, error: null, settledFor: requestKey });
@@ -114,28 +168,34 @@ export function IndividualsTable() {
       current = false;
       clearTimeout(timeoutId);
     };
-  }, [query, page, requestKey]);
+  }, [query, page, statusFilter, barangayId, requestKey]);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
 
   /**
    * Exports the whole filtered set, not the ten rows on screen — an export whose
-   * totals disagree with the count above it is the failure FR-09 names. The page
-   * is refetched at full size for the same search term.
+   * totals disagree with the count above it is the failure FR-09 names. Asking
+   * for `total` rows in one call would not have done it: the server caps a
+   * response below that and truncates silently.
    */
   async function exportResidents() {
-    const all = await fetchResidentPage(query, Math.max(total, 1), 0);
+    const all = await fetchAllResidents(query, statusFilter, barangayId);
 
     downloadCsv(
       reportFileName('Resident Registry'),
       buildReportCsv(
         {
           title: 'Resident Registry',
-          from: 'all dates',
-          to: 'all dates',
-          filters: query.trim() ? [{ label: 'Search', value: query.trim() }] : [],
+          // The band is assessed over a period; an unfiltered registry is not.
+          from: statusFilter?.from ?? 'all dates',
+          to: statusFilter?.to ?? 'all dates',
+          filters: [
+            ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
+            ...(statusFilter ? [{ label: 'Nutrition status', value: titleCase(statusFilter.status) }] : []),
+            { label: 'Barangay', value: barangayName ?? 'All barangays' },
+          ],
         },
-        all.rows,
+        all,
         exportColumns,
       ),
     );
@@ -154,6 +214,21 @@ export function IndividualsTable() {
           Export CSV
         </Button>
       </TableToolbar>
+
+      {/* The filter arrived in a link, so it has to be visible and removable on
+          the screen it lands on — otherwise a partial registry looks like the
+          whole one, which is the worst way a drill-down can fail. */}
+      {statusFilter ? (
+        <div className="filter-chip">
+          <span>
+            Nutrition status <strong>{titleCase(statusFilter.status)}</strong>, assessed {formatDate(statusFilter.from)} –{' '}
+            {formatDate(statusFilter.to)}
+          </span>
+          <Button variant="ghost" onClick={clearStatusFilter}>
+            Clear
+          </Button>
+        </div>
+      ) : null}
 
       {error ? <ErrorState title="Could not read the resident registry" text={error} /> : null}
 

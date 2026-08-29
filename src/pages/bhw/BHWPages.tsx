@@ -160,7 +160,7 @@ export function HealthAssessmentPage() {
 }
 
 export function ProfilePage() {
-  const { logout } = useOutletContext<BhwOutletContext>();
+  const { logout, fullName } = useOutletContext<BhwOutletContext>();
   const { t } = useBhwLanguage();
   const { snapshot } = useMabisaData();
   const [email, setEmail] = useState<string | null>(null);
@@ -182,6 +182,15 @@ export function ProfilePage() {
       </div>
 
       <dl className="profile-facts">
+        {/* The name first, then the account that carries it. A BHW checking this
+            screen is confirming the phone is signed in as them, and a name
+            answers that faster than an email address does. Falls back to the
+            email rather than a dash: an account with no profile row yet still
+            has something to identify it by. */}
+        <div>
+          <dt>{t('Name')}</dt>
+          <dd>{fullName ?? email ?? '—'}</dd>
+        </div>
         <div>
           <dt>{t('Signed in as')}</dt>
           <dd>{email ?? '—'}</dd>
