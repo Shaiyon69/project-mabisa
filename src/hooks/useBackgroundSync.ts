@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Network } from '@capacitor/network';
 import { initializeLocalDatabase } from '../services/localDatabase';
-import { syncPendingQueue, type SyncResult, type SyncStatus } from '../services/syncService';
+import { idleResult, syncPendingQueue, type SyncResult, type SyncStatus } from '../services/syncService';
 
 export type BackgroundSyncState = {
   status: SyncStatus;
@@ -32,11 +32,7 @@ export function useBackgroundSync(): BackgroundSyncState {
       return result;
     } catch (error) {
       const failedResult: SyncResult = {
-        status: 'failed',
-        processed: 0,
-        deferred: 0,
-        deadLettered: 0,
-        failedQueueId: null,
+        ...idleResult('failed'),
         errorMessage: error instanceof Error ? error.message : 'Synchronization failed',
       };
 
@@ -71,11 +67,7 @@ export function useBackgroundSync(): BackgroundSyncState {
 
         setStatus('failed');
         setLastResult({
-          status: 'failed',
-          processed: 0,
-          deferred: 0,
-          deadLettered: 0,
-          failedQueueId: null,
+          ...idleResult('failed'),
           errorMessage: error instanceof Error ? error.message : 'Local database initialization failed',
         });
       });

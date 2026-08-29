@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PULL_PAGE_SIZE,
+  idleResult,
   derivedEntityKeys,
   nextAttemptTimestamp,
   newestUpdatedAt,
@@ -239,5 +240,22 @@ describe('withKnownParents', () => {
 
   it('drops everything rather than half-writing when no parent is held', () => {
     expect(withKnownParents([{ item_id: 'i1' }], 'item_id', new Set<string>())).toEqual([]);
+  });
+});
+
+describe('idleResult', () => {
+  // The shape the hook reports a failure with, so a caller cannot report a
+  // failed pass that still claims to have processed something.
+  it('carries the status and nothing else', () => {
+    expect(idleResult('failed')).toEqual({
+      status: 'failed',
+      processed: 0,
+      deferred: 0,
+      deadLettered: 0,
+      failedQueueId: null,
+      errorMessage: null,
+    });
+
+    expect(idleResult('offline').status).toBe('offline');
   });
 });
