@@ -3,11 +3,8 @@ import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { logDev } from '../lib/utils';
 import {
   readLocalHealthAssessments,
-  getHouseholdCount,
+  countRows,
   getIndividualCount,
-  getHealthAssessmentCount,
-  getSupplyDisbursementCount,
-  getSyncQueueCount,
   readLocalInventoryItems,
   readDeadLetterEntries,
   requeueDeadLetterEntries,
@@ -38,13 +35,13 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
       pendingQueueCount,
       deadLetterEntries,
     ] = await Promise.all([
-      getHouseholdCount(),
+      countRows('households'),
       getIndividualCount(),
-      getHealthAssessmentCount(),
-      getSupplyDisbursementCount(),
+      countRows('health_assessments'),
+      countRows('supply_disbursements'),
       readLocalHealthAssessments(undefined, DASHBOARD_ASSESSMENTS),
       readLocalInventoryItems(),
-      getSyncQueueCount(),
+      countRows('sync_queue'),
       readDeadLetterEntries(),
     ]);
 

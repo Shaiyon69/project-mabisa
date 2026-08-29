@@ -7,7 +7,7 @@ import { AppRoutes } from './app/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
 import { describeAuthError } from './lib/authErrors';
-import { countPendingQueueEntries } from './services/localDatabase';
+import { countRows } from './services/localDatabase';
 import { buildsBhw } from './app/surface';
 import { logDev } from './lib/utils';
 import { isDeskRole, type UserRole } from './types/database';
@@ -136,7 +136,7 @@ export function App() {
 
     let cancelled = false;
 
-    countPendingQueueEntries()
+    countRows('sync_queue')
       .then((count) => !cancelled && setPendingRecordCount(count))
       .catch((error: unknown) => {
         // No database yet on a device that's never saved anything — not worth surfacing here.
