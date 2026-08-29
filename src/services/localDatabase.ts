@@ -28,6 +28,8 @@ export type PaginatedQuery = {
   limit?: number;
   offset?: number;
   searchQuery?: string;
+  /** Individuals only: restricts the read to one household's members. */
+  householdId?: string;
 };
 
 // Defines the exact tables that exist in our local SQLite database.
@@ -878,6 +880,11 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
     LEFT JOIN households h ON i.household_id = h.household_id${search.clause}
   `;
   const params: SqlValue[] = [...search.params];
+
+  if (options?.householdId) {
+    query += search.clause ? ' AND i.household_id = ?' : ' WHERE i.household_id = ?';
+    params.push(options.householdId);
+  }
 
   query += ' ORDER BY i.last_name ASC, i.first_name ASC';
 

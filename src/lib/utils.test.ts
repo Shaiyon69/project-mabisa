@@ -5,6 +5,7 @@ import {
   getNutritionStatus,
   HEIGHT_CM_RANGE,
   isMeasurementInRange,
+  sameHouseholdNumber,
   titleCase,
   WEIGHT_KG_RANGE,
 } from './utils';
@@ -87,5 +88,20 @@ describe('getNutritionStatus', () => {
 describe('titleCase', () => {
   it('turns a snake_case enum value into a label', () => {
     expect(titleCase('severely_underweight')).toBe('Severely Underweight');
+  });
+});
+
+describe('sameHouseholdNumber', () => {
+  it('matches the same number written differently', () => {
+    expect(sameHouseholdNumber('HH-001', ' hh-001 ')).toBe(true);
+  });
+
+  it('does not match a number that merely contains the other', () => {
+    expect(sameHouseholdNumber('HH-001', 'HH-0012')).toBe(false);
+  });
+
+  it('treats a blank number as matching nothing, including another blank', () => {
+    expect(sameHouseholdNumber('', '')).toBe(false);
+    expect(sameHouseholdNumber(null, 'HH-001')).toBe(false);
   });
 });
