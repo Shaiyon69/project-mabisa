@@ -1,11 +1,5 @@
 import { Network } from '@capacitor/network';
-import type {
-  HealthAssessment,
-  Household,
-  Individual,
-  InventoryItem,
-  SupplyDisbursement,
-} from '../types/database';
+import type { InventoryItem } from '../types/database';
 import { logDev } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import {
@@ -378,7 +372,8 @@ export async function syncPendingQueue(): Promise<SyncResult> {
   }
 }
 
-function idleResult(status: SyncStatus): SyncResult {
+/** A pass that did nothing, in the shape every caller reports. */
+export function idleResult(status: SyncStatus): SyncResult {
   return {
     status,
     processed: 0,
@@ -418,35 +413,32 @@ async function pushQueueEntry(entry: SyncQueueEntry): Promise<void> {
   await updatePayload(entry.target_table, entry.payload);
 }
 
+/**
+ * The table being written is a runtime value, so the generated `Database` types
+ * cannot narrow either the row shape or the column names. One cast, here, rather
+ * than a switch repeating the same statement once per table — the payload was
+ * JSON-parsed out of SQLite text on the way in, so there was never a
+ * compile-time shape to keep.
+ */
+type UntypedRows = {
+  upsert(values: Record<string, unknown>, options: { onConflict: string }): PromiseLike<{ error: PostgrestError }>;
+  update(values: Record<string, unknown>): UntypedRows;
+  eq(column: string, value: string): UntypedRows;
+  lte(column: string, value: string): UntypedRows;
+  select(columns: string): PromiseLike<{ data: unknown[] | null; error: PostgrestError }>;
+};
+
+type PostgrestError = { message: string } | null;
+
+function rowsOf(table: LocalTableName): UntypedRows {
+  return supabase.from(table) as unknown as UntypedRows;
+}
+
 /** Uses `.upsert()`, not `.insert()` — a retried push after a dropped connection must not fatal on a duplicate primary key. */
 async function insertPayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
-  switch (targetTable) {
-    case 'households': {
-      const { error } = await supabase.from('households').upsert(payload as Household, { onConflict: 'household_id' });
-      if (error) throw error;
-      return;
-    }
-    case 'individuals': {
-      const { error } = await supabase.from('individuals').upsert(payload as Individual, { onConflict: 'resident_id' });
-      if (error) throw error;
-      return;
-    }
-    case 'health_assessments': {
-      const { error } = await supabase.from('health_assessments').upsert(payload as HealthAssessment, { onConflict: 'assessment_id' });
-      if (error) throw error;
-      return;
-    }
-    case 'inventory_items': {
-      const { error } = await supabase.from('inventory_items').upsert(payload as InventoryItem, { onConflict: 'item_id' });
-      if (error) throw error;
-      return;
-    }
-    case 'supply_disbursements': {
-      const { error } = await supabase.from('supply_disbursements').upsert(payload as SupplyDisbursement, { onConflict: 'log_id' });
-      if (error) throw error;
-      return;
-    }
-  }
+  const { error } = await rowsOf(targetTable).upsert(payload, { onConflict: primaryKeys[targetTable] });
+
+  if (error) throw error;
 }
 
 /**
@@ -473,74 +465,19 @@ function assertApplied(targetTable: LocalTableName, rows: unknown[] | null): voi
 async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
   const primaryKey = primaryKeys[targetTable];
   const primaryValue = payload[primaryKey as keyof typeof payload];
-  const since = editedAt(payload);
 
   if (typeof primaryValue !== 'string') {
     throw new Error(`Missing primary key for ${targetTable} update`);
   }
 
-  switch (targetTable) {
-    case 'households': {
-      const update = withoutPrimaryKey(payload as Household, 'household_id');
-      const { data, error } = await supabase
-        .from('households')
-        .update(update)
-        .eq('household_id', primaryValue)
-        .lte('updated_at', since)
-        .select('household_id');
-      if (error) throw error;
-      assertApplied(targetTable, data);
-      return;
-    }
-    case 'individuals': {
-      const update = withoutPrimaryKey(payload as Individual, 'resident_id');
-      const { data, error } = await supabase
-        .from('individuals')
-        .update(update)
-        .eq('resident_id', primaryValue)
-        .lte('updated_at', since)
-        .select('resident_id');
-      if (error) throw error;
-      assertApplied(targetTable, data);
-      return;
-    }
-    case 'health_assessments': {
-      const update = withoutPrimaryKey(payload as HealthAssessment, 'assessment_id');
-      const { data, error } = await supabase
-        .from('health_assessments')
-        .update(update)
-        .eq('assessment_id', primaryValue)
-        .lte('updated_at', since)
-        .select('assessment_id');
-      if (error) throw error;
-      assertApplied(targetTable, data);
-      return;
-    }
-    case 'inventory_items': {
-      const update = withoutPrimaryKey(payload as InventoryItem, 'item_id');
-      const { data, error } = await supabase
-        .from('inventory_items')
-        .update(update)
-        .eq('item_id', primaryValue)
-        .lte('updated_at', since)
-        .select('item_id');
-      if (error) throw error;
-      assertApplied(targetTable, data);
-      return;
-    }
-    case 'supply_disbursements': {
-      const update = withoutPrimaryKey(payload as SupplyDisbursement, 'log_id');
-      const { data, error } = await supabase
-        .from('supply_disbursements')
-        .update(update)
-        .eq('log_id', primaryValue)
-        .lte('updated_at', since)
-        .select('log_id');
-      if (error) throw error;
-      assertApplied(targetTable, data);
-      return;
-    }
-  }
+  const { data, error } = await rowsOf(targetTable)
+    .update(withoutPrimaryKey(payload, primaryKey))
+    .eq(primaryKey, primaryValue)
+    .lte('updated_at', editedAt(payload))
+    .select(primaryKey);
+
+  if (error) throw error;
+  assertApplied(targetTable, data);
 }
 
 // -----------------------------------------------------------------------------
@@ -548,10 +485,10 @@ async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntr
 // -----------------------------------------------------------------------------
 
 /** Removes the primary key before an UPDATE payload is sent. */
-function withoutPrimaryKey<T extends Record<string, unknown>, K extends keyof T>(payload: T, key: K): Omit<T, K> {
-  const copy: Partial<T> = { ...payload };
+function withoutPrimaryKey(payload: object, key: string): Record<string, unknown> {
+  const copy: Record<string, unknown> = { ...payload };
   delete copy[key];
-  return copy as Omit<T, K>;
+  return copy;
 }
 
 // -----------------------------------------------------------------------------

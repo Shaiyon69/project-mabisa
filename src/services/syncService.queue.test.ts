@@ -9,7 +9,14 @@ import type { LocalTableName, SyncOperationType, SyncQueueEntry } from './localD
 // scenarios that matter (an interrupted pass, a replayed entry, a rejected one).
 
 const fake = vi.hoisted(() => {
-  type Sent = { table: string; operation: 'upsert' | 'update'; payload: Record<string, unknown> };
+  type Sent = {
+    table: string;
+    operation: 'upsert' | 'update';
+    payload: Record<string, unknown>;
+    /** The conflict target an upsert named, and the filters an update was narrowed by. */
+    onConflict?: string;
+    filters: [string, string, unknown][];
+  };
 
   return {
     queue: [] as SyncQueueEntry[],
@@ -28,13 +35,16 @@ vi.mock('@capacitor/network', () => ({
 
 vi.mock('../lib/supabase', () => {
   /** Chainable and awaitable, like a PostgrestFilterBuilder, minus the HTTP. */
-  const resolving = (value: unknown) => {
+  const resolving = (value: unknown, filters: [string, string, unknown][] = []) => {
     const chain: Record<string, unknown> = {
       then: (onFulfilled: (value: unknown) => unknown) => Promise.resolve(value).then(onFulfilled),
     };
 
     for (const method of ['eq', 'lte', 'gte', 'select', 'order', 'limit', 'range']) {
-      chain[method] = () => chain;
+      chain[method] = (column: string, value: unknown) => {
+        filters.push([method, column, value]);
+        return chain;
+      };
     }
 
     return chain;
@@ -44,18 +54,22 @@ vi.mock('../lib/supabase', () => {
     supabase: {
       auth: { getSession: () => Promise.resolve({ data: { session: { user: { id: 'bhw-1' } } } }) },
       from: (table: string) => ({
-        upsert: (payload: Record<string, unknown>) => {
-          fake.sent.push({ table, operation: 'upsert', payload });
+        upsert: (payload: Record<string, unknown>, options?: { onConflict?: string }) => {
+          const filters: [string, string, unknown][] = [];
+          fake.sent.push({ table, operation: 'upsert', payload, onConflict: options?.onConflict, filters });
           return resolving(
             fake.rejecting.has(table) ? { data: null, error: new Error(`${table} rejected`) } : { data: [payload], error: null },
+            filters,
           );
         },
         update: (payload: Record<string, unknown>) => {
-          fake.sent.push({ table, operation: 'update', payload });
+          const filters: [string, string, unknown][] = [];
+          fake.sent.push({ table, operation: 'update', payload, filters });
           return resolving(
             fake.rejecting.has(table)
               ? { data: null, error: new Error(`${table} rejected`) }
               : { data: fake.updateMatches ? [payload] : [], error: null },
+            filters,
           );
         },
         // The pull runs only on a clean pass and has nothing to say here.
@@ -166,6 +180,63 @@ describe('an interrupted pass', () => {
     expect(result.status).toBe('failed');
     expect(fake.deadLetters.map(({ entry }) => entry.target_table)).toEqual(['households', 'individuals']);
     expect(fake.queue).toHaveLength(0);
+  });
+});
+
+describe('the statement each table is written with', () => {
+  const primaryKeys: [LocalTableName, string][] = [
+    ['households', 'household_id'],
+    ['individuals', 'resident_id'],
+    ['health_assessments', 'assessment_id'],
+    ['inventory_items', 'item_id'],
+    ['supply_disbursements', 'log_id'],
+  ];
+
+  it('names the primary key of each table as its upsert conflict target', async () => {
+    fake.queue = primaryKeys.map(([table, key]) => queued(table, { [key]: `${key}-1` }));
+
+    await syncPendingQueue();
+
+    expect(fake.sent.map((call) => [call.table, call.onConflict])).toEqual(primaryKeys);
+  });
+
+  it('narrows each update by the primary key of that table and by the device edit time', async () => {
+    fake.queue = primaryKeys.map(([table, key]) =>
+      queued(table, { [key]: `${key}-1`, updated_at: '2026-08-18T01:00:00.000Z' }, { operation_type: 'UPDATE' }),
+    );
+
+    await syncPendingQueue();
+
+    for (const [index, [table, key]] of primaryKeys.entries()) {
+      const call = fake.sent[index];
+
+      expect(call.table).toBe(table);
+      expect(call.operation).toBe('update');
+      expect(call.filters).toContainEqual(['eq', key, `${key}-1`]);
+      // Without this the update overwrites a row the office edited in the meantime.
+      expect(call.filters).toContainEqual(['lte', 'updated_at', '2026-08-18T01:00:00.000Z']);
+      // Selected back so a no-op update is distinguishable from a successful one.
+      expect(call.filters).toContainEqual(['select', key, undefined]);
+    }
+  });
+
+  it('lets a payload with no updated_at through rather than quarantining it', async () => {
+    fake.queue = [queued('households', { household_id: 'h1' }, { operation_type: 'UPDATE' })];
+
+    const result = await syncPendingQueue();
+
+    expect(result.status).toBe('synced');
+    expect(fake.sent[0].filters).toContainEqual(['lte', 'updated_at', '9999-12-31T23:59:59.999Z']);
+  });
+
+  it('refuses an update whose payload carries no primary key', async () => {
+    fake.queue = [queued('households', { household_number: 'HH-001' }, { operation_type: 'UPDATE' })];
+
+    const result = await syncPendingQueue();
+
+    expect(fake.sent).toHaveLength(0);
+    expect(result.deferred).toBe(1);
+    expect(fake.queue[0].last_error).toContain('Missing primary key');
   });
 });
 
