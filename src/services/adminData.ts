@@ -33,10 +33,6 @@ export function defaultAdminFilters(): AdminFilters {
   };
 }
 
-export function describePeriod(filters: AdminFilters): string {
-  return `${filters.from} to ${filters.to}`;
-}
-
 /** Only the columns the demographic summaries need. */
 export type AdminResident = Pick<Individual, 'resident_id' | 'sex' | 'birthday' | 'updated_at'>;
 
@@ -317,7 +313,6 @@ function sanitizeSearch(query: string): string {
   return query
     .trim()
     .replace(/[,()*%\\".']/g, ' ')
-    .replace(/'/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
