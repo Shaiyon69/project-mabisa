@@ -14,7 +14,9 @@
     "preview": "vite preview",
     "preview:admin": "vite preview --outDir dist-admin",
     "sync:android": "npm run build:mobile && cap sync android",
-    "open:android": "cap open android"
+    "open:android": "cap open android",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^7.1.6",
@@ -35,6 +37,7 @@
   "devDependencies": {
     "@capacitor/cli": "^7.6.8",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
