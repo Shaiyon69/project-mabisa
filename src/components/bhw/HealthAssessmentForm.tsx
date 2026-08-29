@@ -7,6 +7,8 @@ import {
   createId,
   getNutritionStatus,
   HEIGHT_CM_RANGE,
+  ignoreImplicitSubmit,
+  isInFuture,
   isMeasurementInRange,
   scrollToFirstError,
   titleCase,
@@ -93,6 +95,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     !hasIndividuals && 'registered resident',
     !residentId && 'selected resident',
     !assessmentDate && 'assessment date',
+    isInFuture(assessmentDate) && 'an assessment date on or before today',
     (!isMeasurementInRange(weight, WEIGHT_KG_RANGE) ||
       !isMeasurementInRange(height, HEIGHT_CM_RANGE) ||
       !bmi ||
@@ -152,7 +155,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
         </div>
         <Badge label={hasIndividuals ? 'Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
       </div>
-      <form className="stack" onSubmit={handleSubmit}>
+      <form className="stack" onSubmit={handleSubmit} onKeyDown={ignoreImplicitSubmit} noValidate>
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
         
         <IndividualSearch
@@ -173,7 +176,13 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           value={assessmentDate} 
           onChange={(event) => setAssessmentDate(event.target.value)} 
           required 
-          error={showValidation && !assessmentDate ? 'Assessment date is required.' : undefined}
+          error={
+            showValidation && !assessmentDate
+              ? 'Assessment date is required.'
+              : showValidation && isInFuture(assessmentDate)
+                ? 'Assessment date cannot be in the future.'
+                : undefined
+          }
         />
         <div className="field-row">
           <FormField 

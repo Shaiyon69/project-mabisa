@@ -5,6 +5,7 @@ import {
   emptyToNull,
   getNutritionStatus,
   HEIGHT_CM_RANGE,
+  isInFuture,
   isMeasurementInRange,
   philhealthDigits,
   sameHouseholdNumber,
@@ -151,5 +152,28 @@ describe('philhealthDigits', () => {
     expect(philhealthDigits('--')).toBeNull();
     expect(philhealthDigits(null)).toBeNull();
     expect(philhealthDigits(undefined)).toBeNull();
+  });
+});
+
+describe('isInFuture', () => {
+  it('accepts today and everything before it', () => {
+    expect(isInFuture('2026-08-30', '2026-08-30')).toBe(false);
+    expect(isInFuture('1980-04-05', '2026-08-30')).toBe(false);
+  });
+
+  it('rejects a date that has not happened yet', () => {
+    expect(isInFuture('2026-08-31', '2026-08-30')).toBe(true);
+    expect(isInFuture('2099-12-31', '2026-08-30')).toBe(true);
+  });
+
+  it('treats an unanswered date as nothing to complain about', () => {
+    // Whether the field is required is a separate question, asked separately.
+    expect(isInFuture('', '2026-08-30')).toBe(false);
+    expect(isInFuture(null, '2026-08-30')).toBe(false);
+    expect(isInFuture(undefined, '2026-08-30')).toBe(false);
+  });
+
+  it('compares the day, not the moment, so a timestamp does not read as tomorrow', () => {
+    expect(isInFuture('2026-08-30T23:59:00Z', '2026-08-30')).toBe(false);
   });
 });
