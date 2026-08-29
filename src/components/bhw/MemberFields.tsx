@@ -3,7 +3,6 @@ import type { Individual, IndividualSex, RelationshipToHead } from '../../types/
 import { RELATIONSHIPS_TO_HEAD } from '../../types/database';
 import { titleCase, today } from '../../lib/utils';
 import { FormField, SelectField } from '../common/FormField';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 
 // The column is plain text with no check constraint, so a fixed list is safe here
 // and keeps the registry searchable in a way free text would not.
@@ -57,8 +56,6 @@ type MemberFieldsProps = {
  * one of them quietly stops offering an education level the other still writes.
  */
 export function MemberFields({ member, onChange, showValidation, children }: MemberFieldsProps) {
-  const { t } = useBhwLanguage();
-
   return (
     <>
       <div className="field-row">
@@ -66,47 +63,47 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
             field; typing one lowercase surname per household is the kind of
             work the app should absorb rather than hand to the BHW. */}
         <FormField
-          label={t('First Name')}
+          label="First Name"
           value={member.first_name ?? ''}
           onChange={(event) => onChange('first_name', event.target.value)}
           required
           autoCapitalize="words"
-          error={showValidation && !member.first_name?.trim() ? t('First name is required.') : undefined}
+          error={showValidation && !member.first_name?.trim() ? 'First name is required.' : undefined}
         />
         <FormField
-          label={t('Middle Name')}
+          label="Middle Name"
           value={member.middle_name ?? ''}
           onChange={(event) => onChange('middle_name', event.target.value)}
           placeholder="(Optional)"
           autoCapitalize="words"
         />
         <FormField
-          label={t('Last Name')}
+          label="Last Name"
           value={member.last_name ?? ''}
           onChange={(event) => onChange('last_name', event.target.value)}
           required
           autoCapitalize="words"
-          error={showValidation && !member.last_name?.trim() ? t('Last name is required.') : undefined}
+          error={showValidation && !member.last_name?.trim() ? 'Last name is required.' : undefined}
         />
       </div>
 
       <div className="field-row">
         <FormField
-          label={t('Birthdate')}
+          label="Birthdate"
           type="date"
           max={today()}
           value={member.birthday ?? ''}
           onChange={(event) => onChange('birthday', event.target.value)}
           required
-          error={showValidation && !member.birthday ? t('Birthdate is required.') : undefined}
+          error={showValidation && !member.birthday ? 'Birthdate is required.' : undefined}
         />
         <SelectField
-          label={t('Sex')}
+          label="Sex"
           value={member.sex ?? 'female'}
           onChange={(event) => onChange('sex', event.target.value as IndividualSex)}
         >
-          <option value="female">{t('Female')}</option>
-          <option value="male">{t('Male')}</option>
+          <option value="female">Female</option>
+          <option value="male">Male</option>
         </SelectField>
       </div>
 
@@ -116,7 +113,7 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
           answer survives an accidental tick-and-untick. */}
       {member.is_household_head ? null : (
         <SelectField
-          label={t('Relationship to Household Head')}
+          label="Relationship to Household Head"
           value={member.relationship_to_head ?? ''}
           onChange={(event) =>
             onChange('relationship_to_head', (event.target.value || null) as RelationshipToHead | null)
@@ -127,10 +124,10 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
               nearest wrong answer. Labels are titleCased from the stored value,
               the same way
               educational_attainment is displayed. */}
-          <option value="">{t('(Not specified)')}</option>
+          <option value="">(Not specified)</option>
           {RELATIONSHIPS_TO_HEAD.map((value) => (
             <option key={value} value={value}>
-              {t(titleCase(value))}
+              {titleCase(value)}
             </option>
           ))}
         </SelectField>
@@ -138,42 +135,42 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
 
       <div className="field-row">
         <FormField
-          label={t('Occupation')}
+          label="Occupation"
           value={member.occupation ?? ''}
           onChange={(event) => onChange('occupation', event.target.value)}
           placeholder="(Optional)"
         />
         <SelectField
-          label={t('Educational Attainment')}
+          label="Educational Attainment"
           value={member.educational_attainment ?? ''}
           onChange={(event) => onChange('educational_attainment', event.target.value)}
         >
           {EDUCATION_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
-              {t(option.label)}
+              {option.label}
             </option>
           ))}
         </SelectField>
       </div>
 
       <FormField
-        label={t('PhilHealth Number')}
+        label="PhilHealth Number"
         value={member.philhealth_number ?? ''}
         onChange={(event) => onChange('philhealth_number', event.target.value)}
         placeholder="(Optional) e.g. 12-345678901-2"
         inputMode="numeric"
-        hint={t('Dashes and spaces are fine — only the digits are saved.')}
+        hint="Dashes and spaces are fine — only the digits are saved."
       />
 
       <div className="choice-list">
         {children}
         <MemberChoice
-          label={t('Out-of-school youth')}
+          label="Out-of-school youth"
           checked={member.is_out_of_school_youth ?? false}
           onChange={(next) => onChange('is_out_of_school_youth', next)}
         />
         <MemberChoice
-          label={t('Pregnant, nursing, or using family planning')}
+          label="Pregnant, nursing, or using family planning"
           checked={member.is_pregnant_nursing_fp ?? false}
           onChange={(next) => onChange('is_pregnant_nursing_fp', next)}
         />

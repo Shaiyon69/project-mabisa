@@ -5,7 +5,6 @@ import { Button } from '../common/Button';
 import { Icon } from '../common/Icon';
 import { Modal } from '../common/Modal';
 import { TextAreaField } from '../common/FormField';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 
 /** One member of the household being saved, and the records that look like them. */
 export type FlaggedMember = {
@@ -41,19 +40,18 @@ export function DuplicateWarningModal({
   onCancel,
   onOverride,
 }: DuplicateWarningModalProps) {
-  const { t } = useBhwLanguage();
   const hasReason = reason.trim().length > 0;
 
   return (
-    <Modal open={open} title={t('Someone here may already be registered')} onClose={onCancel}>
+    <Modal open={open} title="Someone here may already be registered" onClose={onCancel}>
       <p className="duplicate-lede">
-        {t('Check these records before saving. If this is a different person, say so and the app will keep your reason with the new record.')}
+        Check these records before saving. If this is a different person, say so and the app will keep your reason with the new record.
       </p>
 
       {flagged.map((member) => (
         <div key={member.memberNumber} className="duplicate-group">
           <h3>
-            {t('Member')} {member.memberNumber}: {member.memberName}
+            Member {member.memberNumber}: {member.memberName}
           </h3>
           <ul className="compact-list">
             {member.matches.map((match) => (
@@ -63,11 +61,11 @@ export function DuplicateWarningModal({
                   {match.person.middle_name ? ` ${match.person.middle_name.charAt(0)}.` : ''}
                 </span>
                 <small>
-                  {ageInYears(match.person.birthday) ?? '—'} {t('years old')}
+                  {ageInYears(match.person.birthday) ?? '—'} years old
                   {match.person.household_number ? ` • ${match.person.household_number}` : ''}
                 </small>
                 <Badge
-                  label={t(match.confidence === 'exact' ? 'Same name and birthdate' : 'Same name')}
+                  label={match.confidence === 'exact' ? 'Same name and birthdate' : 'Same name'}
                   tone={match.confidence === 'exact' ? 'danger' : 'warning'}
                 />
               </li>
@@ -77,20 +75,20 @@ export function DuplicateWarningModal({
       ))}
 
       <TextAreaField
-        label={t('Why is this a different person?')}
+        label="Why is this a different person?"
         value={reason}
         rows={3}
         onChange={(event) => onReasonChange(event.target.value)}
-        hint={t('Saved with the record so an administrator can see who decided this and why.')}
+        hint="Saved with the record so an administrator can see who decided this and why."
       />
 
       <div className="modal-actions">
         <Button variant="ghost" onClick={onCancel} disabled={saving}>
-          {t('Go back and edit')}
+          Go back and edit
         </Button>
         <Button variant="danger" onClick={onOverride} disabled={!hasReason || saving}>
           <Icon name="save" size={17} />
-          {t(saving ? 'Saving Offline...' : 'Not the same person — save')}
+          {saving ? 'Saving Offline...' : 'Not the same person — save'}
         </Button>
       </div>
     </Modal>

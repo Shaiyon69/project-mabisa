@@ -63,12 +63,42 @@ export function getNutritionStatus(bmi: number | null): NutritionStatus | null {
   return 'obese';
 }
 
+/**
+ * Whether two household numbers name the same household. A device only ever holds
+ * one purok, so the number alone is the identity — compared trimmed and
+ * case-insensitively, because "hh-001" and "HH-001 " are one house on paper.
+ */
+export function sameHouseholdNumber(left: string | null | undefined, right: string | null | undefined): boolean {
+  const normalize = (value: string | null | undefined) => value?.trim().toLowerCase() ?? '';
+  const normalized = normalize(left);
+
+  return normalized !== '' && normalized === normalize(right);
+}
+
 export function createId(): string {
   return crypto.randomUUID();
 }
 
 export function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * The date to stamp on a member's status. A status that has just moved off
+ * `active` is dated today; one that has not moved keeps the date it already
+ * carried; returning to `active` clears it, because there is nothing to date.
+ */
+export function statusChangedOn(
+  previous: string | null | undefined,
+  next: string | null | undefined,
+  existing: string | null | undefined,
+  on: string = today(),
+): string | null {
+  if ((next ?? 'active') === 'active') {
+    return null;
+  }
+
+  return next === previous ? existing ?? on : on;
 }
 
 /**
