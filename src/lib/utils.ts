@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react';
 import type { NutritionStatus } from '../types/database';
 
 export function calculateBmi(weightKg: number, heightCm: number): number | null {
@@ -99,6 +100,24 @@ export function today(): string {
 }
 
 /**
+ * A date that has not happened yet. Both sides are `YYYY-MM-DD`, and that format
+ * sorts as the calendar does, so the comparison is a string one: parsing a
+ * date-only string through `new Date()` reads it as UTC midnight, which is the
+ * previous day west of Greenwich and would call this morning's date future.
+ *
+ * The `max` attribute on a date input stops the picker, not the keyboard, and
+ * these forms carry `noValidate` so the app can speak for itself -- this is what
+ * actually keeps a birthdate of 2099 out of the record.
+ */
+export function isInFuture(value: string | null | undefined, on: string = today()): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return value.slice(0, 10) > on;
+}
+
+/**
  * The date to stamp on a member's status. A status that has just moved off
  * `active` is dated today; one that has not moved keeps the date it already
  * carried; returning to `active` clears it, because there is nothing to date.
@@ -151,6 +170,20 @@ export function formatDate(value: string): string {
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(value));
+}
+
+/**
+ * Enter inside a text field submits a form implicitly. Now that these forms carry
+ * `noValidate`, that put every message the form has in front of a BHW who was one
+ * field in and pressed the phone keyboard's "next" -- the Save button is the way
+ * in. A textarea keeps Enter, where it means a new line.
+ */
+export function ignoreImplicitSubmit(event: KeyboardEvent<HTMLFormElement>): void {
+  const target = event.target as HTMLElement;
+
+  if (event.key === 'Enter' && target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'submit') {
+    event.preventDefault();
+  }
 }
 
 /**

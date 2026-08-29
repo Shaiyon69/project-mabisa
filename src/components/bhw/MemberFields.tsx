@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Individual, IndividualSex, RelationshipToHead } from '../../types/database';
 import { RELATIONSHIPS_TO_HEAD } from '../../types/database';
-import { titleCase, today } from '../../lib/utils';
+import { isInFuture, titleCase, today } from '../../lib/utils';
 import { FormField, SelectField } from '../common/FormField';
 
 // The column is plain text with no check constraint, so a fixed list is safe here
@@ -95,7 +95,13 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
           value={member.birthday ?? ''}
           onChange={(event) => onChange('birthday', event.target.value)}
           required
-          error={showValidation && !member.birthday ? 'Birthdate is required.' : undefined}
+          error={
+            showValidation && !member.birthday
+              ? 'Birthdate is required.'
+              : showValidation && isInFuture(member.birthday)
+                ? 'Birthdate cannot be in the future.'
+                : undefined
+          }
         />
         <SelectField
           label="Sex"

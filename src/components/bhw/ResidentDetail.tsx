@@ -5,6 +5,7 @@ import {
   ageInYears,
   emptyToNull,
   formatDate,
+  isInFuture,
   philhealthDigits,
   scrollToFirstError,
   statusChangedOn,
@@ -99,7 +100,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
     setShowValidation(true);
     setFormError(null);
 
-    if (!draft.first_name.trim() || !draft.last_name.trim() || !draft.birthday) {
+    if (!draft.first_name.trim() || !draft.last_name.trim() || !draft.birthday || isInFuture(draft.birthday)) {
       scrollToFirstError();
       return;
     }

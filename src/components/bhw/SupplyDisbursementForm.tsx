@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { InventoryItem, SupplyDisbursement } from '../../types/database'; 
-import { createId, scrollToFirstError, today } from '../../lib/utils';
+import { createId, ignoreImplicitSubmit, isInFuture, scrollToFirstError, today } from '../../lib/utils';
 import { saveSupplyDisbursementLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -38,6 +38,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     (!requestedQuantity || requestedQuantity < 1) && 'valid quantity',
     selectedItem && requestedQuantity > selectedItem.current_stock && 'quantity within available stock',
     !disbursementDate && 'disbursement date',
+    isInFuture(disbursementDate) && 'a disbursement date on or before today',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
 
@@ -90,7 +91,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
         </div>
       </div>
 
-      <form className="stack" onSubmit={handleSubmit}>
+      <form className="stack" onSubmit={handleSubmit} onKeyDown={ignoreImplicitSubmit} noValidate>
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
         <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? 'Select a resident.' : undefined} />
@@ -129,7 +130,13 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
             value={disbursementDate} 
             onChange={(event) => setDisbursementDate(event.target.value)} 
             required 
-            error={showValidation && !disbursementDate ? 'Disbursement date is required.' : undefined}
+            error={
+              showValidation && !disbursementDate
+                ? 'Disbursement date is required.'
+                : showValidation && isInFuture(disbursementDate)
+                  ? 'Disbursement date cannot be in the future.'
+                  : undefined
+            }
           />
         </div>
 

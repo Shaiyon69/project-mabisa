@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
-import { createId, emptyToNull, philhealthDigits, sameHouseholdNumber, scrollToFirstError } from '../../lib/utils';
+import { createId, emptyToNull, ignoreImplicitSubmit, isInFuture, philhealthDigits, sameHouseholdNumber, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
   readLocalHouseholds,
@@ -168,6 +168,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     !household.food_production?.length && 'food production',
     !members.every((member) => member.first_name?.trim() && member.last_name?.trim() && member.birthday) && 'member names and birthdates',
     !members.some((member) => member.is_household_head) && 'household head',
+    members.some((member) => isInFuture(member.birthday)) && 'birthdates on or before today',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
 
@@ -458,7 +459,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         <Badge label="Saved Offline" tone="success" />
       </div>
 
-      <form className="stack" onSubmit={handleSubmit}>
+      <form className="stack" onSubmit={handleSubmit} onKeyDown={ignoreImplicitSubmit} noValidate>
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
         {/* Says why the form is not empty. Without it, restored entries read as another
