@@ -28,6 +28,11 @@ export const RELATIONSHIPS_TO_HEAD = [
   'unrelated',
 ] as const;
 export type RelationshipToHead = (typeof RELATIONSHIPS_TO_HEAD)[number];
+// Whether a member is still counted in the household. A member who left is marked
+// rather than deleted — her row is the parent of every assessment and release
+// recorded for her. Read off the tuple, same as the relationships above.
+export const RESIDENT_STATUSES = ['active', 'moved_out', 'deceased', 'transferred'] as const;
+export type ResidentStatus = (typeof RESIDENT_STATUSES)[number];
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
 
@@ -134,6 +139,10 @@ export type Individual = {
   duplicate_override_reason?: string | null;
   duplicate_override_by?: string | null;
   duplicate_override_at?: string | null;
+  // Defaults to 'active' centrally, so a row predating this column reads as active.
+  status?: ResidentStatus;
+  /** The day the status last left `active`. Null while active. */
+  status_changed_on?: string | null;
 };
 
 export type HealthAssessment = {
