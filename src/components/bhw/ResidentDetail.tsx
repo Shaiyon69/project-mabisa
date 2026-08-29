@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RESIDENT_STATUSES, type HealthAssessment, type Individual, type InventoryItem, type SupplyDisbursement } from '../../types/database';
-import { ageInYears, formatDate, scrollToFirstError, statusChangedOn, titleCase } from '../../lib/utils';
+import {
+  ageInYears,
+  emptyToNull,
+  formatDate,
+  philhealthDigits,
+  scrollToFirstError,
+  statusChangedOn,
+  titleCase,
+} from '../../lib/utils';
 import {
   readLocalHealthAssessments,
   readLocalIndividual,
@@ -23,17 +31,6 @@ type ResidentDetailProps = {
   bhwId: string;
   onSaved: () => Promise<void>;
 };
-
-/** Blank optional text is stored as NULL rather than an empty string. */
-function emptyToNull(value: string | null | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
-
-function philhealthDigits(value: string | null | undefined): string | null {
-  const digits = value?.replace(/\D/g, '');
-  return digits ? digits : null;
-}
 
 type ResidentRecord = {
   residentId: string;

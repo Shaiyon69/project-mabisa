@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
-import { createId, sameHouseholdNumber, scrollToFirstError } from '../../lib/utils';
+import { createId, emptyToNull, philhealthDigits, sameHouseholdNumber, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
   readLocalHouseholds,
@@ -42,18 +42,6 @@ const FOOD_OPTIONS = [
 
 // Accepts dashes/spaces on input (as written on paper forms); digits-only storage prevents two spellings of one ID.
 const PHILHEALTH_ALLOWED = /^[\d\s-]+$/;
-
-/** Blank optional text is stored as NULL rather than an empty string. */
-function emptyToNull(value: string | null | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
-
-/** Strips the formatting a BHW typed, leaving the canonical digits. */
-function philhealthDigits(value: string | null | undefined): string | null {
-  const digits = value?.replace(/\D/g, '');
-  return digits ? digits : null;
-}
 
 /**
  * The household already on this device under that number, if there is one. A device
@@ -118,6 +106,34 @@ function clearDraft(bhwId: string): void {
   }
 }
 
+/** An empty household and an empty member row. Written once — the form starts, resets and grows rows from the same shape. */
+function blankHousehold(): Partial<Household> {
+  return {
+    household_number: '',
+    toilet_type: [],
+    water_source: [],
+    food_production: [],
+    health_status_notes: '',
+  };
+}
+
+function blankMember(isHead: boolean): Partial<Individual> {
+  return {
+    first_name: '',
+    middle_name: '',
+    last_name: '',
+    sex: 'female',
+    birthday: '',
+    is_household_head: isHead,
+    relationship_to_head: null,
+    occupation: '',
+    educational_attainment: '',
+    is_out_of_school_youth: false,
+    is_pregnant_nursing_fp: false,
+    philhealth_number: '',
+  };
+}
+
 type HouseholdFormProps = {
   bhwId: string;
   onSaved: () => Promise<void>;
@@ -127,30 +143,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   // Read once, on the first render only — later renders must not fight the BHW's typing.
   const [restored] = useState(() => readDraft(bhwId));
   const [restoredNotice, setRestoredNotice] = useState(restored !== null);
-  const [household, setHousehold] = useState<Partial<Household>>(restored?.household ?? {
-    household_number: '',
-    toilet_type: [],
-    water_source: [],
-    food_production: [],
-    health_status_notes: ''
-  });
-
-  const [members, setMembers] = useState<Partial<Individual>[]>(restored?.members ?? [
-    {
-      first_name: '',
-      middle_name: '',
-      last_name: '',
-      sex: 'female',
-      birthday: '',
-      is_household_head: true,
-      relationship_to_head: null,
-      occupation: '',
-      educational_attainment: '',
-      is_out_of_school_youth: false,
-      is_pregnant_nursing_fp: false,
-      philhealth_number: '',
-    }
-  ]);
+  const [household, setHousehold] = useState<Partial<Household>>(restored?.household ?? blankHousehold());
+  const [members, setMembers] = useState<Partial<Individual>[]>(restored?.members ?? [blankMember(true)]);
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -195,29 +189,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
   function startBlank() {
     clearDraft(bhwId);
-    setHousehold({
-      household_number: '',
-      toilet_type: [],
-      water_source: [],
-      food_production: [],
-      health_status_notes: '',
-    });
-    setMembers([
-      {
-        first_name: '',
-        middle_name: '',
-        last_name: '',
-        sex: 'female',
-        birthday: '',
-        is_household_head: true,
-        relationship_to_head: null,
-        occupation: '',
-        educational_attainment: '',
-        is_out_of_school_youth: false,
-        is_pregnant_nursing_fp: false,
-        philhealth_number: '',
-      },
-    ]);
+    setHousehold(blankHousehold());
+    setMembers([blankMember(true)]);
     setFlagged([]);
     setShowValidation(false);
     setRestoredNotice(false);
@@ -261,23 +234,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   }
 
   function addMember() {
-    setMembers([
-      ...members,
-      {
-        first_name: '',
-        middle_name: '',
-        last_name: '',
-        sex: 'female',
-        birthday: '',
-        is_household_head: false,
-        relationship_to_head: null,
-        occupation: '',
-        educational_attainment: '',
-        is_out_of_school_youth: false,
-        is_pregnant_nursing_fp: false,
-        philhealth_number: '',
-      }
-    ]);
+    setMembers([...members, blankMember(false)]);
   }
 
   function memberLabel(member: Partial<Individual>, index: number): string {
@@ -441,17 +398,6 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
     if (!isFormReady) {
       reject(null);
-      return;
-    }
-
-    const hasHead = members.some((member) => member.is_household_head === true);
-    if (!hasHead) {
-      reject('Cannot save: Please assign at least one person as the Household Head.');
-      return;
-    }
-
-    if (members.length === 0) {
-      reject('Cannot save: A household must have at least one member.');
       return;
     }
 
