@@ -175,6 +175,11 @@ export function App() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
+
+    // The sign-in screen renders outside the router, so nothing else resets the
+    // address bar — and the next person to sign in on this device would be
+    // dropped wherever the last one was standing.
+    window.history.replaceState(null, '', '/');
   }
 
   if (!bhwId) {
