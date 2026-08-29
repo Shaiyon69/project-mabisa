@@ -12,7 +12,6 @@ import { FormActions, FormField } from '../common/FormField';
 import { CheckboxGroup } from '../common/CheckboxGroup';
 import { Icon } from '../common/Icon';
 import { Modal } from '../common/Modal';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 
 const WATER_OPTIONS = [
   { label: 'Local Water District', value: 'water_district' },
@@ -102,7 +101,6 @@ type HouseholdFormProps = {
 };
 
 export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
-  const { t } = useBhwLanguage();
   // Read once, on the first render only — later renders must not fight the BHW's typing.
   const [restored] = useState(() => readDraft(bhwId));
   const [restoredNotice, setRestoredNotice] = useState(restored !== null);
@@ -226,7 +224,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   function memberLabel(member: Partial<Individual>, index: number): string {
     const name = `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim();
 
-    return name || `${t('Member')} ${index + 1}`;
+    return name || `Member ${index + 1}`;
   }
 
   /** Whether anything was typed into this row — an untouched one is not worth a confirmation. */
@@ -419,10 +417,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">{t('Household Profiling')}</p>
-          <h2>{t('New Household Registration')}</h2>
+          <p className="eyebrow">Household Profiling</p>
+          <h2>New Household Registration</h2>
         </div>
-        <Badge label={t('Saved Offline')} tone="success" />
+        <Badge label="Saved Offline" tone="success" />
       </div>
 
       <form className="stack" onSubmit={handleSubmit}>
@@ -433,57 +431,57 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         {restoredNotice ? (
           <p className="form-alert tone-info" role="status">
             <Icon name="save" size={18} />
-            {t('Unsaved entries from your last visit were restored.')}
-            <Button type="button" variant="ghost" onClick={startBlank}>{t('Start blank')}</Button>
+            Unsaved entries from your last visit were restored.
+            <Button type="button" variant="ghost" onClick={startBlank}>Start blank</Button>
           </p>
         ) : null}
 
-        <h3>{t('Household Information')}</h3>
+        <h3>Household Information</h3>
         <FormField 
-          label={t('Household Number')}
+          label="Household Number"
           value={household.household_number} 
           onChange={(e) => setHousehold({ ...household, household_number: e.target.value })} 
           placeholder="e.g. HH-001" 
           required 
-          error={showValidation && !household.household_number?.trim() ? t('Household number is required.') : undefined}
+          error={showValidation && !household.household_number?.trim() ? 'Household number is required.' : undefined}
         />
 
         <CheckboxGroup
-          label={t('Primary Water Source(s)')}
-          options={WATER_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+          label="Primary Water Source(s)"
+          options={WATER_OPTIONS}
           selectedValues={household.water_source || []}
           onChange={(newValues) => setHousehold({ ...household, water_source: newValues })}
-          error={showValidation && !household.water_source?.length ? t('Select at least one water source.') : undefined}
+          error={showValidation && !household.water_source?.length ? 'Select at least one water source.' : undefined}
         />
 
         <CheckboxGroup
-          label={t('Toilet Facility')}
-          options={TOILET_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+          label="Toilet Facility"
+          options={TOILET_OPTIONS}
           selectedValues={household.toilet_type || []}
           onChange={(newValues) => setHousehold({ ...household, toilet_type: newValues })}
-          error={showValidation && !household.toilet_type?.length ? t('Select at least one toilet facility.') : undefined}
+          error={showValidation && !household.toilet_type?.length ? 'Select at least one toilet facility.' : undefined}
         />
 
         <CheckboxGroup
-          label={t('Food Production')}
-          options={FOOD_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+          label="Food Production"
+          options={FOOD_OPTIONS}
           selectedValues={household.food_production || []}
           onChange={(newValues) => setHousehold({ ...household, food_production: newValues })}
-          error={showValidation && !household.food_production?.length ? t('Select at least one food-production option.') : undefined}
+          error={showValidation && !household.food_production?.length ? 'Select at least one food-production option.' : undefined}
         />
 
         <hr className="form-divider" />
 
-        <h3>{t('Household Members')}</h3>
+        <h3>Household Members</h3>
 
         {members.map((member, index) => (
           <div key={index} className="member-card">
             <div className="member-card-heading">
-              <h4>{t('Member')} {index + 1} {member.is_household_head ? `(${t('Head')})` : ''}</h4>
+              <h4>Member {index + 1} {member.is_household_head ? '(Head)' : ''}</h4>
               {/* One member is the household itself — there is nothing to remove down to. */}
               {members.length > 1 ? (
                 <Button type="button" variant="ghost" onClick={() => requestRemoveMember(index)}>
-                  {t('Remove')}
+                  Remove
                 </Button>
               ) : null}
             </div>
@@ -494,24 +492,24 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
               onChange={(field, value) => updateMember(index, field, value)}
             >
               <MemberChoice
-                label={t('This person is a household head')}
+                label="This person is a household head"
                 checked={member.is_household_head ?? false}
                 onChange={(next) => updateMember(index, 'is_household_head', next)}
               />
             </MemberFields>
 
-            {showValidation && !members.some((entry) => entry.is_household_head) ? <small className="field-error"><b className="required-mark">*</b> {t('Assign one household head.')}</small> : null}
+            {showValidation && !members.some((entry) => entry.is_household_head) ? <small className="field-error"><b className="required-mark">*</b> Assign one household head.</small> : null}
           </div>
         ))}
 
         <Button type="button" variant="ghost" className="add-member-action" onClick={addMember}>
-          {t('Add another member')}
+          Add another member
         </Button>
 
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
-            {t(saving ? 'Saving Offline...' : 'Save Complete Household')}
+            {saving ? 'Saving Offline...' : 'Save Complete Household'}
           </Button>
         </FormActions>
       </form>
@@ -531,19 +529,19 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
       <Modal
         open={removingMember !== null}
-        title={t('Remove this member?')}
+        title="Remove this member?"
         onClose={() => setRemovingMember(null)}
       >
         <p className="logout-warning">
           <Icon name="warning" size={20} />
           {removingMember !== null ? memberLabel(members[removingMember], removingMember) : ''}
           {' — '}
-          {t('what was typed for this member will be discarded.')}
+          what was typed for this member will be discarded.
         </p>
         <div className="modal-actions">
-          <Button variant="ghost" onClick={() => setRemovingMember(null)}>{t('Keep member')}</Button>
+          <Button variant="ghost" onClick={() => setRemovingMember(null)}>Keep member</Button>
           <Button variant="danger" onClick={() => removingMember !== null && removeMember(removingMember)}>
-            {t('Remove')}
+            Remove
           </Button>
         </div>
       </Modal>

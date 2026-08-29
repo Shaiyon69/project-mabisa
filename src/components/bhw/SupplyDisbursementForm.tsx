@@ -9,7 +9,6 @@ import { FormActions, FormField } from '../common/FormField';
 import { Combobox } from '../common/Combobox';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type SupplyDisbursementFormProps = {
   individualCount: number; 
@@ -18,7 +17,6 @@ type SupplyDisbursementFormProps = {
 };
 
 export function SupplyDisbursementForm({ individualCount, inventoryItems, onSaved }: SupplyDisbursementFormProps) {
-  const { t, isFilipino } = useBhwLanguage();
   const [residentId, setResidentId] = useState('');
   const [itemId, setItemId] = useState(inventoryItems[0]?.item_id || '');
   const [quantity, setQuantity] = useState('1');
@@ -83,62 +81,62 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">{t('Inventory')}</p>
-          <h2>{t('Disburse Supplies')}</h2>
+          <p className="eyebrow">Inventory</p>
+          <h2>Disburse Supplies</h2>
         </div>
         <div className="header-actions">
-          <Badge label={t(hasIndividuals ? 'Residents Ready' : 'Needs Profile')} tone={hasIndividuals ? 'success' : 'warning'} />
-          <Badge label={t(hasInventory ? 'Stock Available' : 'Empty Stock')} tone={hasInventory ? 'success' : 'danger'} />
+          <Badge label={hasIndividuals ? 'Residents Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
+          <Badge label={hasInventory ? 'Stock Available' : 'Empty Stock'} tone={hasInventory ? 'success' : 'danger'} />
         </div>
       </div>
 
       <form className="stack" onSubmit={handleSubmit}>
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
-        <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? t('Select a resident.') : undefined} />
-        {!hasIndividuals ? <p className="form-hint">{t('Register a household before disbursing supplies.')}</p> : null}
+        <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? 'Select a resident.' : undefined} />
+        {!hasIndividuals ? <p className="form-hint">Register a household before disbursing supplies.</p> : null}
 
         <Combobox
-          label={t('Item')}
+          label="Item"
           value={itemId}
           options={inventoryItems.map((item) => ({
             value: item.item_id,
-            label: `${item.item_name} (${item.current_stock} ${isFilipino ? 'natitira' : 'in stock'})`,
+            label: `${item.item_name} (${item.current_stock} in stock)`,
           }))}
           onChange={setItemId}
-          placeholder={t('Search item...')}
+          placeholder="Search item..."
           disabled={!hasInventory}
-          error={showValidation && !itemId ? t('Select an inventory item.') : undefined}
-          emptyText={t('No item found')}
+          error={showValidation && !itemId ? 'Select an inventory item.' : undefined}
+          emptyText="No item found"
         />
-        {!hasInventory ? <p className="form-hint">{t('Admin must sync inventory items before disbursement.')}</p> : null}
+        {!hasInventory ? <p className="form-hint">Admin must sync inventory items before disbursement.</p> : null}
 
         <div className="field-row">
           <FormField 
-            label={t('Quantity')}
+            label="Quantity"
             type="number" 
             min="1" 
             max="1000"
             value={quantity} 
             onChange={(event) => setQuantity(event.target.value)} 
             required 
-            error={showValidation && (!requestedQuantity || requestedQuantity < 1 || Boolean(selectedItem && requestedQuantity > selectedItem.current_stock)) ? selectedItem && requestedQuantity > selectedItem.current_stock ? isFilipino ? `${selectedItem.current_stock} aytem lamang ang available.` : `Only ${selectedItem.current_stock} item(s) are available.` : t('Enter a quantity of at least 1.') : undefined}
+            error={showValidation && (!requestedQuantity || requestedQuantity < 1 || Boolean(selectedItem && requestedQuantity > selectedItem.current_stock)) ? selectedItem && requestedQuantity > selectedItem.current_stock ? `Only ${selectedItem.current_stock} item(s) are available.` : 'Enter a quantity of at least 1.' : undefined}
           />
           <FormField 
-            label={t('Date')}
+            label="Date"
             type="date" 
             max={today()}
             value={disbursementDate} 
             onChange={(event) => setDisbursementDate(event.target.value)} 
             required 
-            error={showValidation && !disbursementDate ? t('Disbursement date is required.') : undefined}
+            error={showValidation && !disbursementDate ? 'Disbursement date is required.' : undefined}
           />
         </div>
 
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
-            {t(saving ? 'Saving Offline...' : 'Save Disbursement')}
+            {saving ? 'Saving Offline...' : 'Save Disbursement'}
           </Button>
         </FormActions>
       </form>

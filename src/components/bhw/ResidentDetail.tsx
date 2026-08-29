@@ -15,7 +15,6 @@ import { FormActions } from '../common/FormField';
 import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
 import { MemberChoice, MemberFields } from './MemberFields';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type ResidentDetailProps = {
   residentId: string;
@@ -60,7 +59,6 @@ async function readResident(residentId: string): Promise<ResidentRecord> {
  * a wrong measurement is corrected by taking another, not by editing the record.
  */
 export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: ResidentDetailProps) {
-  const { t, isFilipino } = useBhwLanguage();
   const [resident, setResident] = useState<Individual | null>(null);
   const [assessments, setAssessments] = useState<HealthAssessment[]>([]);
   const [disbursements, setDisbursements] = useState<SupplyDisbursement[]>([]);
@@ -144,7 +142,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
   if (loading) {
     return (
       <Card>
-        <p className="muted">{t('Opening record...')}</p>
+        <p className="muted">Opening record...</p>
       </Card>
     );
   }
@@ -153,11 +151,11 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
     return (
       <Card>
         <EmptyState
-          title={t('Resident not on this device')}
-          text={t('They may belong to another purok, or their record has not synced down yet.')}
+          title="Resident not on this device"
+          text="They may belong to another purok, or their record has not synced down yet."
         />
         <Link className="ghost-button" to="/bhw/residents">
-          {t('Back to residents')}
+          Back to residents
         </Link>
       </Card>
     );
@@ -171,13 +169,13 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
       <Card className="form-panel">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">{t('Resident')}</p>
+            <p className="eyebrow">Resident</p>
             <h2>
               {resident.first_name} {resident.middle_name ? `${resident.middle_name.charAt(0)}. ` : ''}
               {resident.last_name}
             </h2>
           </div>
-          {resident.is_household_head ? <Badge label={t('Household Head')} tone="info" /> : null}
+          {resident.is_household_head ? <Badge label="Household Head" tone="info" /> : null}
         </div>
 
         {formError ? (
@@ -195,7 +193,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               onChange={(field, value) => setDraft({ ...draft, [field]: value })}
             >
               <MemberChoice
-                label={t('This person is a household head')}
+                label="This person is a household head"
                 checked={draft.is_household_head}
                 onChange={(next) => setDraft({ ...draft, is_household_head: next })}
               />
@@ -211,51 +209,51 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
                   setFormError(null);
                 }}
               >
-                {t('Cancel')}
+                Cancel
               </Button>
               <Button disabled={saving} onClick={() => void handleSave()}>
                 <Icon name="save" size={18} />
-                {t(saving ? 'Saving Offline...' : 'Save changes')}
+                {saving ? 'Saving Offline...' : 'Save changes'}
               </Button>
             </FormActions>
           </>
         ) : (
           <>
             <dl className="profile-facts">
-              <Fact label={t('Age')} value={age === null ? '—' : `${age} ${t('years old')}`} />
-              <Fact label={t('Birthdate')} value={formatDate(resident.birthday)} />
-              <Fact label={t('Sex')} value={t(titleCase(resident.sex))} />
-              <Fact label={t('Household')} value={resident.household_number ?? '—'} />
+              <Fact label="Age" value={age === null ? '—' : `${age} years old`} />
+              <Fact label="Birthdate" value={formatDate(resident.birthday)} />
+              <Fact label="Sex" value={titleCase(resident.sex)} />
+              <Fact label="Household" value={resident.household_number ?? '—'} />
               <Fact
-                label={t('Relationship to Household Head')}
+                label="Relationship to Household Head"
                 value={
                   resident.is_household_head
-                    ? t('Household Head')
+                    ? 'Household Head'
                     : resident.relationship_to_head
-                      ? t(titleCase(resident.relationship_to_head))
+                      ? titleCase(resident.relationship_to_head)
                       : '—'
                 }
               />
-              <Fact label={t('Occupation')} value={resident.occupation ?? '—'} />
+              <Fact label="Occupation" value={resident.occupation ?? '—'} />
               <Fact
-                label={t('Educational Attainment')}
-                value={resident.educational_attainment ? t(titleCase(resident.educational_attainment)) : '—'}
+                label="Educational Attainment"
+                value={resident.educational_attainment ? titleCase(resident.educational_attainment) : '—'}
               />
-              <Fact label={t('PhilHealth Number')} value={resident.philhealth_number ?? '—'} />
+              <Fact label="PhilHealth Number" value={resident.philhealth_number ?? '—'} />
               <Fact
-                label={t('Out-of-school youth')}
-                value={t(resident.is_out_of_school_youth ? 'Yes' : 'No')}
+                label="Out-of-school youth"
+                value={resident.is_out_of_school_youth ? 'Yes' : 'No'}
               />
               <Fact
-                label={t('Pregnant, nursing, or using family planning')}
-                value={t(resident.is_pregnant_nursing_fp ? 'Yes' : 'No')}
+                label="Pregnant, nursing, or using family planning"
+                value={resident.is_pregnant_nursing_fp ? 'Yes' : 'No'}
               />
             </dl>
 
             {resident.duplicate_override_reason ? (
               <p className="form-hint" role="note">
                 <Icon name="warning" size={16} />{' '}
-                {t('Saved over a duplicate warning')}
+                Saved over a duplicate warning
                 {resident.duplicate_override_at ? ` • ${formatDate(resident.duplicate_override_at)}` : ''}: “
                 {resident.duplicate_override_reason}”
               </p>
@@ -263,7 +261,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
 
             <Button variant="ghost" onClick={() => setDraft(resident)}>
               <Icon name="user" size={17} />
-              {t('Edit profile')}
+              Edit profile
             </Button>
           </>
         )}
@@ -272,8 +270,8 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
       <Card className="list-section">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">{t('Recent checks')}</p>
-            <h2>{t('Health Assessments')}</h2>
+            <p className="eyebrow">Recent checks</p>
+            <h2>Health Assessments</h2>
           </div>
           <Badge label={`${assessments.length}`} tone="info" />
         </div>
@@ -282,7 +280,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
           <ul className="compact-list">
             {assessments.map((assessment) => (
               <li key={assessment.assessment_id}>
-                <span>{t(titleCase(assessment.nutrition_status))}</span>
+                <span>{titleCase(assessment.nutrition_status)}</span>
                 <small>
                   {assessment.bmi.toFixed(2)} BMI • {assessment.weight} kg • {assessment.height} cm •{' '}
                   {formatDate(assessment.assessment_date)}
@@ -291,15 +289,15 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
             ))}
           </ul>
         ) : (
-          <EmptyState title={t('No assessments yet')} text={t('Saved health assessments will appear here.')} />
+          <EmptyState title="No assessments yet" text="Saved health assessments will appear here." />
         )}
       </Card>
 
       <Card className="list-section">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">{t('Inventory')}</p>
-            <h2>{t('Supplies Released')}</h2>
+            <p className="eyebrow">Inventory</p>
+            <h2>Supplies Released</h2>
           </div>
           <Badge label={`${disbursements.length}`} tone="info" />
         </div>
@@ -311,16 +309,16 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
 
               return (
                 <li key={release.log_id}>
-                  <span>{item?.item_name ?? t('Item not on this device')}</span>
+                  <span>{item?.item_name ?? 'Item not on this device'}</span>
                   <small>
-                    {release.quantity} {isFilipino ? 'piraso' : 'item(s)'} • {formatDate(release.disbursement_date)}
+                    {release.quantity} item(s) • {formatDate(release.disbursement_date)}
                   </small>
                 </li>
               );
             })}
           </ul>
         ) : (
-          <EmptyState title={t('No supplies released')} text={t('Supply releases to this resident appear here.')} />
+          <EmptyState title="No supplies released" text="Supply releases to this resident appear here." />
         )}
       </Card>
     </div>

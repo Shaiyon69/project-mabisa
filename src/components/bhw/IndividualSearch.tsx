@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { Combobox, type ComboboxOption } from '../common/Combobox';
 import { readLocalIndividuals } from '../../services/localDatabase';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 
 type IndividualSearchProps = {
   selectedResidentId: string;
@@ -21,7 +20,6 @@ function toOption(person: Individual): ComboboxOption {
 }
 
 export function IndividualSearch({ selectedResidentId, onChange, error }: IndividualSearchProps) {
-  const { t } = useBhwLanguage();
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Individual[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +49,7 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
 
   return (
     <Combobox
-      label={t('Individual')}
+      label="Individual"
       value={selectedResidentId}
       options={options}
       onChange={(residentId) => {
@@ -60,9 +58,9 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
         onChange(residentId, person?.resident_id === residentId ? person : null);
       }}
       onQueryChange={setQuery}
-      placeholder={t('Search by name...')}
+      placeholder="Search by name..."
       error={error}
-      emptyText={t(isLoading ? 'Searching...' : 'No resident found')}
+      emptyText={isLoading ? 'Searching...' : 'No resident found'}
     />
   );
 }
