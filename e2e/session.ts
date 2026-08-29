@@ -78,22 +78,28 @@ export async function signIn(page: Page, { role, userId = `user-${role}`, cacheR
     ] as const,
   );
 
-  // The one call the shell makes before deciding which surface a session belongs to.
-  await page.route('**/rest/v1/profiles*', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ role, is_active: true }),
-    }),
-  );
-
-  // Everything else Supabase would be asked for. The app is offline-first, so a
+  // Everything Supabase would be asked for. The app is offline-first, so a
   // refused call is a state it already handles; letting these reach the network
   // would make the suite depend on a live project.
+  //
+  // Registered before the profiles stub on purpose: a later route wins in
+  // Playwright, so a catch-all added last would swallow the profile lookup and
+  // every session would resolve to no role at all.
   await page.route('**/rest/v1/**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
   );
   await page.route('**/auth/v1/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+
+  // The one call the shell makes before deciding which surface a session belongs
+  // to. An array of one row serves both callers: `.maybeSingle()` takes the row
+  // out of it, and the portal's account list reads it as a one-account table.
+  await page.route('**/rest/v1/profiles*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ user_id: userId, role, is_active: true, full_name: 'Test Account', barangay_id: null }]),
+    }),
+  );
 }
 
 /** Puts a known PIN on the device for the signed-in account, as a second run of the app would find. */
