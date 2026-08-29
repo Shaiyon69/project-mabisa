@@ -74,7 +74,9 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
   const [households, residents, assessments, disbursements, inventory, barangayLabel] = await Promise.all([
     // head:true asks for the count without the rows.
     supabase.from('households').select('household_id', { count: 'exact', head: true }),
-    supabase.from('individuals').select('resident_id, sex, birthday, updated_at'),
+    // Active members only: a resident who moved out or died is still on file, but
+    // counting her as profiled today would overstate the population served.
+    supabase.from('individuals').select('resident_id, sex, birthday, updated_at').eq('status', 'active'),
     supabase
       .from('health_assessments')
       .select('*')

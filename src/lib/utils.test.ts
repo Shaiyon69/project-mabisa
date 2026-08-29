@@ -5,6 +5,8 @@ import {
   getNutritionStatus,
   HEIGHT_CM_RANGE,
   isMeasurementInRange,
+  sameHouseholdNumber,
+  statusChangedOn,
   titleCase,
   WEIGHT_KG_RANGE,
 } from './utils';
@@ -87,5 +89,34 @@ describe('getNutritionStatus', () => {
 describe('titleCase', () => {
   it('turns a snake_case enum value into a label', () => {
     expect(titleCase('severely_underweight')).toBe('Severely Underweight');
+  });
+});
+
+describe('sameHouseholdNumber', () => {
+  it('matches the same number written differently', () => {
+    expect(sameHouseholdNumber('HH-001', ' hh-001 ')).toBe(true);
+  });
+
+  it('does not match a number that merely contains the other', () => {
+    expect(sameHouseholdNumber('HH-001', 'HH-0012')).toBe(false);
+  });
+
+  it('treats a blank number as matching nothing, including another blank', () => {
+    expect(sameHouseholdNumber('', '')).toBe(false);
+    expect(sameHouseholdNumber(null, 'HH-001')).toBe(false);
+  });
+});
+
+describe('statusChangedOn', () => {
+  it('dates a status that has just left active', () => {
+    expect(statusChangedOn('active', 'moved_out', null, '2026-08-29')).toBe('2026-08-29');
+  });
+
+  it('keeps the date a standing status already carried', () => {
+    expect(statusChangedOn('deceased', 'deceased', '2026-07-01', '2026-08-29')).toBe('2026-07-01');
+  });
+
+  it('clears the date when the member is active again', () => {
+    expect(statusChangedOn('moved_out', 'active', '2026-07-01', '2026-08-29')).toBeNull();
   });
 });

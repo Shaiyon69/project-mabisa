@@ -9,7 +9,6 @@ import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
 import { readLocalIndividuals } from '../../services/localDatabase';
-import { useBhwLanguage } from '../../app/bhwLanguage';
 import type { SyncStatus } from '../../services/syncService';
 
 type BHWDashboardProps = {
@@ -35,7 +34,6 @@ export function BHWDashboard({
   onRetryDeadLetters,
   onSignInAgain,
 }: BHWDashboardProps) {
-  const { t } = useBhwLanguage();
   // 1. Replaced the useMemo slice with a local state for our SQLite query
   const [latestIndividuals, setLatestIndividuals] = useState<Individual[]>([]);
 
@@ -62,27 +60,27 @@ export function BHWDashboard({
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
-        <Metric label={t('Households')} value={snapshot.householdCount} detail={t('Registered dwellings')} tone="blue" />
+        <Metric label="Households" value={snapshot.householdCount} detail="Registered dwellings" tone="blue" />
         {/* The one metric with somewhere to go. There is no sixth slot on the
             bottom nav, so the registry is reached from the count of it. */}
         <Metric
-          label={t('Individuals')}
+          label="Individuals"
           value={snapshot.individualCount}
-          detail={t('Local profiles')}
+          detail="Local profiles"
           tone="green"
           to="/bhw/residents"
         />
-        <Metric label={t('Assessments')} value={snapshot.assessmentCount} detail={t('Health records')} tone="amber" />
-        <Metric label={t('Released')} value={snapshot.disbursementCount} detail={t('Supply logs')} tone="red" />
+        <Metric label="Assessments" value={snapshot.assessmentCount} detail="Health records" tone="amber" />
+        <Metric label="Released" value={snapshot.disbursementCount} detail="Supply logs" tone="red" />
       </section>
 
       <Card className="list-section">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">{t('BHW workflow')}</p>
-            <h2>{t('Recent Profiles')}</h2>
+            <p className="eyebrow">BHW workflow</p>
+            <h2>Recent Profiles</h2>
           </div>
-          <Badge label={t(snapshot.pendingQueueCount ? 'Pending Sync' : 'Saved Offline')} tone={snapshot.pendingQueueCount ? 'warning' : 'success'} />
+          <Badge label={snapshot.pendingQueueCount ? 'Pending Sync' : 'Saved Offline'} tone={snapshot.pendingQueueCount ? 'warning' : 'success'} />
         </div>
 
         {latestIndividuals.length ? (
@@ -100,15 +98,15 @@ export function BHWDashboard({
             ))}
           </ul>
         ) : (
-          <EmptyState title={t('No local profiles yet')} text={t('Register a household to start the offline-first BHW workflow.')} />
+          <EmptyState title="No local profiles yet" text="Register a household to start the offline-first BHW workflow." />
         )}
       </Card>
 
       <Card className="list-section">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">{t('Recent checks')}</p>
-            <h2>{t('Health Assessments')}</h2>
+            <p className="eyebrow">Recent checks</p>
+            <h2>Health Assessments</h2>
           </div>
         </div>
         {snapshot.latestAssessments.length ? (
@@ -123,7 +121,7 @@ export function BHWDashboard({
             ))}
           </ul>
         ) : (
-          <EmptyState title={t('No assessments yet')} text={t('Saved health assessments will appear here.')} />
+          <EmptyState title="No assessments yet" text="Saved health assessments will appear here." />
         )}
       </Card>
     </div>
