@@ -276,7 +276,7 @@ textarea {
 }
 
 button,
-.mobile-tabs a,
+.admin-tabs a,
 .admin-nav a,
 .admin-link {
   min-height: 50px;
@@ -397,7 +397,7 @@ button .ui-icon {
    to survive direct sunlight, where a shadow is the first thing to disappear. */
 
 button:active,
-.mobile-tabs a:active,
+.admin-tabs a:active,
 .admin-nav a:active,
 .admin-link:active {
   transform: scale(0.98);
@@ -437,25 +437,32 @@ button:active,
 
 /* Auth */
 
-.mobile-tabs {
+/* Portal navigation for a window too narrow for the rail. Five equal columns,
+   icon over label, so the labels stay readable down to a phone-width browser
+   instead of being truncated one at a time. Hidden again at 860px, where
+   `.admin-sidebar` takes over. */
+
+.admin-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
 }
 
-.mobile-tabs button,
-.mobile-tabs a {
+.admin-tabs a {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 46px;
-  padding: 9px 7px;
+  gap: 6px;
+  min-height: 66px;
+  padding: 8px 4px;
   color: var(--muted);
   background: var(--muted-surface);
+  font-size: 13px;
+  text-align: center;
 }
 
-.mobile-tabs .active,
-.mobile-tabs a.active {
+.admin-tabs a.active {
   color: var(--primary-foreground);
   background: var(--primary);
 }
@@ -1037,9 +1044,41 @@ tbody tr:hover {
 
 /* Admin web */
 
+/* The portal is read from an office chair at a desk monitor, not held at arm's
+   length, but it was inheriting type sized for a phone in a barangay street. The
+   base step up lands on everything inside the workspace at once; the rules below
+   only raise what was pinned smaller than the base. */
 .admin-layout {
   width: 100%;
   max-width: none;
+  font-size: 16px;
+}
+
+.admin-layout th,
+.admin-layout td {
+  font-size: 15px;
+}
+
+.admin-layout th {
+  font-size: 13px;
+}
+
+.admin-layout .eyebrow,
+.admin-layout .ui-table-meta {
+  font-size: 13px;
+}
+
+.admin-layout .header-copy,
+.admin-layout .muted,
+.admin-layout .form-hint {
+  font-size: 15px;
+}
+
+.admin-layout .metric span,
+.admin-layout .metric small,
+.admin-layout .stock-card span,
+.admin-layout .stock-card small {
+  font-size: 13px;
 }
 
 .admin-sidebar {
@@ -1049,16 +1088,25 @@ tbody tr:hover {
 .admin-nav {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 6px;
 }
 
+/* The label is read at a glance down a narrow rail, not across a desk: keep it
+   plainly legible and let the box sit close around it. */
 .admin-nav a,
 .admin-link {
   display: flex;
   align-items: center;
-  min-height: 46px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
   color: var(--muted);
   background: var(--muted-surface);
+  font-size: 15px;
+}
+
+.admin-nav .ui-icon {
+  flex: 0 0 auto;
 }
 
 .admin-nav a.active,
@@ -1067,23 +1115,284 @@ tbody tr:hover {
   background: var(--primary);
 }
 
+.admin-sidebar .brand-lockup strong {
+  font-size: 17px;
+}
+
+/* Pinned, because the only way out of the portal is in here. The account menu
+   and the sign-out inside it are not something to scroll a long resident table
+   back up to reach, and below 860px this block is also the only navigation there
+   is. Matches the sidebar, which is already sticky: navigation and account stay
+   put, content moves.
+
+   The background is opaque and the padding is the shell's own, so content
+   scrolling underneath is covered rather than showing through the gap. */
+.admin-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: -16px 0 0;
+  padding: 16px 0 10px;
+  background: var(--bg);
+}
+
 .admin-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 9px 12px 9px 16px;
 }
 
-.admin-topbar > div:first-child {
+.account-panel .profile-logout {
+  min-height: 44px;
+}
+
+/* The account at the foot of the rail. `margin-top: auto` is what pins it there:
+   `.side-rail` is a full-height sticky flex column, so the free space collects
+   above this block rather than below it. */
+.sidebar-account {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  margin-top: auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
 }
 
-.admin-topbar span {
+/* In the rail the account is a bar across the foot rather than a circle at the
+   end of a row: avatar, name and address, with connectivity as a dot beside it.
+   A pill shape at this width reads as a button in a rail whose buttons are the
+   navigation above it, so the corners are the panel's rather than round. */
+.admin-sidebar .account-menu {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-sidebar .account-menu summary {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
+  background: transparent;
+}
+
+.admin-sidebar .account-menu summary:hover {
+  background: var(--field-soft);
+}
+
+.admin-sidebar .account-name {
+  max-width: none;
+}
+
+.admin-sidebar .account-email-line {
+  display: block;
+}
+
+/* The bar is the whole width; a caret at the end of it only competes with the
+   address for the last few pixels. */
+.admin-sidebar .account-caret {
+  display: none;
+}
+
+/* Opens upward, from the right edge. The default `top: calc(100% + 8px)` would
+   drop the panel off the bottom of the viewport from down here, and the width is
+   the rail's own content box (296px grid column less its 18px padding) so the
+   panel lands inside the rail rather than over the table beside it. */
+.admin-sidebar .account-panel {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: auto;
+  right: 0;
+  width: 260px;
+}
+
+.admin-sidebar .account-menu[open] .account-caret {
+  transform: rotate(-90deg);
+}
+
+/* Account menu. The workspace caption that used to sit at the left of this bar
+   was the same eight words on every screen; the account is the thing that
+   actually differs between sessions on a shared LGU workstation. */
+
+.account-menu {
+  position: relative;
+}
+
+.account-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px 5px 5px;
+  background: var(--field-soft);
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-menu summary:hover {
+  border-color: var(--primary);
+}
+
+.account-avatar {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.account-identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Shown only in the rail, where the bar is full width. */
+.account-email-line {
+  display: none;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One line, truncated. A long name is a wider bar otherwise, and the full value
+   is one click away in the panel. */
+.account-name {
+  max-width: 20ch;
+  overflow: hidden;
+  color: var(--text-h);
+  font-size: 15px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Points right by default, so it turns down when the menu is open. */
+.account-caret {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.account-menu[open] .account-caret {
+  transform: rotate(90deg);
+}
+
+.account-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  width: min(280px, calc(100vw - 40px));
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.account-role {
+  margin: 0;
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.account-email {
+  margin: 0 0 8px;
   color: var(--muted);
   font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* Tighter than the phone's version of the same row: this one is inside a menu,
+   not a screen. */
+.account-panel .profile-setting {
+  padding: 10px 0;
+  font-size: 14px;
+}
+
+/* Marks what the number counts: five tiles in a row otherwise read as five
+   numbers with captions nobody stops on. */
+.metric-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A tile that opens the rows behind its number. The chevron sits in the corner
+   rather than after the label, so it does not push the number off centre. */
+.metric-link {
+  position: relative;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.metric-link:hover {
+  border-color: var(--primary);
+  background: var(--muted-surface);
+}
+
+.metric-caret {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: var(--muted);
+}
+
+/* A filter that arrived in a link, stated on the screen it landed on. */
+.filter-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 8px 8px 14px;
+  background: var(--muted-surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.filter-chip strong {
+  color: var(--text-h);
+}
+
+.header-title-icon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-title-icon .ui-icon {
+  flex: 0 0 auto;
+  color: var(--secondary-strong);
 }
 
 /* BHW mobile */
@@ -1392,7 +1701,7 @@ tbody tr:hover {
 
 .modal-backdrop {
   position: fixed;
-  z-index: 20;
+  z-index: 50;
   inset: 0;
   display: grid;
   place-items: center;
@@ -1488,7 +1797,7 @@ tbody tr:hover {
 
   .app-layout {
     display: grid;
-    grid-template-columns: 270px minmax(0, 1fr);
+    grid-template-columns: 296px minmax(0, 1fr);
     align-items: start;
   }
 
@@ -1499,14 +1808,9 @@ tbody tr:hover {
     padding: 18px;
   }
 
-  .mobile-tabs {
-    grid-template-columns: 1fr;
-  }
-
-  .mobile-tabs button,
-  .mobile-tabs a {
-    justify-content: flex-start;
-    text-align: left;
+  /* The rail is back, so the tab bar goes. Never both. */
+  .admin-tabs {
+    display: none;
   }
 
   .nav-full {
@@ -1544,6 +1848,13 @@ tbody tr:hover {
 
   .admin-sidebar {
     display: flex;
+  }
+
+  /* The rail carries the connectivity badge and the account at this width, so the
+     sticky header has nothing left to hold. Hidden as one block rather than
+     emptied, or its padding would still eat a strip off the top of every page. */
+  .admin-header {
+    display: none;
   }
 
   .admin-metrics {
@@ -1943,7 +2254,7 @@ tbody tr:hover {
 }
 
 /* -----------------------------------------------------------------------------
-   Resident registry, duplicate warning, and the idle lock
+   Resident registry and duplicate warning
    ----------------------------------------------------------------------------- */
 
 /* A metric that leads somewhere. Everything visual comes from `.metric`; this only
@@ -2045,41 +2356,89 @@ tbody tr:hover {
   margin-top: 4px;
 }
 
-/* Covers the shell and nothing more. It is opaque because the point is that the
-   record underneath stops being readable; a blur still shows the shape of a name. */
-.idle-lock {
-  position: absolute;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 24px;
-  inset: 0;
-  background: var(--surface);
-  text-align: center;
-}
-
-.idle-lock h2 {
-  margin: 0;
-}
-
-.idle-lock p {
-  max-width: 30ch;
-  margin: 0;
-}
-
 /* Admin period filter, summary captions and distribution bars ------------- */
 
+/* One line: what the screen is scoped to, and the read that produced it. The
+   controls live in the panel behind it, so the bar costs a row rather than a
+   third of the viewport. */
 .admin-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 18px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.scope-picker {
+  position: relative;
+}
+
+.scope-picker > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  list-style: none;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+/* The default triangle sits outside the padded row and cannot be styled with
+   the rest of it; the caret on `.scope-hint` replaces it. */
+.scope-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.scope-picker > summary:hover {
+  background: var(--muted-surface);
+}
+
+.scope-picker > summary:focus-visible {
+  outline: var(--ring);
+  outline-offset: 2px;
+}
+
+.scope-value {
+  color: var(--text-h);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.scope-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scope-hint::after {
+  content: ' ▾';
+}
+
+.scope-picker[open] .scope-hint::after {
+  content: ' ▴';
+}
+
+/* Over the page, not above it: opening the controls must not push five panels
+   down and then pull them back up when a preset closes it again. */
+.scope-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
   display: grid;
   gap: 12px;
-  margin-bottom: 18px;
+  width: min(560px, calc(100vw - 48px));
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--panel);
+  box-shadow: var(--shadow-clay);
 }
 
 .admin-filter-actions {
@@ -2113,6 +2472,21 @@ tbody tr:hover {
   font-size: 12px;
 }
 
+/* One qualifier for the whole tile row, in place of the caption each tile used
+   to carry. Pulled up against the grid so it reads as part of it. */
+/* Five tiles in a two-column grid leave the fifth alone beside a blank cell.
+   Auto-fit spreads however many there are across the row and folds them down a
+   column at a time as the window narrows. */
+.admin-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.admin-metrics-note {
+  grid-column: 1 / -1;
+  margin: -8px 0 0;
+  font-size: 13px;
+}
+
 .summary-bars {
   display: flex;
   flex-direction: column;
@@ -2120,6 +2494,23 @@ tbody tr:hover {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* A band that opens the residents it counted. The row is the target, not the
+   label, and the hover fill is what says so — an underline on the label would
+   claim only the words are clickable. */
+.summary-bar-link {
+  display: block;
+  margin: -6px -8px;
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 160ms ease;
+}
+
+.summary-bar-link:hover {
+  background: var(--muted-surface);
 }
 
 .summary-bar-label {
@@ -2161,8 +2552,456 @@ tbody tr:hover {
   background: var(--primary);
 }
 
+/* Period presets ---------------------------------------------------------
+   Five targets in one row, so the common ranges cost a click and the rare one
+   (a typed range) costs a click plus two fields. The chips are the control; the
+   two date inputs below are the escape hatch, which is why they are folded away
+   rather than sitting permanently beside numbers half of them do not filter. */
+.period-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.period-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: var(--field);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.period-chip:hover {
+  border-color: var(--primary);
+}
+
+.period-chip.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.period-chip:focus-visible {
+  outline: var(--ring);
+  outline-offset: 2px;
+}
+
+.period-custom {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* The line the two bare date inputs were missing: which numbers on the page the
+   range actually governs. Stated once here so no panel below has to repeat it. */
+.filter-caveat {
+  margin: 0;
+}
+
+/* Barangay choropleth ------------------------------------------------------
+   Inline SVG over bundled GeoJSON — see src/lib/geo.ts for why there is no
+   mapping library. The fill is one theme token at varying opacity rather than a
+   computed colour ramp, so the scale stays legible when the palette flips. */
+.barangay-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  background: var(--field-soft);
+}
+
+.barangay-shape {
+  fill: var(--danger);
+  stroke: var(--panel);
+  stroke-width: 1.5;
+  cursor: pointer;
+  transition: stroke 160ms ease;
+}
+
+.barangay-shape:hover,
+.barangay-shape.is-selected {
+  stroke: var(--text-h);
+  stroke-width: 2.5;
+}
+
+.barangay-shape:focus-visible {
+  outline: var(--ring);
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+
+.legend-ramp {
+  flex: 0 0 120px;
+  height: 8px;
+  border-radius: 999px;
+  /* The same two stops the shapes interpolate between, so the key and the map
+     cannot describe different scales. */
+  background: linear-gradient(to right, color-mix(in srgb, var(--danger) 10%, transparent), var(--danger));
+}
+
+.barangay-rate-list {
+  margin-top: 12px;
+}
+
+/* The list rows are buttons rather than links: they narrow this screen instead
+   of opening another, so a new URL would promise a navigation that never comes. */
+.barangay-rate-list .summary-bar-link {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.barangay-rate-list .summary-bar-link:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.barangay-rate-list .summary-bar-link.is-selected {
+  background: var(--muted-surface);
+}
+
+.summary-bar-fill.is-alert {
+  background: var(--danger);
+}
+
+.barangay-map-fallback {
+  display: grid;
+  gap: 12px;
+}
+
+/* Charts -------------------------------------------------------------------
+   The donut, line and grouped-bar marks in src/components/admin/Charts.tsx.
+   Series colours come from the component as inline styles — they are data, not
+   decoration, and the same category has to keep its colour when a filter drops
+   its neighbours. Everything not carrying data (grid, ticks, legends, labels)
+   wears the theme's own ink tokens so it recedes behind the marks. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  list-style: none;
+}
+
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* Donut --------------------------------------------------------------------
+   The gap between segments is the panel surface showing through, so two bands
+   are separated by an edge and not only by hue. */
+.donut-chart svg {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  margin: 0 auto;
+  height: auto;
+}
+
+.donut-track {
+  fill: none;
+  stroke: var(--field-soft);
+  stroke-width: 26;
+}
+
+.donut-segment {
+  fill: none;
+  stroke-width: 26;
+}
+
+.donut-total {
+  fill: var(--text-h);
+  font-family: var(--display);
+  font-size: 34px;
+  text-anchor: middle;
+}
+
+.donut-unit {
+  fill: var(--muted);
+  font-size: 13px;
+  text-anchor: middle;
+}
+
+/* The ring and the written breakdown, side by side once there is room for both.
+   Stacked below that, because a 110px ring beside a squeezed list is neither. */
+.chart-with-bars {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 720px) {
+  .chart-with-bars {
+    align-items: center;
+    grid-template-columns: 220px 1fr;
+  }
+}
+
+/* Line chart ---------------------------------------------------------------
+   One axis, always. Two counts of the same thing share it; a rate would need a
+   second scale and a two-axis chart can be made to show anything. */
+.line-chart {
+  margin: 0;
+}
+
+.line-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-tick {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A ring in the surface colour, so a crossing point stays two points. */
+.chart-point {
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+.chart-hit {
+  fill: transparent;
+}
+
+/* Grouped bars -------------------------------------------------------------
+   Plain elements rather than SVG: the bars are percentage widths, which is what
+   CSS already does, and the labels wrap without any text measurement. */
+.bar-chart {
+  margin: 0;
+}
+
+.bar-chart ul {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar-chart-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.bar-chart-group {
+  display: flex;
+  flex-direction: column;
+  /* 2px of surface between bars of one group, so adjacent fills read as two
+     marks rather than one band. */
+  gap: 2px;
+}
+
+.bar-chart-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Gridlines painted into the track itself: no extra element per bar. The spacing
+   is set by the component from the number of ticks it wrote under the rows, so a
+   line always sits under a number. */
+.bar-chart-track {
+  flex: 1;
+  overflow: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background:
+    repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px var(--bar-grid, 25%)),
+    var(--field-soft);
+}
+
+.bar-chart-fill {
+  /* A released count of one still has to be visible, or the row implies zero. */
+  min-width: 2px;
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* A zero is drawn as nothing at all — the minimum above exists to keep a one
+   visible, and lending it to a zero says something was released when none was. */
+.bar-chart-fill[data-zero] {
+  min-width: 0;
+}
+
+.bar-chart-row small {
+  flex: 0 0 auto;
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* The scale, once, under the rows. The right padding is the value column plus
+   its gap, so the last tick sits over the end of the tracks and not over the
+   numbers beside them. */
+.bar-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-right: 42px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Gauge rings ---------------------------------------------------------------
+   A grid of shares, each a part of its own whole. Sized so a row of them fits a
+   half-width report card without the labels wrapping mid-word. */
+.gauge-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+}
+
+.gauge {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  margin: 0;
+  text-align: center;
+}
+
+.gauge svg {
+  display: block;
+  width: 100%;
+  max-width: 112px;
+  height: auto;
+}
+
+.gauge-track {
+  fill: none;
+  stroke: var(--field-soft);
+  stroke-width: 14;
+}
+
+.gauge-arc {
+  fill: none;
+  stroke-width: 14;
+  stroke-linecap: round;
+}
+
+.gauge-value {
+  fill: var(--text-h);
+  font-family: var(--display);
+  font-size: 26px;
+  text-anchor: middle;
+}
+
+.gauge figcaption {
+  display: grid;
+  gap: 2px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.gauge figcaption small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* The written half of a ring: the same swatch the legend uses, the category,
+   and its count pushed to the right so a column of them reads as figures. */
+.chart-breakdown {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chart-breakdown li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chart-breakdown strong {
+  margin-left: auto;
+  font-family: var(--display);
+  font-size: 15px;
+}
+
+/* Dense flow so a narrow panel backfills a half-row a full-width one left open,
+   rather than the grid holding a gap in source order. */
+.report-grid {
+  grid-auto-flow: dense;
+}
+
 .report-grid .report-card {
   gap: 10px;
+}
+
+/* A table needs the width a pair of summary bars does not. */
+.report-grid .report-card-wide {
+  grid-column: 1 / -1;
+}
+
+/* An odd panel at the end has no neighbour to sit beside, so it takes the row
+   instead of leaving half of one blank. */
+.report-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+/* Panels in one row are the same height whether or not they hold the same
+   amount, so the note is pushed to the floor of the card and the chart above it
+   takes the slack — a short panel fills its box instead of stacking its content
+   at the top over an empty half. */
+.report-card .report-note {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.report-card .line-chart,
+.report-card .gauge-grid,
+.report-card .bar-chart {
+  align-content: center;
+  margin-block: auto;
 }
 
 .report-card-head {
@@ -2187,9 +3026,3 @@ tbody tr:hover {
   font-size: 12px;
 }
 
-@media (min-width: 860px) {
-  .admin-filter-bar {
-    grid-template-columns: minmax(0, 200px) minmax(0, 200px) minmax(0, 1fr);
-    align-items: end;
-  }
-}

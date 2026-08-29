@@ -1,8 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
-import { useIdleLock } from '../../hooks/useIdleLock';
 import type { SyncStatus } from '../../services/syncService';
-import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
 import { BhwLanguageProvider } from '../../app/BhwLanguageContext';
@@ -18,12 +16,17 @@ const bhwNavItems = [
 
 type BHWLayoutProps = {
   logout: () => Promise<void>;
+  fullName: string | null;
 };
 
-/** Logout is handed to the profile screen through the outlet rather than a prop
-    chain, because it is the only route that uses it. */
+/** Logout and the account name are handed to the profile screen through the
+    outlet rather than a prop chain, because it is the only route that uses
+    either. The name is threaded down from App rather than fetched here: it comes
+    from the cached profile row read at sign-in, so it is on screen on a phone
+    that has not reached the network in a week. */
 export type BhwOutletContext = {
   logout: () => Promise<void>;
+  fullName: string | null;
 };
 
 // A BHW should never have to open a screen to learn whether the last hour of
@@ -59,42 +62,23 @@ function recordRail(
   return { tone: 'clear', label: 'All records sent' };
 }
 
-export function BHWLayout({ logout }: BHWLayoutProps) {
+export function BHWLayout({ logout, fullName }: BHWLayoutProps) {
   return (
     <BhwLanguageProvider>
-      <BHWLayoutContent logout={logout} />
+      <BHWLayoutContent logout={logout} fullName={fullName} />
     </BhwLanguageProvider>
   );
 }
 
-function BHWLayoutContent({ logout }: BHWLayoutProps) {
+function BHWLayoutContent({ logout, fullName }: BHWLayoutProps) {
   const { isOnline, message, syncStatus, snapshot } = useMabisaData();
   const { t } = useBhwLanguage();
-  const { locked, unlock } = useIdleLock();
   const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
 
   // BHW uses a phone-sized shell because this interface is packaged with Capacitor.
   return (
     <main className="bhw-preview-shell">
       <section className="bhw-mobile-shell" aria-label="BHW mobile app preview">
-        {/* Covers the screen, changes nothing underneath it. Records stay saved
-            and queued while it is up — the count is shown precisely so nobody
-            reads the cover as work having been lost. */}
-        {locked ? (
-          <div className="idle-lock" role="dialog" aria-modal="true" aria-label={t('Screen locked')}>
-            <span className="brand-mark" aria-hidden="true">
-              M
-            </span>
-            <h2>{t('Screen locked')}</h2>
-            <p className="muted">
-              {snapshot.pendingQueueCount
-                ? `${snapshot.pendingQueueCount} ${t('record(s) still saved on this device.')}`
-                : t('Nothing was lost. Your records are still on this device.')}
-            </p>
-            <Button onClick={unlock}>{t('Continue')}</Button>
-          </div>
-        ) : null}
-
         <p className={`field-rail field-rail-${rail.tone}`} role="status">
           {rail.label}
         </p>
@@ -106,7 +90,7 @@ function BHWLayoutContent({ logout }: BHWLayoutProps) {
         {message ? <p className="notice">{message}</p> : null}
 
         <div className="bhw-mobile-content">
-          <Outlet context={{ logout } satisfies BhwOutletContext} />
+          <Outlet context={{ logout, fullName } satisfies BhwOutletContext} />
         </div>
 
         <nav className="bhw-bottom-nav" aria-label="BHW mobile sections">

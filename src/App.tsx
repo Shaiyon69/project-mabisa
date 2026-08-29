@@ -8,7 +8,7 @@ import { buildsBhw } from './app/surface';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
 import { logDev } from './lib/utils';
-import type { UserRole } from './types/database';
+import { isUserRole, type UserRole } from './types/database';
 
 type LoginState = {
   email: string;
@@ -23,9 +23,13 @@ type LoginState = {
 // device: a stale entry simply fails the id match and the session falls back to BHW.
 const ROLE_CACHE_KEY = 'mabisa.user_role';
 
+// The name rides along in the same entry rather than in a second one. It comes
+// from the same row, it is wanted on the same screens, and a device offline for
+// a week should not be able to show a role it cannot show a name for.
 type CachedRole = {
   userId: string;
   role: UserRole;
+  fullName: string | null;
 };
 
 function readCachedRole(): CachedRole | null {
@@ -33,11 +37,19 @@ function readCachedRole(): CachedRole | null {
     const parsed = JSON.parse(localStorage.getItem(ROLE_CACHE_KEY) ?? 'null');
     const role: unknown = parsed?.role;
 
-    if (typeof parsed?.userId !== 'string' || (role !== 'admin' && role !== 'bhw')) {
+    // Validated against the enum rather than a hand-written pair, so a role
+    // added to public.app_role is not silently rejected here and dropped onto
+    // the field surface.
+    if (typeof parsed?.userId !== 'string' || !isUserRole(role)) {
       return null;
     }
 
-    return { userId: parsed.userId, role };
+    // An entry written before the name was cached is still a valid entry — it
+    // just has no name yet, and the next successful lookup fills it in. Reading
+    // it strictly would sign every existing device out of its cached role.
+    const fullName: unknown = parsed?.fullName;
+
+    return { userId: parsed.userId, role, fullName: typeof fullName === 'string' ? fullName : null };
   } catch {
     return null;
   }
@@ -60,6 +72,9 @@ export function App() {
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
   const role = cachedRole?.userId === bhwId ? cachedRole.role : null;
+  // Gated on the same id match as the role, so a phone two BHWs share can never
+  // show one of them the other's name while the lookup is still in flight.
+  const fullName = cachedRole?.userId === bhwId ? cachedRole.fullName : null;
   // Whether the null above means "not an admin" or only "not known yet". The
   // admin surface needs the difference: it turns a null role away, and turning
   // someone away because a fetch has not returned is not the same decision as
@@ -101,7 +116,7 @@ export function App() {
 
     supabase
       .from('profiles')
-      .select('role, is_active')
+      .select('role, is_active, full_name')
       .eq('user_id', bhwId)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -126,7 +141,7 @@ export function App() {
         // starts from current_profile_is_active(), so a disabled account reads
         // nothing whichever surface it is looking at.
         const nextRole = data?.is_active ? data.role : null;
-        const next = nextRole ? { userId: bhwId, role: nextRole } : null;
+        const next = nextRole ? { userId: bhwId, role: nextRole, fullName: data?.full_name ?? null } : null;
 
         localStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(next));
         setCachedRole(next);
@@ -190,7 +205,7 @@ export function App() {
     );
   }
 
-  const routes = <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} />;
+  const routes = <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} fullName={fullName} />;
 
   return (
     <BrowserRouter>

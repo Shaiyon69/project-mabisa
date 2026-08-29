@@ -8,7 +8,7 @@ import {
   setProfileActive,
   type AccountRow,
 } from '../../services/adminData';
-import type { Purok } from '../../types/database';
+import type { Purok, UserRole } from '../../types/database';
 import { Button } from '../common/Button';
 import { SelectField, TextAreaField } from '../common/FormField';
 import { Modal } from '../common/Modal';
@@ -26,8 +26,30 @@ const exportColumns: CsvColumn<AccountRow>[] = [
   { header: 'Created at', value: (row) => row.profile.created_at },
 ];
 
+/**
+ * What each role is called on screen. `admin` is the RHU or LGU account that
+ * reads every barangay; `barangay_admin` runs one. They are different scopes and
+ * different powers, so a table that showed both as "Admin" would be hiding the
+ * distinction that decides what each of them can actually do.
+ */
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Admin / LGU',
+  barangay_admin: 'Barangay Admin',
+  bhw: 'Barangay Health Worker',
+};
+
 /** Which dialog is open, and for whom. One value, so two cannot be open at once. */
 type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
+
+type AccountsTableProps = {
+  /**
+   * Every `admin_*` RPC asserts `is_admin()`, so a `barangay_admin` gets the
+   * table read-only. Hiding the buttons is not the enforcement — the function
+   * is — but offering a control that can only return an error is worse than
+   * offering none.
+   */
+  canManage: boolean;
+};
 
 /**
  * Accounts and their current purok, read from `public.profiles` — the same table
@@ -46,7 +68,7 @@ type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
  * cannot happen from a browser holding a publishable key; see the foundation
  * bootstrap procedure.
  */
-export function AccountsTable() {
+export function AccountsTable({ canManage }: AccountsTableProps) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [result, setResult] = useState<{
@@ -96,7 +118,7 @@ export function AccountsTable() {
     {
       key: 'role',
       header: 'Role',
-      render: (account) => (account.profile.role === 'admin' ? 'Admin / LGU' : 'Barangay Health Worker'),
+      render: (account) => ROLE_LABELS[account.profile.role],
     },
     {
       key: 'assigned-purok',
@@ -105,7 +127,7 @@ export function AccountsTable() {
       // under the purok policies, so an empty cell here is the reason a device
       // that signs in successfully still sees nothing.
       render: (account) =>
-        account.purokName ?? (account.profile.role === 'admin' ? 'All puroks' : 'None — cannot sync'),
+        account.purokName ?? (account.profile.role === 'bhw' ? 'None — cannot sync' : 'Not purok-scoped'),
     },
     {
       key: 'assigned-since',
@@ -122,7 +144,10 @@ export function AccountsTable() {
         />
       ),
     },
-    {
+  ];
+
+  if (canManage) {
+    columns.push({
       key: 'actions',
       header: 'Actions',
       render: (account) => (
@@ -140,8 +165,8 @@ export function AccountsTable() {
           </Button>
         </div>
       ),
-    },
-  ];
+    });
+  }
 
   return (
     <div className="ui-table-stack">
@@ -278,8 +303,11 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
         <Button variant="secondary" onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <Button onClick={() => void submit()} disabled={!ready || busy}>
-          {busy ? 'Applying…' : 'Apply change'}
+        {/* The confirm button names the act, not the mechanism. "Apply change"
+            reads the same for an assignment and for cutting an account off from
+            every field record it can reach. */}
+        <Button variant={kind === 'active' && deactivating ? 'danger' : 'primary'} onClick={() => void submit()} disabled={!ready || busy}>
+          {busy ? 'Applying…' : kind === 'assign' ? 'Assign purok' : deactivating ? 'Deactivate account' : 'Reactivate account'}
         </Button>
       </div>
     </Modal>
