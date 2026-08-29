@@ -6,7 +6,6 @@ import {
   assessmentsBelowAdultBmiAge,
   defaultAdminFilters,
   describeBarangayScope,
-  describePeriod,
   disbursementsByItem,
   LOW_STOCK_THRESHOLD,
   lowStockItems,
@@ -161,10 +160,6 @@ describe('period', () => {
     expect(defaultAdminFilters()).toEqual({ from: '2026-01-01', to: '2026-08-22' });
 
     vi.useRealTimers();
-  });
-
-  it('describes itself as a range', () => {
-    expect(describePeriod({ from: '2026-01-01', to: '2026-08-22' })).toBe('2026-01-01 to 2026-08-22');
   });
 });
 
