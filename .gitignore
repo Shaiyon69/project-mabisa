@@ -51,3 +51,6 @@ CLAUDE.local.md
 /playwright-report
 /blob-report
 /playwright/.cache
+
+# Local UI audit output (screenshots + findings) — never committed.
+/ui-report
