@@ -1165,11 +1165,13 @@ tbody tr:hover {
   line-height: 1.55;
 }
 
-/* No bottom reserve for .bhw-bottom-nav: it is sticky, not fixed, so it keeps
-   its own space at the end of the column, and it pays the safe-area inset itself
-   (see the shell's padding-bottom: 0 above). */
+/* The bar keeps its own place at the end of the column, but the shell is only
+   100svh tall: a form longer than that runs on underneath the bar, which then
+   takes the taps meant for its last control. The reserve is the bar's own
+   height -- 8px + 58px link + 8px -- plus the inset the bar itself pays. */
 .bhw-mobile-content {
   flex: 1;
+  padding-bottom: calc(74px + env(safe-area-inset-bottom));
 }
 
 .bhw-mobile-shell .dashboard-grid,
