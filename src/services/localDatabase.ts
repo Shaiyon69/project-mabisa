@@ -28,6 +28,8 @@ export type PaginatedQuery = {
   limit?: number;
   offset?: number;
   searchQuery?: string;
+  /** Individuals only: reads exactly one resident. */
+  residentId?: string;
   /** Individuals only: restricts the read to one household's members. */
   householdId?: string;
   /** Individuals only: includes members who moved out, died or transferred. Off by default. */
@@ -255,26 +257,33 @@ const columnRemovals: { table: MigratableTableName; column: string }[] = [
   { table: 'households', column: 'fuel_used' },
 ];
 
-/** Drops any column this device still carries that the schema has since removed. */
-async function applyColumnRemovals(database: SQLiteDBConnection): Promise<void> {
-  for (const removal of columnRemovals) {
-    const info = await database.query(`pragma table_info(${removal.table})`);
-    const hasColumn = (info.values ?? []).some((row) => row.name === removal.column);
+/**
+ * Brings this device's tables up to the current column list: adds what it
+ * predates, then drops what the schema has since removed. Additions run first,
+ * so a column that was added and later removed does not survive on a device that
+ * skipped both releases.
+ *
+ * `pragma table_info` is read once per table rather than once per column — this
+ * runs on every app open, on a phone.
+ */
+async function applyColumnChanges(database: SQLiteDBConnection): Promise<void> {
+  const tables = new Set([...columnUpgrades, ...columnRemovals].map((change) => change.table));
+  const present = new Map<MigratableTableName, Set<string>>();
 
-    if (hasColumn) {
-      await database.execute(`alter table ${removal.table} drop column ${removal.column}`);
+  for (const table of tables) {
+    const info = await database.query(`pragma table_info(${table})`);
+    present.set(table, new Set((info.values ?? []).map((row) => String(row.name))));
+  }
+
+  for (const upgrade of columnUpgrades) {
+    if (!present.get(upgrade.table)?.has(upgrade.column)) {
+      await database.execute(`alter table ${upgrade.table} add column ${upgrade.column} ${upgrade.definition}`);
     }
   }
-}
 
-/** Adds any post-release column this device's database predates. Idempotent via `pragma table_info`. */
-async function applyColumnUpgrades(database: SQLiteDBConnection): Promise<void> {
-  for (const upgrade of columnUpgrades) {
-    const info = await database.query(`pragma table_info(${upgrade.table})`);
-    const hasColumn = (info.values ?? []).some((row) => row.name === upgrade.column);
-
-    if (!hasColumn) {
-      await database.execute(`alter table ${upgrade.table} add column ${upgrade.column} ${upgrade.definition}`);
+  for (const removal of columnRemovals) {
+    if (present.get(removal.table)?.has(removal.column)) {
+      await database.execute(`alter table ${removal.table} drop column ${removal.column}`);
     }
   }
 }
@@ -357,22 +366,14 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
     await database.execute(statement);
   }
 
-  await applyColumnUpgrades(database);
-  // After the additions, and before verify() — which reports a device still holding a dropped column.
-  await applyColumnRemovals(database);
+  // Before verify(), which reports a device still holding a dropped column.
+  await applyColumnChanges(database);
   await householdUpsert.verify(database);
   await individualUpsert.verify(database);
   await inventoryUpsert.verify(database);
 
   localDatabase = database;
   return database;
-}
-
-/**
- * Helper function to ensure the database is initialized before any query runs.
- */
-export async function getLocalDatabase(): Promise<SQLiteDBConnection> {
-  return initializeLocalDatabase();
 }
 
 /**
@@ -397,7 +398,7 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
   operationType: TOperation,
   payload: SyncPayload<TTable, TOperation>,
 ): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   await database.run(
     `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error)
      values (?, ?, ?, ?, 0, null)`,
@@ -405,17 +406,21 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
   );
 }
 
-/** Count only — avoids JSON-parsing every payload just to get a number (called from the login screen). */
-export async function countPendingQueueEntries(): Promise<number> {
-  const database = await getLocalDatabase();
-  const result = await database.query('select count(*) as pending from sync_queue');
-
-  return Number(result.values?.[0]?.pending ?? 0);
+/** The columns a queue row and a dead-letter row hold in common — the quarantined copy is the same operation, preserved. */
+function parseQueuedOperation(row: Record<string, unknown>) {
+  return {
+    operation_type: parseOperationType(String(row.operation_type)),
+    target_table: parseLocalTableName(String(row.target_table)),
+    payload: JSON.parse(String(row.payload)) as SyncQueueEntry['payload'],
+    created_at: String(row.created_at),
+    attempts: Number(row.attempts),
+    last_error: nullableText(row.last_error),
+  };
 }
 
 /** All pending jobs in chronological order — what the sync loop drains. */
 export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   const result = await database.query(
     `select queue_id, operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at
      from sync_queue
@@ -423,20 +428,15 @@ export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
   );
 
   return (result.values ?? []).map((row) => ({
+    ...parseQueuedOperation(row),
     queue_id: Number(row.queue_id),
-    operation_type: parseOperationType(String(row.operation_type)),
-    target_table: parseLocalTableName(String(row.target_table)),
-    payload: JSON.parse(String(row.payload)),
-    created_at: String(row.created_at),
-    attempts: Number(row.attempts),
-    last_error: nullableText(row.last_error),
     next_attempt_at: nullableText(row.next_attempt_at),
   }));
 }
 
 /** Deletes a job from the queue after a successful push. */
 export async function removeSyncQueueEntry(queueId: number): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   await database.run('delete from sync_queue where queue_id = ?', [queueId]);
 }
 
@@ -449,7 +449,7 @@ export async function markSyncQueueEntryFailed(
   errorMessage: string,
   nextAttemptAt: string | null = null,
 ): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   await database.run(
     'update sync_queue set attempts = attempts + 1, last_error = ?, next_attempt_at = ? where queue_id = ?',
     [errorMessage, nextAttemptAt, queueId],
@@ -461,7 +461,7 @@ export async function markSyncQueueEntryFailed(
  * can keep draining and no health record is ever silently dropped.
  */
 export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, errorMessage: string): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   await database.run(
     `insert into sync_dead_letter
      (original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at)
@@ -481,7 +481,7 @@ export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, erro
 }
 
 export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   const result = await database.query(
     `select dead_letter_id, original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at
      from sync_dead_letter
@@ -489,27 +489,16 @@ export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
   );
 
   return (result.values ?? []).map((row) => ({
+    ...parseQueuedOperation(row),
     dead_letter_id: Number(row.dead_letter_id),
     original_queue_id: Number(row.original_queue_id),
-    operation_type: parseOperationType(String(row.operation_type)),
-    target_table: parseLocalTableName(String(row.target_table)),
-    payload: JSON.parse(String(row.payload)),
-    created_at: String(row.created_at),
-    attempts: Number(row.attempts),
-    last_error: nullableText(row.last_error),
     failed_at: String(row.failed_at),
   }));
 }
 
-export async function countDeadLetterEntries(): Promise<number> {
-  const database = await getLocalDatabase();
-  const result = await database.query('select count(*) as total from sync_dead_letter');
-  return Number(result.values?.[0]?.total ?? 0);
-}
-
 /** Puts every quarantined entry back on the queue, in original order so a parent is pushed before its children again. */
 export async function requeueDeadLetterEntries(): Promise<number> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   const entries = await readDeadLetterEntries();
 
   for (const entry of entries) {
@@ -679,7 +668,7 @@ const inventoryUpsert = buildUpsert('inventory_items', 'item_id', inventoryColum
 
 /** Writes household data to local storage and queues it for the cloud. */
 export async function saveHouseholdLocally(household: Household, operationType: SyncOperationType = 'INSERT'): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   await database.run(householdUpsert.statement, householdUpsert.values(household));
 
   // Queues the raw object, not the JSON string, so Supabase gets real arrays.
@@ -689,7 +678,7 @@ export async function saveHouseholdLocally(household: Household, operationType: 
 
 /** Writes individual data to local storage and queues it for the cloud. */
 export async function saveIndividualLocally(individual: Individual, operationType: SyncOperationType = 'INSERT'): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   await database.run(individualUpsert.statement, individualUpsert.values(individual));
 
   // household_number is joined in on read but lives on `households`, not
@@ -743,7 +732,7 @@ export async function saveHealthAssessmentLocally(
   assessment: HealthAssessment,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   await database.run(assessmentInsert.statement, assessmentInsert.values(assessment));
   await enqueueSyncOperation('health_assessments', operationType, assessment);
   await persistLocalDatabase();
@@ -754,7 +743,7 @@ export async function saveHealthAssessmentLocally(
  * disbursement path needs the current row, not a stale UI snapshot.
  */
 export async function readLocalInventoryItem(itemId: string): Promise<InventoryItem | null> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   const result = await database.query('select * from inventory_items where item_id = ?', [itemId]);
   const row = result.values?.[0];
 
@@ -774,7 +763,7 @@ export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
 
   // Only a new release moves stock — editing an existing log has no reversal path yet.
   const item = operationType === 'INSERT' ? await readLocalInventoryItem(disbursement.item_id) : null;
@@ -810,10 +799,17 @@ export async function saveSupplyDisbursementLocally(
 }
 
 
-export async function getHouseholdCount(): Promise<number> {
+/**
+ * How many rows a table holds. The dashboard and the login screen only ever want
+ * the number: reading the rows meant parsing a purok's whole assessment and
+ * release history on every refresh, which runs every 30 seconds while any queue
+ * entry is waiting out a backoff.
+ */
+export async function countRows(table: MigratableTableName): Promise<number> {
   const db = await initializeLocalDatabase();
-  const result = await db.query('SELECT COUNT(*) as total FROM households');
-  return result.values?.[0]?.total || 0;
+  const result = await db.query(`select count(*) as total from ${table}`);
+
+  return Number(result.values?.[0]?.total ?? 0);
 }
 
 export async function getIndividualCount(options?: IndividualFilter): Promise<number> {
@@ -832,32 +828,9 @@ export async function getIndividualCount(options?: IndividualFilter): Promise<nu
   return result.values?.[0]?.total || 0;
 }
 
-/**
- * Row counts for the tables the dashboard only ever counts. Reading them as rows
- * meant parsing a purok's whole assessment and release history on every refresh —
- * which now runs every 30 seconds while any queue entry is waiting out a backoff.
- */
-export async function getHealthAssessmentCount(): Promise<number> {
-  const db = await initializeLocalDatabase();
-  const result = await db.query('select count(*) as total from health_assessments');
-  return result.values?.[0]?.total || 0;
-}
-
-export async function getSupplyDisbursementCount(): Promise<number> {
-  const db = await initializeLocalDatabase();
-  const result = await db.query('select count(*) as total from supply_disbursements');
-  return result.values?.[0]?.total || 0;
-}
-
-export async function getSyncQueueCount(): Promise<number> {
-  const db = await initializeLocalDatabase();
-  const result = await db.query('select count(*) as total from sync_queue');
-  return result.values?.[0]?.total || 0;
-}
-
 /** Shared search predicate for individual lookups — one place so the row and count queries can't drift apart. */
 /** The filters both the individual read and its count apply, built once so the two cannot drift. */
-type IndividualFilter = Pick<PaginatedQuery, 'searchQuery' | 'householdId' | 'includeFormer'>;
+type IndividualFilter = Pick<PaginatedQuery, 'searchQuery' | 'residentId' | 'householdId' | 'includeFormer'>;
 
 function buildIndividualFilter(options?: IndividualFilter): { clause: string; params: SqlValue[] } {
   const conditions: string[] = [];
@@ -874,6 +847,11 @@ function buildIndividualFilter(options?: IndividualFilter): { clause: string; pa
                   OR i.last_name LIKE ? ESCAPE '\\'
                   OR h.household_number LIKE ? ESCAPE '\\')`);
     params.push(pattern, pattern, pattern, pattern);
+  }
+
+  if (options?.residentId) {
+    conditions.push('i.resident_id = ?');
+    params.push(options.residentId);
   }
 
   if (options?.householdId) {
@@ -895,6 +873,32 @@ function buildIndividualFilter(options?: IndividualFilter): { clause: string; pa
 // Read Operations (Loading data into the React UI)
 // -----------------------------------------------------------------------------
 
+/**
+ * The LIMIT/OFFSET tail of a paginated read. SQLite rejects OFFSET without a
+ * preceding LIMIT, so an offset-only call gets one supplied for it (-1 is
+ * SQLite's "no limit").
+ */
+/** An optional single-column WHERE — the two leaf histories read either one resident's or everyone's. */
+function scopedTo(column: string, value?: string): { clause: string; params: SqlValue[] } {
+  return value ? { clause: ` where ${column} = ?`, params: [value] } : { clause: '', params: [] };
+}
+
+function pageBounds(options?: Pick<PaginatedQuery, 'limit' | 'offset'>): { clause: string; params: SqlValue[] } {
+  if (options?.limit === undefined && options?.offset === undefined) {
+    return { clause: '', params: [] };
+  }
+
+  const params: SqlValue[] = [options.limit ?? -1];
+  let clause = ' LIMIT ?';
+
+  if (options.offset !== undefined) {
+    clause += ' OFFSET ?';
+    params.push(options.offset);
+  }
+
+  return { clause, params };
+}
+
 export async function readLocalIndividuals(options?: PaginatedQuery): Promise<Individual[]> {
   const db = await initializeLocalDatabase();
 
@@ -909,18 +913,8 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
 
   query += ' ORDER BY i.last_name ASC, i.first_name ASC';
 
-  // SQLite rejects OFFSET without LIMIT, so an offset-only call needs a limit
-  // supplied for it (-1 means "no limit" in SQLite).
-  if (options?.limit !== undefined || options?.offset !== undefined) {
-    query += ' LIMIT ?';
-    params.push(options.limit ?? -1);
-  }
-  if (options?.offset !== undefined) {
-    query += ' OFFSET ?';
-    params.push(options.offset);
-  }
-
-  const result = await db.query(query, params);
+  const page = pageBounds(options);
+  const result = await db.query(query + page.clause, [...params, ...page.params]);
   
   return (result.values || []).map((row) => ({
     ...row,
@@ -931,28 +925,14 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
 }
 
 /**
- * One resident by id, or null if this device has never seen them. Duplicates the
- * boolean coercion and household_number join from readLocalIndividuals inline.
+ * One resident by id, or null if this device has never seen them. `includeFormer`
+ * is on: a member marked moved out by mistake has to stay reachable by id, which
+ * is the only way back to her record.
  */
 export async function readLocalIndividual(residentId: string): Promise<Individual | null> {
-  const db = await initializeLocalDatabase();
-  const result = await db.query(
-    `SELECT i.*, h.household_number
-     FROM individuals i
-     LEFT JOIN households h ON i.household_id = h.household_id
-     WHERE i.resident_id = ?`,
-    [residentId],
-  );
-  const row = result.values?.[0];
+  const [person] = await readLocalIndividuals({ residentId, includeFormer: true, limit: 1 });
 
-  return row
-    ? ({
-        ...row,
-        is_household_head: row.is_household_head === 1,
-        is_out_of_school_youth: row.is_out_of_school_youth === 1,
-        is_pregnant_nursing_fp: row.is_pregnant_nursing_fp === 1,
-      } as Individual)
-    : null;
+  return person ?? null;
 }
 
 export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Household[]> {
@@ -968,17 +948,8 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
 
   query += ' ORDER BY created_at DESC';
 
-  // As above: SQLite rejects OFFSET without a preceding LIMIT.
-  if (options?.limit !== undefined || options?.offset !== undefined) {
-    query += ' LIMIT ?';
-    params.push(options.limit ?? -1);
-  }
-  if (options?.offset !== undefined) {
-    query += ' OFFSET ?';
-    params.push(options.offset);
-  }
-
-  const result = await db.query(query, params);
+  const page = pageBounds(options);
+  const result = await db.query(query + page.clause, [...params, ...page.params]);
 
   // Translate SQLite JSON strings back into JavaScript arrays
   return (result.values || []).map((row) => ({
@@ -991,18 +962,13 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
 
 /** `limit` exists for the dashboard, which shows three rows out of a purok's whole history. */
 export async function readLocalHealthAssessments(residentId?: string, limit?: number): Promise<HealthAssessment[]> {
-  const database = await getLocalDatabase();
-  const bound = limit === undefined ? '' : ' limit ?';
-  const query = residentId
-    ? {
-        statement: `select * from health_assessments where resident_id = ? order by assessment_date desc${bound}`,
-        values: limit === undefined ? [residentId] : [residentId, limit],
-      }
-    : {
-        statement: `select * from health_assessments order by assessment_date desc${bound}`,
-        values: limit === undefined ? [] : [limit],
-      };
-  const result = await database.query(query.statement, query.values);
+  const database = await initializeLocalDatabase();
+  const scope = scopedTo('resident_id', residentId);
+  const page = pageBounds({ limit });
+  const result = await database.query(
+    `select * from health_assessments${scope.clause} order by assessment_date desc${page.clause}`,
+    [...scope.params, ...page.params],
+  );
   
   return (result.values ?? []).map((row) => ({
     ...row,
@@ -1013,7 +979,7 @@ export async function readLocalHealthAssessments(residentId?: string, limit?: nu
 }
 
 export async function readLocalInventoryItems(): Promise<InventoryItem[]> {
-  const database = await getLocalDatabase();
+  const database = await initializeLocalDatabase();
   const result = await database.query('select * from inventory_items order by item_name asc');
   
   return (result.values ?? []).map((row) => ({
@@ -1023,17 +989,12 @@ export async function readLocalInventoryItems(): Promise<InventoryItem[]> {
 }
 
 export async function readLocalSupplyDisbursements(residentId?: string): Promise<SupplyDisbursement[]> {
-  const database = await getLocalDatabase();
-  const query = residentId
-    ? {
-        statement: 'select * from supply_disbursements where resident_id = ? order by disbursement_date desc',
-        values: [residentId],
-      }
-    : {
-        statement: 'select * from supply_disbursements order by disbursement_date desc',
-        values: [],
-      };
-  const result = await database.query(query.statement, query.values);
+  const database = await initializeLocalDatabase();
+  const scope = scopedTo('resident_id', residentId);
+  const result = await database.query(
+    `select * from supply_disbursements${scope.clause} order by disbursement_date desc`,
+    scope.params,
+  );
   
   return (result.values ?? []).map((row) => ({
     ...row,
@@ -1078,48 +1039,39 @@ function parseLocalTableName(value: string): LocalTableName {
   throw new Error(`Unsupported sync table: ${value}`);
 }
 
-/**
- * Normalizes undefined values to null for safe insertion into SQLite queries.
- */
-export function toSqlValue(value: string | number | null | undefined): SqlValue {
-  return value ?? null;
-}
-
 // -----------------------------------------------------------------------------
 //  DATA FETCHING CODE
 // -----------------------------------------------------------------------------
 
-export async function pullInventoryFromServer(cloudItems: InventoryItem[]): Promise<void> {
-  if (!cloudItems.length) return; // Skip if nothing to pull
+/**
+ * Writes a page of pulled rows through the same statement the local write path
+ * uses, so the two can't drift. One body for all five tables — they differed only
+ * by which upsert they named and which word went in the error log.
+ */
+async function pullRowsFromServer<TRow>(
+  label: string,
+  upsert: { statement: string; values: (row: TRow) => SqlValue[] },
+  cloudRows: TRow[],
+): Promise<void> {
+  if (!cloudRows.length) return;
   const db = await initializeLocalDatabase();
 
-  // Same statement/value order as the local write path — see the column maps above.
-  const values = cloudItems.map((item) => inventoryUpsert.values(item));
-
   try {
-    await db.executeSet([{ statement: inventoryUpsert.statement, values }]);
+    await db.executeSet([{ statement: upsert.statement, values: cloudRows.map(upsert.values) }]);
     await persistLocalDatabase();
   } catch (error) {
-    console.error('Failed to pull inventory into SQLite:', error);
+    console.error(`Failed to pull ${label} into SQLite:`, error);
     throw error;
   }
 }
 
-export async function pullHouseholdsFromServer(cloudHouseholds: Household[]): Promise<void> {
-  if (!cloudHouseholds.length) return;
-  const db = await initializeLocalDatabase();
-  
-  // Same statement/value order as the local write path — see the column maps above.
-  const values = cloudHouseholds.map((household) => householdUpsert.values(household));
-
-  try {
-    await db.executeSet([{ statement: householdUpsert.statement, values }]);
-    await persistLocalDatabase();
-  } catch (error) {
-    console.error('Failed to pull households into SQLite:', error);
-    throw error;
-  }
-}
+export const pullInventoryFromServer = (rows: InventoryItem[]) => pullRowsFromServer('inventory', inventoryUpsert, rows);
+export const pullHouseholdsFromServer = (rows: Household[]) => pullRowsFromServer('households', householdUpsert, rows);
+export const pullIndividualsFromServer = (rows: Individual[]) => pullRowsFromServer('individuals', individualUpsert, rows);
+export const pullHealthAssessmentsFromServer = (rows: HealthAssessment[]) =>
+  pullRowsFromServer('health assessments', assessmentInsert, rows);
+export const pullSupplyDisbursementsFromServer = (rows: SupplyDisbursement[]) =>
+  pullRowsFromServer('supply disbursements', disbursementInsert, rows);
 
 /**
  * Primary keys already in a local table. The pull uses this to drop a row whose
@@ -1132,50 +1084,4 @@ export async function readExistingIds(table: LocalTableName, column: string): Pr
   const result = await db.query(`select ${column} from ${table}`);
 
   return new Set((result.values ?? []).map((row) => String(row[column])));
-}
-
-export async function pullHealthAssessmentsFromServer(cloudAssessments: HealthAssessment[]): Promise<void> {
-  if (!cloudAssessments.length) return;
-  const db = await initializeLocalDatabase();
-
-  const values = cloudAssessments.map((assessment) => assessmentInsert.values(assessment));
-
-  try {
-    await db.executeSet([{ statement: assessmentInsert.statement, values }]);
-    await persistLocalDatabase();
-  } catch (error) {
-    console.error('Failed to pull health assessments into SQLite:', error);
-    throw error;
-  }
-}
-
-export async function pullSupplyDisbursementsFromServer(cloudDisbursements: SupplyDisbursement[]): Promise<void> {
-  if (!cloudDisbursements.length) return;
-  const db = await initializeLocalDatabase();
-
-  const values = cloudDisbursements.map((disbursement) => disbursementInsert.values(disbursement));
-
-  try {
-    await db.executeSet([{ statement: disbursementInsert.statement, values }]);
-    await persistLocalDatabase();
-  } catch (error) {
-    console.error('Failed to pull supply disbursements into SQLite:', error);
-    throw error;
-  }
-}
-
-export async function pullIndividualsFromServer(cloudIndividuals: Individual[]): Promise<void> {
-  if (!cloudIndividuals.length) return;
-  const db = await initializeLocalDatabase();
-
-  // Same statement/value order as the local write path — see the column maps above.
-  const values = cloudIndividuals.map((individual) => individualUpsert.values(individual));
-
-  try {
-    await db.executeSet([{ statement: individualUpsert.statement, values }]);
-    await persistLocalDatabase();
-  } catch (error) {
-    console.error('Failed to pull individuals into SQLite:', error);
-    throw error;
-  }
 }
