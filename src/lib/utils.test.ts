@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   ageInYears,
   calculateBmi,
+  emptyToNull,
   getNutritionStatus,
   HEIGHT_CM_RANGE,
   isMeasurementInRange,
+  philhealthDigits,
   sameHouseholdNumber,
   statusChangedOn,
   titleCase,
@@ -118,5 +120,36 @@ describe('statusChangedOn', () => {
 
   it('clears the date when the member is active again', () => {
     expect(statusChangedOn('moved_out', 'active', '2026-07-01', '2026-08-29')).toBeNull();
+  });
+});
+
+// Both are shared by the household form and the resident editor. They used to be
+// a copy each, so a rule changed on one screen reached the other only by luck.
+describe('emptyToNull', () => {
+  it('stores blank optional text as NULL, not as an empty string', () => {
+    expect(emptyToNull('')).toBeNull();
+    expect(emptyToNull('   ')).toBeNull();
+    expect(emptyToNull(null)).toBeNull();
+    expect(emptyToNull(undefined)).toBeNull();
+  });
+
+  it('trims what was typed and keeps it', () => {
+    expect(emptyToNull('  farmer ')).toBe('farmer');
+  });
+});
+
+describe('philhealthDigits', () => {
+  it('reduces the formatting a BHW typed to the digits that identify the card', () => {
+    expect(philhealthDigits('12-345678901-2')).toBe('123456789012');
+    expect(philhealthDigits('12 3456')).toBe('123456');
+    // One ID must not be storable under two spellings.
+    expect(philhealthDigits('12-3456')).toBe(philhealthDigits('123456'));
+  });
+
+  it('stores nothing rather than an empty string when no digits were given', () => {
+    expect(philhealthDigits('')).toBeNull();
+    expect(philhealthDigits('--')).toBeNull();
+    expect(philhealthDigits(null)).toBeNull();
+    expect(philhealthDigits(undefined)).toBeNull();
   });
 });

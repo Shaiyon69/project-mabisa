@@ -75,6 +75,21 @@ export function sameHouseholdNumber(left: string | null | undefined, right: stri
   return normalized !== '' && normalized === normalize(right);
 }
 
+/** Blank optional text is stored as NULL rather than an empty string. */
+export function emptyToNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * Strips the formatting a BHW typed, leaving the canonical digits — a PhilHealth
+ * number written with dashes and one written without are the same ID.
+ */
+export function philhealthDigits(value: string | null | undefined): string | null {
+  const digits = value?.replace(/[^0-9]/g, '');
+  return digits ? digits : null;
+}
+
 export function createId(): string {
   return crypto.randomUUID();
 }
