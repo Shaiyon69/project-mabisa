@@ -8,6 +8,7 @@ import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
 import { describeAuthError } from './lib/authErrors';
 import { countRows } from './services/localDatabase';
+import { clearPin } from './lib/devicePin';
 import { buildsBhw } from './app/surface';
 import { logDev } from './lib/utils';
 import { isDeskRole, type UserRole } from './types/database';
@@ -174,6 +175,13 @@ export function App() {
   }
 
   async function handleLogout() {
+    // Clears the device PIN with the session: the next person to sign in on this
+    // phone sets their own, and signing in again is how someone who has forgotten
+    // theirs gets back in.
+    if (bhwId) {
+      await clearPin(bhwId);
+    }
+
     await supabase.auth.signOut();
 
     // The sign-in screen renders outside the router, so nothing else resets the

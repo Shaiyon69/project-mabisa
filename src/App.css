@@ -2057,7 +2057,7 @@ tbody tr:hover {
 
 /* Covers the shell and nothing more. It is opaque because the point is that the
    record underneath stops being readable; a blur still shows the shape of a name. */
-.idle-lock {
+.pin-gate {
   position: absolute;
   z-index: 40;
   display: flex;
@@ -2071,13 +2071,48 @@ tbody tr:hover {
   text-align: center;
 }
 
-.idle-lock h2 {
+.pin-gate h2 {
   margin: 0;
 }
 
-.idle-lock p {
-  max-width: 30ch;
+.pin-gate p {
+  max-width: 32ch;
   margin: 0;
+}
+
+/* The digits themselves are never shown — .pin-progress below is the feedback.
+   Kept on screen rather than visually hidden so the field still takes a tap and
+   still raises the keypad. */
+.pin-input {
+  width: 12ch;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--field-soft);
+  color: transparent;
+  font-size: 18px;
+  text-align: center;
+  caret-color: var(--primary);
+}
+
+.pin-input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* How many digits are in, without showing which. */
+.pin-progress {
+  margin: 0;
+  color: var(--primary);
+  font-size: 24px;
+  letter-spacing: 10px;
+  /* The tracking above puts the gap after the last mark too; this pulls the row back to centre. */
+  text-indent: 10px;
+}
+
+.pin-help {
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* Admin period filter, summary captions and distribution bars ------------- */

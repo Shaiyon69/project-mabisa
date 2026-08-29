@@ -1,8 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
-import { useIdleLock } from '../../hooks/useIdleLock';
+import { PinGate } from './PinGate';
 import type { SyncStatus } from '../../services/syncService';
-import { Button } from '../common/Button';
 import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
 
@@ -57,30 +56,15 @@ function recordRail(
 }
 
 export function BHWLayout({ logout }: BHWLayoutProps) {
-  const { isOnline, message, syncStatus, snapshot } = useMabisaData();
-  const { locked, unlock } = useIdleLock();
+  const { bhwId, isOnline, message, syncStatus, snapshot } = useMabisaData();
   const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
 
   // BHW uses a phone-sized shell because this interface is packaged with Capacitor.
   return (
     <main className="bhw-preview-shell">
       <section className="bhw-mobile-shell" aria-label="BHW mobile app preview">
-        {/* Records stay saved and queued underneath — the count is shown so nobody reads this as lost work. */}
-        {locked ? (
-          <div className="idle-lock" role="dialog" aria-modal="true" aria-label="Screen locked">
-            <span className="brand-mark" aria-hidden="true">
-              M
-            </span>
-            <h2>Screen locked</h2>
-            <p className="muted">
-              {snapshot.pendingQueueCount
-                ? `${snapshot.pendingQueueCount} record(s) still saved on this device.`
-                : 'Nothing was lost. Your records are still on this device.'}
-            </p>
-            <Button onClick={unlock}>Continue</Button>
-          </div>
-        ) : null}
-
+        {/* Records stay saved and queued underneath the gate — the count is shown there so nobody reads it as lost work. */}
+        <PinGate userId={bhwId} pendingRecordCount={snapshot.pendingQueueCount}>
         <p className={`field-rail field-rail-${rail.tone}`} role="status">
           {rail.label}
         </p>
@@ -102,6 +86,7 @@ export function BHWLayout({ logout }: BHWLayoutProps) {
             </NavLink>
           ))}
         </nav>
+        </PinGate>
       </section>
     </main>
   );
