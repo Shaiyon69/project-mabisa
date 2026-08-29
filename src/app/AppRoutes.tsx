@@ -79,7 +79,21 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       ) : null}
 
       {buildsAdmin ? (
-        <Route path="/admin" element={isAdmin ? <AdminLayout logout={logout} role={role} /> : adminRejection}>
+        <Route
+          path="/admin"
+          element={
+            isAdmin ? (
+              <AdminLayout logout={logout} role={role} />
+            ) : roleChecked && buildsBhw ? (
+              // A health worker who lands here has their own screens to go to, so
+              // send them rather than explain. The notice below is for the build
+              // that has no field app to send anyone to.
+              <Navigate to="/bhw" replace />
+            ) : (
+              adminRejection
+            )
+          }
+        >
           <Route index element={<AdminDashboardPage />} />
           <Route path="residents" element={<ResidentsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
