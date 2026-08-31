@@ -412,6 +412,17 @@ describe('the local store', () => {
       expect((await store.readLocalHouseholds({ offset: 1 })).map((h) => h.household_id)).toEqual(['h1']);
       expect(await store.readLocalHouseholds({ searchQuery: 'HH-002' })).toHaveLength(1);
     });
+
+    // This search is the prefilter behind the re-visit lookup: an unescaped `_`
+    // matched any character, so a household number carrying one could pull back
+    // the wrong record — or, matching everything, push the real one past the
+    // 50-row limit and let a second copy of the house be recorded.
+    it('treats a typed % or _ as a character, not a wildcard', async () => {
+      await seed();
+
+      expect(await store.readLocalHouseholds({ searchQuery: '%' })).toHaveLength(0);
+      expect(await store.readLocalHouseholds({ searchQuery: 'HH_001' })).toHaveLength(0);
+    });
   });
 
   describe('reading the two leaf histories', () => {

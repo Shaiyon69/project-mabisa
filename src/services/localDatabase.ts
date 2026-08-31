@@ -832,15 +832,26 @@ export async function getIndividualCount(options?: IndividualFilter): Promise<nu
 /** The filters both the individual read and its count apply, built once so the two cannot drift. */
 type IndividualFilter = Pick<PaginatedQuery, 'searchQuery' | 'residentId' | 'householdId' | 'includeFormer'>;
 
+/**
+ * A contains-match pattern for LIKE, with the wildcards a BHW may have typed
+ * escaped so they match literally. Shared by the resident and household searches:
+ * the household one is the prefilter behind `findExistingHousehold`, and a
+ * household number holding a `_` that silently matched any character is how a
+ * re-visit gets missed and a second copy of a house recorded.
+ *
+ * Every caller must pair this with `ESCAPE '\'` in the SQL.
+ */
+function likePattern(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+}
+
 function buildIndividualFilter(options?: IndividualFilter): { clause: string; params: SqlValue[] } {
   const conditions: string[] = [];
   const params: SqlValue[] = [];
   const term = options?.searchQuery?.trim();
 
   if (term) {
-    // Escape LIKE wildcards so a typed % or _ matches literally instead of
-    // silently widening the search.
-    const pattern = `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+    const pattern = likePattern(term);
 
     conditions.push(`(i.first_name LIKE ? ESCAPE '\\'
                   OR i.middle_name LIKE ? ESCAPE '\\'
@@ -941,9 +952,8 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
   const params: SqlValue[] = [];
 
   if (options?.searchQuery) {
-    const searchTerm = `%${options.searchQuery.trim()}%`;
-    query += ' WHERE household_number LIKE ?';
-    params.push(searchTerm);
+    query += " WHERE household_number LIKE ? ESCAPE '\\'";
+    params.push(likePattern(options.searchQuery.trim()));
   }
 
   query += ' ORDER BY created_at DESC';
