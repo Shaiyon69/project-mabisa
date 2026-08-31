@@ -33,7 +33,12 @@ vi.mock('@capacitor/network', () => ({
   Network: { getStatus: () => Promise.resolve({ connected: true }) },
 }));
 
-vi.mock('../lib/supabase', () => {
+// Partial mock: only the client is faked. `readAllPages` lives in this module too
+// and is pure paging logic the pull genuinely depends on — replacing it would test
+// the fake instead of the code.
+vi.mock('../lib/supabase', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/supabase')>();
+
   /** Chainable and awaitable, like a PostgrestFilterBuilder, minus the HTTP. */
   const resolving = (value: unknown, filters: [string, string, unknown][] = []) => {
     const chain: Record<string, unknown> = {
@@ -51,6 +56,7 @@ vi.mock('../lib/supabase', () => {
   };
 
   return {
+    ...actual,
     supabase: {
       auth: { getSession: () => Promise.resolve({ data: { session: { user: { id: 'bhw-1' } } } }) },
       from: (table: string) => ({

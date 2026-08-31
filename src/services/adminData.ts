@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { readAllPages, supabase } from '../lib/supabase';
 import { ADULT_BMI_MIN_AGE, ageInYears } from '../lib/utils';
 import type {
   HealthAssessment,
@@ -66,38 +66,63 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   newestRecordAt: null,
 };
 
+/**
+ * Every read here is paged rather than a bare `select`.
+ *
+ * A plain select stops at the server's row cap and reports nothing about it, so
+ * past that many rows the resident count, every chart band and every CSV export
+ * read as complete while describing only the first page. The counts are the
+ * dangerous part: a truncated figure in an LGU report is not obviously wrong to
+ * the person reading it. The secondary sort is the primary key so pages are a
+ * stable sequence — the date columns repeat freely, and without a tiebreak a row
+ * could shuffle across a page seam and be read twice or not at all.
+ *
+ * The field tables were empty when this was written, so the cap has never
+ * actually been hit. It costs one helper to make sure it never is.
+ */
 export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSnapshot> {
-  const [households, residents, assessments, disbursements, inventory, barangayLabel] = await Promise.all([
+  const [households, residentRows, assessmentRows, disbursementRows, inventoryRows, barangayLabel] = await Promise.all([
     // head:true asks for the count without the rows.
     supabase.from('households').select('household_id', { count: 'exact', head: true }),
     // Active members only: a resident who moved out or died is still on file, but
     // counting her as profiled today would overstate the population served.
-    supabase.from('individuals').select('resident_id, sex, birthday, updated_at').eq('status', 'active'),
-    supabase
-      .from('health_assessments')
-      .select('*')
-      .gte('assessment_date', filters.from)
-      .lte('assessment_date', filters.to)
-      .order('assessment_date', { ascending: false }),
-    supabase
-      .from('supply_disbursements')
-      .select('*')
-      .gte('disbursement_date', filters.from)
-      .lte('disbursement_date', filters.to)
-      .order('disbursement_date', { ascending: false }),
-    supabase.from('inventory_items').select('*').order('item_name'),
+    readAllPages<AdminResident>('Resident', (from, to) =>
+      supabase
+        .from('individuals')
+        .select('resident_id, sex, birthday, updated_at')
+        .eq('status', 'active')
+        .order('resident_id')
+        .range(from, to),
+    ),
+    readAllPages<HealthAssessment>('Health assessment', (from, to) =>
+      supabase
+        .from('health_assessments')
+        .select('*')
+        .gte('assessment_date', filters.from)
+        .lte('assessment_date', filters.to)
+        .order('assessment_date', { ascending: false })
+        .order('assessment_id')
+        .range(from, to),
+    ),
+    readAllPages<SupplyDisbursement>('Supply disbursement', (from, to) =>
+      supabase
+        .from('supply_disbursements')
+        .select('*')
+        .gte('disbursement_date', filters.from)
+        .lte('disbursement_date', filters.to)
+        .order('disbursement_date', { ascending: false })
+        .order('log_id')
+        .range(from, to),
+    ),
+    readAllPages<InventoryItem>('Inventory', (from, to) =>
+      supabase.from('inventory_items').select('*').order('item_name').order('item_id').range(from, to),
+    ),
     fetchBarangayScope(),
   ]);
 
-  const failure = [households, residents, assessments, disbursements, inventory].find((result) => result.error);
-  if (failure?.error) {
-    throw new Error(failure.error.message);
+  if (households.error) {
+    throw new Error(households.error.message);
   }
-
-  const residentRows = (residents.data ?? []) as AdminResident[];
-  const assessmentRows = assessments.data ?? [];
-  const disbursementRows = disbursements.data ?? [];
-  const inventoryRows = inventory.data ?? [];
 
   return {
     householdCount: households.count ?? 0,

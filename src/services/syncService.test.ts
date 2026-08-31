@@ -1,15 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  PULL_PAGE_SIZE,
   idleResult,
   derivedEntityKeys,
   nextAttemptTimestamp,
   newestUpdatedAt,
   ownEntityKey,
   parentEntityKeys,
-  readAllPages,
   withKnownParents,
 } from './syncService';
+import { PULL_PAGE_SIZE, readAllPages } from '../lib/supabase';
 import type { LocalTableName, SyncQueueEntry } from './localDatabase';
 
 /** Minimal queue entry — only the fields the dependency helpers actually read. */
