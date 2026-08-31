@@ -62,20 +62,34 @@ export function ResidentsPage() {
   const [results, setResults] = useState<Individual[]>([]);
   const [searching, setSearching] = useState(false);
 
-  // Same 300ms debounce and the same accessor the resident picker uses; this
-  // screen only differs in showing the whole list rather than one selection.
+  // Same 300ms debounce, same `current` guard against a slow read landing after a
+  // faster later one, and the same accessor the resident picker uses; this screen
+  // only differs in showing the whole list rather than one selection.
   useEffect(() => {
+    let current = true;
+
     const timeoutId = setTimeout(() => {
       setSearching(true);
       // The one list that keeps former members: a status set by mistake has to be
       // reachable, and looking someone up by name is how a BHW would go find them.
       readLocalIndividuals({ searchQuery: query, limit: 50, includeFormer: true })
-        .then(setResults)
+        .then((rows) => {
+          if (current) {
+            setResults(rows);
+          }
+        })
         .catch(console.error)
-        .finally(() => setSearching(false));
+        .finally(() => {
+          if (current) {
+            setSearching(false);
+          }
+        });
     }, 300);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      current = false;
+      clearTimeout(timeoutId);
+    };
   }, [query]);
 
   return (

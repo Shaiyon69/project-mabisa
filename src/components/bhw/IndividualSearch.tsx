@@ -26,18 +26,34 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
   const [selected, setSelected] = useState<Individual | null>(null);
 
   // Debounced SQLite query — loading is set inside the timeout, not the effect body, so typing doesn't force a re-render per keystroke.
+  //
+  // `current` guards the query as well as the timer: clearing the timeout does
+  // nothing to a read already in flight, so a slow result for "cru" could land
+  // after a fast one for "cruz" and overwrite it, and its `finally` would clear
+  // the loading flag on a search still running.
   useEffect(() => {
+    let current = true;
+
     const timeoutId = setTimeout(() => {
       setIsLoading(true);
       readLocalIndividuals({ searchQuery: query, limit: 50 })
         .then((results) => {
-          setSearchResults(results);
+          if (current) {
+            setSearchResults(results);
+          }
         })
         .catch(console.error)
-        .finally(() => setIsLoading(false));
+        .finally(() => {
+          if (current) {
+            setIsLoading(false);
+          }
+        });
     }, 300);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      current = false;
+      clearTimeout(timeoutId);
+    };
   }, [query]);
 
   // The chosen person stays in the list even once the search moves on, or the
