@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
 import { createId, emptyToNull, ignoreImplicitSubmit, isInFuture, philhealthDigits, sameHouseholdNumber, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
@@ -159,6 +159,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   // Index of the member the BHW asked to remove, held until they confirm. Only a
   // row with something typed in it gets that question — an empty one just goes.
   const [removingMember, setRemovingMember] = useState<number | null>(null);
+  // The pending draft write, so a save can cancel one that is still armed.
+  const draftTimer = useRef<number | undefined>(undefined);
   // A form carrying a household id is editing that household, not creating one.
   const isRevisit = Boolean(household.household_id);
   const missingRequirements = [
@@ -182,14 +184,36 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     Boolean(household.food_production?.length) ||
     members.some((member) => memberHasEntries(member));
 
+  // Debounced: `household` and `members` are new objects on every change, so
+  // without the timer this serialized the whole household and every member to
+  // local storage on each keystroke — a synchronous write in the middle of
+  // typing, on the cheap phone this is actually used on. The worst a crash now
+  // costs is the last half-second of typing.
   useEffect(() => {
-    if (hasEntries) {
-      writeDraft(bhwId, { household, members, savedAt: new Date().toISOString() });
+    if (!hasEntries) {
+      return;
     }
+
+    draftTimer.current = window.setTimeout(() => {
+      writeDraft(bhwId, { household, members, savedAt: new Date().toISOString() });
+    }, 500);
+
+    return () => window.clearTimeout(draftTimer.current);
   }, [bhwId, hasEntries, household, members]);
 
-  function startBlank() {
+  /**
+   * Discards the draft for good. The pending write is cancelled first: a BHW who
+   * taps Save within the debounce window still has a timer armed, and letting it
+   * fire would put the draft back after the household was written — offering a
+   * saved household back as unfinished work on the next visit.
+   */
+  function discardDraft() {
+    window.clearTimeout(draftTimer.current);
     clearDraft(bhwId);
+  }
+
+  function startBlank() {
+    discardDraft();
     setHousehold(blankHousehold());
     setMembers([blankMember(true)]);
     setFlagged([]);
@@ -361,7 +385,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     }
 
     // The entries are now in SQLite and on the queue — the draft has nothing left to protect.
-    clearDraft(bhwId);
+    discardDraft();
     setRestoredNotice(false);
 
     await onSaved();
