@@ -91,6 +91,25 @@ export function resetPullWatermark(): void {
 }
 
 /**
+ * Forgets both pass markers, for a device changing hands.
+ *
+ * The watermark has to go with the records: it says the server was read through
+ * a given moment, and once the tables are emptied that is no longer true — the
+ * next health worker would pull only what changed since, and open an app holding
+ * nothing but the last few hours of her purok. The last-drained time goes because
+ * it describes somebody else's sync.
+ */
+export function forgetDeviceSyncState(): void {
+  resetPullWatermark();
+
+  try {
+    localStorage.removeItem(LAST_SYNC_AT_KEY);
+  } catch {
+    // Nothing to forget if storage is unavailable.
+  }
+}
+
+/**
  * The central row changed after this device's edit. Retrying can't win that race,
  * so a conflict skips straight to the dead letter for a human to resolve.
  */

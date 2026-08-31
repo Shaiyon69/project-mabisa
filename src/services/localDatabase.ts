@@ -812,6 +812,25 @@ export async function countRows(table: MigratableTableName): Promise<number> {
   return Number(result.values?.[0]?.total ?? 0);
 }
 
+/**
+ * Empties the five data tables, leaving the schema and both queues alone.
+ *
+ * For the moment a device changes hands: the local copy is one purok's residents,
+ * and the next health worker to sign in covers a different one. Deliberately does
+ * not touch `sync_queue` or `sync_dead_letter` — an unsent record is the only copy
+ * of a visit, so the caller checks both are empty before calling this and refuses
+ * the handover otherwise. Children first, since `pragma foreign_keys` is on.
+ */
+export async function clearLocalRecords(): Promise<void> {
+  const database = await initializeLocalDatabase();
+
+  for (const table of ['supply_disbursements', 'health_assessments', 'individuals', 'households', 'inventory_items']) {
+    await database.run(`delete from ${table}`);
+  }
+
+  await persistLocalDatabase();
+}
+
 export async function getIndividualCount(options?: IndividualFilter): Promise<number> {
   const db = await initializeLocalDatabase();
   const filter = buildIndividualFilter(options);

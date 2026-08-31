@@ -107,8 +107,8 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
   );
 }
 
-/** The whole screen when a session has reached the wrong deployment. */
-function SurfaceNotice({ title, body, logout }: { title: string; body: string; logout?: () => Promise<void> }) {
+/** The whole screen when a session cannot be let through — the wrong deployment, or a device that is not free. */
+export function SurfaceNotice({ title, body, logout }: { title: string; body: string; logout?: () => Promise<void> }) {
   return (
     <main className="mobile-shell auth-shell">
       <Card className="login-panel">

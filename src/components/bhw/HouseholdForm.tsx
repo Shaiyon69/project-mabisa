@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
-import { createId, emptyToNull, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
+import { createId, emptyToNull, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
   findLocalHouseholdByNumber,
@@ -57,7 +57,7 @@ type HouseholdDraft = {
 };
 
 function draftKey(bhwId: string): string {
-  return `mabisa.household_draft.${bhwId}`;
+  return `${HOUSEHOLD_DRAFT_PREFIX}${bhwId}`;
 }
 
 function readDraft(bhwId: string): HouseholdDraft | null {
