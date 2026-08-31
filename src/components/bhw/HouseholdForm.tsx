@@ -289,7 +289,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       members.map(async (member, index) => {
         // Former members included: someone who moved out and came back is exactly
         // the person this warning exists to catch before she is entered twice.
-        const candidates = (await readLocalIndividuals({ searchQuery: member.last_name?.trim(), limit: 50, includeFormer: true }))
+        const candidates = (await readLocalIndividuals({ searchQuery: member.last_name?.trim(), includeFormer: true }))
           // On a re-visit every member already on file matches themselves; only
           // people outside this household are a duplicate worth raising.
           .filter((candidate) => !household.household_id || candidate.household_id !== household.household_id);
