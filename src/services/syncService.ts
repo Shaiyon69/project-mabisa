@@ -673,6 +673,10 @@ export async function pullRemoteUpdates(): Promise<void> {
       ),
     );
 
+    // One flush for the whole pull, not one per table — on web each is a full
+    // serialization of the database.
+    await persistLocalDatabase();
+
     // Advance the watermark to the server's newest row, not this device's clock
     // (clock drift would skip rows). Inventory is excluded — it's pulled
     // unfiltered, so its timestamps aren't evidence of the filtered reads' progress.
