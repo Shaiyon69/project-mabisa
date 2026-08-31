@@ -425,6 +425,54 @@ describe('the local store', () => {
     });
   });
 
+  describe('finding a household by its number', () => {
+    // The re-visit lookup. It used to be the LIKE search above, capped at 50
+    // rows and ordered newest-first, so `HH-1` in a purok holding HH-10, HH-100
+    // and the rest returned the newer near-misses and cut the exact match — and
+    // the form, told there was no such household, recorded the house twice.
+    it('finds the exact number past a page of rows that merely contain it', async () => {
+      await store.pullHouseholdsFromServer([
+        household({ household_id: 'target', household_number: 'HH-1', created_at: AT, updated_at: AT }),
+        ...Array.from({ length: 60 }, (_, index) =>
+          household({
+            household_id: `near-${index}`,
+            household_number: `HH-1${index}`,
+            created_at: `2026-08-${String((index % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+          }),
+        ),
+      ]);
+
+      expect((await store.findLocalHouseholdByNumber('HH-1'))?.household_id).toBe('target');
+    });
+
+    it('matches the same number written differently', async () => {
+      await seed();
+
+      expect((await store.findLocalHouseholdByNumber(' hh-001 '))?.household_id).toBe('h1');
+    });
+
+    it('does not match a number that merely contains the other', async () => {
+      await seed();
+
+      expect(await store.findLocalHouseholdByNumber('HH-0012')).toBeNull();
+      expect(await store.findLocalHouseholdByNumber('HH-00')).toBeNull();
+    });
+
+    it('treats a blank number as matching nothing', async () => {
+      await seed();
+
+      expect(await store.findLocalHouseholdByNumber('')).toBeNull();
+      expect(await store.findLocalHouseholdByNumber('   ')).toBeNull();
+      expect(await store.findLocalHouseholdByNumber(null)).toBeNull();
+    });
+
+    it('parses the JSON array columns, the same as the list read', async () => {
+      await seed();
+
+      expect((await store.findLocalHouseholdByNumber('HH-001'))?.water_source).toEqual(['deep_well']);
+    });
+  });
+
   describe('reading the two leaf histories', () => {
     beforeEach(async () => {
       await seed();
