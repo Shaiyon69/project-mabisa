@@ -1047,6 +1047,11 @@ function parseLocalTableName(value: string): LocalTableName {
  * Writes a page of pulled rows through the same statement the local write path
  * uses, so the two can't drift. One body for all five tables — they differed only
  * by which upsert they named and which word went in the error log.
+ *
+ * Deliberately does not flush: on web `persistLocalDatabase()` serializes the
+ * whole database, and flushing per table made that five times a pull. The caller
+ * flushes once at the end, the way the push side already does. A crash before
+ * that replays safely — every statement here is an upsert.
  */
 async function pullRowsFromServer<TRow>(
   label: string,
@@ -1058,7 +1063,6 @@ async function pullRowsFromServer<TRow>(
 
   try {
     await db.executeSet([{ statement: upsert.statement, values: cloudRows.map(upsert.values) }]);
-    await persistLocalDatabase();
   } catch (error) {
     console.error(`Failed to pull ${label} into SQLite:`, error);
     throw error;
