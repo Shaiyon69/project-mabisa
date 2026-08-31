@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
-import { createId, emptyToNull, ignoreImplicitSubmit, isInFuture, philhealthDigits, sameHouseholdNumber, scrollToFirstError } from '../../lib/utils';
+import { createId, emptyToNull, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
-  readLocalHouseholds,
+  findLocalHouseholdByNumber,
   readLocalIndividuals,
   saveHouseholdLocally,
   saveIndividualLocally,
@@ -42,24 +42,6 @@ const FOOD_OPTIONS = [
 
 // Accepts dashes/spaces on input (as written on paper forms); digits-only storage prevents two spellings of one ID.
 const PHILHEALTH_ALLOWED = /^[\d\s-]+$/;
-
-/**
- * The household already on this device under that number, if there is one. A device
- * only ever holds one purok, so the number alone decides whether this is a re-visit
- * rather than a new house. The LIKE search is a prefilter — `sameHouseholdNumber`
- * makes the actual call, so a number that is a substring of another is not a match.
- */
-async function findExistingHousehold(householdNumber: string | null | undefined): Promise<Household | null> {
-  const number = householdNumber?.trim();
-
-  if (!number) {
-    return null;
-  }
-
-  const candidates = await readLocalHouseholds({ searchQuery: number, limit: 50 });
-
-  return candidates.find((candidate) => sameHouseholdNumber(candidate.household_number, number)) ?? null;
-}
 
 /**
  * A household is minutes of typing on a phone that also rings, sleeps and runs out
@@ -225,7 +207,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   /** Looks for an existing record under the number just typed, so a re-visit is offered before it is retyped. */
   async function checkForExisting() {
     try {
-      const existing = await findExistingHousehold(household.household_number);
+      const existing = await findLocalHouseholdByNumber(household.household_number);
 
       // The household this form is already editing is not a match to offer.
       setExistingMatch(existing && existing.household_id !== household.household_id ? existing : null);
@@ -446,7 +428,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       {
         // Covers the renamed household too: an edited number that lands on another
         // record would leave one purok holding two houses under one number.
-        const existing = await findExistingHousehold(household.household_number);
+        const existing = await findLocalHouseholdByNumber(household.household_number);
 
         if (existing && existing.household_id !== household.household_id) {
           setExistingMatch(existing);

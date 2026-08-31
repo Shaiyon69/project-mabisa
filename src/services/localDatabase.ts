@@ -961,13 +961,45 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
   const page = pageBounds(options);
   const result = await db.query(query + page.clause, [...params, ...page.params]);
 
-  // Translate SQLite JSON strings back into JavaScript arrays
-  return (result.values || []).map((row) => ({
+  return (result.values || []).map(toHousehold);
+}
+
+/** Translates the JSON-text columns back into arrays. Shared so a read cannot forget one. */
+function toHousehold(row: Record<string, unknown>): Household {
+  return {
     ...row,
-    toilet_type: JSON.parse(row.toilet_type || '[]'),
-    water_source: JSON.parse(row.water_source || '[]'),
-    food_production: JSON.parse(row.food_production || '[]'),
-  })) as Household[];
+    toilet_type: JSON.parse(String(row.toilet_type || '[]')),
+    water_source: JSON.parse(String(row.water_source || '[]')),
+    food_production: JSON.parse(String(row.food_production || '[]')),
+  } as unknown as Household;
+}
+
+/**
+ * The household recorded under exactly this number, or null.
+ *
+ * Not a LIKE search. This is the identity check behind the re-visit path, and a
+ * contains-match has to be capped to stay affordable — at which point the row it
+ * is looking for can fall outside the page and the form mints a second copy of a
+ * house that is already on file. `HH-1` contains-matches `HH-10`, `HH-100` and
+ * every other number it is a prefix of, so on a purok of any size the older exact
+ * match is exactly the row that gets cut.
+ *
+ * Compared trimmed and case-folded on both sides, because "hh-001" and "HH-001 "
+ * are one house on paper. `lower()` is ASCII-only in SQLite, which is all a
+ * household number is.
+ */
+export async function findLocalHouseholdByNumber(householdNumber: string | null | undefined): Promise<Household | null> {
+  const number = householdNumber?.trim().toLowerCase();
+
+  if (!number) {
+    return null;
+  }
+
+  const db = await initializeLocalDatabase();
+  const result = await db.query('select * from households where lower(trim(household_number)) = ? limit 1', [number]);
+  const row = result.values?.[0];
+
+  return row ? toHousehold(row) : null;
 }
 
 /** `limit` exists for the dashboard, which shows three rows out of a purok's whole history. */
