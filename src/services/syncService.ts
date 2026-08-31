@@ -1,7 +1,7 @@
 import { Network } from '@capacitor/network';
 import type { InventoryItem } from '../types/database';
 import { logDev } from '../lib/utils';
-import { supabase } from '../lib/supabase';
+import { readAllPages, supabase } from '../lib/supabase';
 import {
   initializeLocalDatabase,
   markSyncQueueEntryFailed,
@@ -552,42 +552,6 @@ export function newestUpdatedAt(rows: { updated_at?: string }[], fallback: strin
     (latest, row) => (typeof row.updated_at === 'string' && (!latest || row.updated_at > latest) ? row.updated_at : latest),
     fallback,
   );
-}
-
-/** Rows per pull request. Supabase's own default cap, so asking for more gets silently trimmed anyway. */
-export const PULL_PAGE_SIZE = 1000;
-
-/**
- * Reads one table to the end, a page at a time.
- *
- * A single `select('*')` stops at the server's row cap and says nothing about
- * it, and an unordered truncated read is the dangerous half: the watermark then
- * advances to the newest row that happened to come back, and every row the cap
- * cut is below it, so `updated_at >= watermark` never offers them again. Ordering
- * by `updated_at` plus the primary key makes the pages a stable sequence — the
- * tiebreak matters because rows written in the same millisecond would otherwise
- * shuffle between pages and one could fall through the seam.
- */
-export async function readAllPages<TRow>(
-  label: string,
-  page: (from: number, to: number) => PromiseLike<{ data: TRow[] | null; error: { message: string } | null }>,
-): Promise<TRow[]> {
-  const rows: TRow[] = [];
-
-  for (;;) {
-    const { data, error } = await page(rows.length, rows.length + PULL_PAGE_SIZE - 1);
-
-    if (error) {
-      throw new Error(`${label} Pull Error: ${error.message}`);
-    }
-
-    rows.push(...(data ?? []));
-
-    // A short page is the last page — a full one might not be, so ask again.
-    if ((data?.length ?? 0) < PULL_PAGE_SIZE) {
-      return rows;
-    }
-  }
 }
 
 /**
