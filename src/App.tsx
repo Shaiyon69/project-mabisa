@@ -3,11 +3,12 @@ import { BrowserRouter } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import './App.css';
 import { MabisaDataProvider } from './app/MabisaDataContext';
-import { AppRoutes } from './app/AppRoutes';
+import { AppRoutes, SurfaceNotice } from './app/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
 import { describeAuthError } from './lib/authErrors';
 import { countRows } from './services/localDatabase';
+import { claimDeviceFor, type Handover } from './services/deviceHandover';
 import { clearPin } from './lib/devicePin';
 import { buildsBhw } from './app/surface';
 import { logDev } from './lib/utils';
@@ -59,6 +60,10 @@ export function App() {
   // new session starts unchecked rather than inheriting the previous account's answer.
   const [checkedUserId, setCheckedUserId] = useState<string | null>(null);
   const [pendingRecordCount, setPendingRecordCount] = useState<number | null>(null);
+  // Whether this account may use this phone's local records, and which account
+  // that answer is about — an id rather than a flag, the same as `checkedUserId`
+  // above, so a new session starts undecided instead of inheriting the last one's answer.
+  const [handover, setHandover] = useState<{ userId: string; result: Handover } | null>(null);
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
   const role = cachedRole?.userId === bhwId ? cachedRole.role : null;
@@ -149,6 +154,31 @@ export function App() {
     };
   }, [bhwId]);
 
+  // A phone that changes hands carries the previous worker's purok and her unsent
+  // queue, and neither is keyed by account. Settled before anything reads or
+  // pushes. Field build only — the portal keeps no local records.
+  useEffect(() => {
+    if (!bhwId || !buildsBhw) {
+      return;
+    }
+
+    let cancelled = false;
+
+    claimDeviceFor(bhwId)
+      .then((result) => !cancelled && setHandover({ userId: bhwId, result }))
+      .catch((error: unknown) => {
+        // The local database could not be read, so whose records these are is
+        // unknown. Holding is the safe direction; 0 unsent reads as "cannot tell".
+        logDev('Device handover check failed', error instanceof Error ? error.message : String(error));
+
+        return !cancelled && setHandover({ userId: bhwId, result: { claimed: false, unsent: 0 } });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bhwId]);
+
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAuthMessage(null);
@@ -211,6 +241,27 @@ export function App() {
           }))
         }
         onSubmit={handleLogin}
+      />
+    );
+  }
+
+  // The portal never asks — it holds no local records, so there is nothing to hand over.
+  const deviceReady = buildsBhw ? (handover?.userId === bhwId ? handover.result : null) : { claimed: true as const };
+
+  if (!deviceReady) {
+    return <SurfaceNotice title="Checking this device" body="One moment." />;
+  }
+
+  if (!deviceReady.claimed) {
+    return (
+      <SurfaceNotice
+        title="This phone is still holding another health worker's records"
+        body={
+          deviceReady.unsent > 0
+            ? `${deviceReady.unsent} record(s) saved here have not reached the health office yet, and only the worker who recorded them can send them. Ask her to sign in on this phone and sync, then sign in again.`
+            : 'The records on this phone could not be read, so there is no way to tell whose they are. Sign in again once there is a connection, or ask the health office.'
+        }
+        logout={handleLogout}
       />
     );
   }

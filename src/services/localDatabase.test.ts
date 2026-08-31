@@ -473,6 +473,27 @@ describe('the local store', () => {
     });
   });
 
+  describe('clearing the records for a new health worker', () => {
+    it('empties the data tables and leaves both queues alone', async () => {
+      await seed();
+      await store.enqueueSyncOperation('households', 'INSERT', household());
+      await store.pullHealthAssessmentsFromServer([assessment({ assessment_id: 'a1', resident_id: 'r1' })]);
+      await store.pullSupplyDisbursementsFromServer([
+        disbursement({ log_id: 'd1', item_id: 'i1', resident_id: 'r1' }),
+      ]);
+
+      await store.clearLocalRecords();
+
+      for (const table of ['households', 'individuals', 'health_assessments', 'supply_disbursements', 'inventory_items'] as const) {
+        expect(await store.countRows(table)).toBe(0);
+      }
+
+      // The queue is the only copy of an unsent visit — the caller refuses the
+      // handover while it holds anything, and this must not empty it regardless.
+      expect(await store.countRows('sync_queue')).toBe(1);
+    });
+  });
+
   describe('reading the two leaf histories', () => {
     beforeEach(async () => {
       await seed();

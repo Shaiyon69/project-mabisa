@@ -197,3 +197,10 @@ export function logDev(message: string, data?: unknown): void {
   }
 }
 
+/**
+ * Key prefix for the household form's saved draft, one per account. Lives here
+ * rather than in the form because the device-handover path has to clear every
+ * account's draft, and a component module cannot export a helper for it without
+ * tripping `react-refresh/only-export-components`.
+ */
+export const HOUSEHOLD_DRAFT_PREFIX = 'mabisa.household_draft.';
