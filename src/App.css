@@ -2247,3 +2247,27 @@ tbody tr:hover {
     align-items: end;
   }
 }
+
+/* The update rail. Same pill as the record rail so it reads as the same class of
+   standing notice, but it never sticks: two sticky rails would land on the same
+   ten pixels and cover each other. */
+
+.app-update-rail {
+  position: static;
+  margin-top: 10px;
+}
+
+.app-update-rail a,
+.app-update-rail button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.app-update-rail a {
+  margin-left: auto;
+}

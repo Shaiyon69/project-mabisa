@@ -1,0 +1,78 @@
+# Tagging is the whole release process. Everything a phone in the field needs — a
+# signed APK on a GitHub release — comes from `git push --tags`, because a step that
+# has to be remembered is a step that gets skipped.
+name: Release APK
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag is what an installed app compares itself against; versionName is what it
+      # reports. If they disagree, every device sees an update banner that reinstalling
+      # never clears.
+      - name: Tag must match versionName
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          name=$(sed -n 's/.*versionName "\(.*\)".*/\1/p' android/app/build.gradle)
+          if [ "$tag" != "$name" ]; then
+            echo "tag $tag does not match versionName $name in android/app/build.gradle"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Gradle 8.11.1 does not support JDK 25 — the same reason the README pins JAVA_HOME
+      # for a local build.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      # ci.yml runs on branches and pull requests, which a tag push is neither — so
+      # without these three the only build that reaches a phone is the one build
+      # nothing checked. Placeholders, same as ci.yml: nothing here reaches the network.
+      - run: npx tsc -b --pretty false
+      - run: npm run lint
+      - run: npm test
+        env:
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+
+      # Real project values, not ci.yml's placeholders: this bundle is what ships to phones.
+      - run: npm run build:mobile
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - run: npx cap sync android
+
+      - name: Restore signing key
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: Build signed APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      # The update check reads this release's .apk asset. Nothing else about the release
+      # matters to a device.
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/app-release.apk
