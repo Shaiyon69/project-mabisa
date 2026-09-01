@@ -31,7 +31,9 @@ export function AdminDashboard({ snapshot, filters, loading, error }: AdminDashb
         {/* Households and residents are totals; the rest are scoped to the
             selected period, which is what the caption below spells out. */}
         <StatCard label="Households" value={snapshot.householdCount} detail="Profiled centrally" tone="blue" />
-        <StatCard label="Residents" value={snapshot.residentCount} detail="Profiled centrally" tone="blue" />
+        {/* "Active" is not decoration: the count filters on status, the registry
+            table below it does not, so the two disagree by everyone who moved out. */}
+        <StatCard label="Active residents" value={snapshot.residentCount} detail="Profiled centrally" tone="blue" />
         <StatCard label="Assessments" value={snapshot.assessments.length} detail="In selected period" tone="green" />
         <StatCard label="Units released" value={releasedTotal} detail="In selected period" tone="amber" />
         <StatCard label="Low unallocated stock" value={lowStock.length} detail="Items with 10 or fewer left to hand out" tone="red" />
