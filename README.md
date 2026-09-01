@@ -65,6 +65,31 @@ npm test
 The suite covers the BMI and nutrition-status calculations and the sync queue's retry
 backoff and dependency ordering. The sync loop itself is not yet covered.
 
+## Web Deployment
+
+The admin portal is hosted on Vercel; the BHW client is not, because it ships inside the
+APK. `vercel.json` at the repo root pins the build to the admin surface:
+
+```json
+{
+  "buildCommand": "npm run build:admin",
+  "outputDirectory": "dist-admin",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
+```
+
+The rewrite is what lets a deep link like `/admin/residents` survive a refresh — Vercel
+serves a real file when one matches, so hashed assets are unaffected.
+
+Import the repository at vercel.com once. After that every push to `main` deploys, and
+every branch gets a preview.
+
+Set two project environment variables, for Production and Preview: `VITE_SUPABASE_URL`
+and `VITE_SUPABASE_PUBLISHABLE_KEY`. `.env` is gitignored, so the build has nothing
+without them, and the Supabase client is constructed at module scope — a missing value is
+a blank page rather than a warning. Both are publishable client values and Row Level
+Security is the real boundary; the service role key never goes here.
+
 ## Android Build
 
 The app is distributed as a sideloaded APK, not through Google Play.
