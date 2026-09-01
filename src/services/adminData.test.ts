@@ -9,10 +9,12 @@ import {
   disbursementsByItem,
   LOW_STOCK_THRESHOLD,
   lowStockItems,
+  readAllResidentPages,
   reorderLevelOf,
   tally,
 } from './adminData';
-import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../types/database';
+import type { HealthAssessment, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
+import { PULL_PAGE_SIZE } from '../lib/supabase';
 
 describe('tally', () => {
   const rows = [{ status: 'normal' }, { status: 'normal' }, { status: 'underweight' }, { status: null }];
@@ -226,5 +228,48 @@ describe('assessmentsBelowAdultBmiAge', () => {
   // would put a caveat on a report that has no children in it.
   it('does not treat an unknown resident as a child', () => {
     expect(assessmentsBelowAdultBmiAge([{ resident_id: 'nobody' }], residents, on)).toBe(0);
+  });
+});
+
+describe('readAllResidentPages', () => {
+  const resident = (id: string) => ({ resident_id: id }) as unknown as Individual;
+  const full = (offset: number) =>
+    Array.from({ length: PULL_PAGE_SIZE }, (_, index) => resident(`r${offset + index}`));
+
+  it('follows every page, not just the first', async () => {
+    // The bug this guards: one oversized range is trimmed to the cap in silence,
+    // and the export prints its own row count as though the file were complete.
+    const pages = [
+      { rows: full(0), total: PULL_PAGE_SIZE + 2 },
+      { rows: [resident('last-1'), resident('last-2')], total: PULL_PAGE_SIZE + 2 },
+    ];
+
+    const rows = await readAllResidentPages((offset) => Promise.resolve(pages[offset / PULL_PAGE_SIZE]));
+
+    expect(rows).toHaveLength(PULL_PAGE_SIZE + 2);
+    expect(rows.at(-1)?.resident_id).toBe('last-2');
+  });
+
+  it('stops on a short page without asking for another', async () => {
+    const reads: number[] = [];
+    const rows = await readAllResidentPages((offset) => {
+      reads.push(offset);
+      return Promise.resolve({ rows: [resident('r1')], total: 1 });
+    });
+
+    expect(reads).toEqual([0]);
+    expect(rows).toHaveLength(1);
+  });
+
+  // A reader that keeps handing back full pages must not spin forever.
+  it('stops once the reported total is covered', async () => {
+    const reads: number[] = [];
+    const rows = await readAllResidentPages((offset) => {
+      reads.push(offset);
+      return Promise.resolve({ rows: full(offset), total: PULL_PAGE_SIZE });
+    });
+
+    expect(reads).toEqual([0]);
+    expect(rows).toHaveLength(PULL_PAGE_SIZE);
   });
 });
