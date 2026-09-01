@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { fetchBarangayScope, fetchResidentPage } from '../../services/adminData';
+import { fetchBarangayScope, fetchResidentPage, readAllResidentPages } from '../../services/adminData';
+import { PULL_PAGE_SIZE } from '../../lib/supabase';
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
@@ -116,9 +117,16 @@ export function IndividualsTable() {
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
 
-  /** Exports the whole filtered set, refetched at full size, not just the ten rows on screen. */
+  /**
+   * Exports the whole filtered set, refetched a page at a time, not just the ten
+   * rows on screen. One oversized range would be trimmed to the server's cap and
+   * the file would print its own row count as though it were complete.
+   */
   async function exportResidents() {
-    const [all, barangay] = await Promise.all([fetchResidentPage(query, Math.max(total, 1), 0), fetchBarangayScope()]);
+    const [rows, barangay] = await Promise.all([
+      readAllResidentPages((offset) => fetchResidentPage(query, PULL_PAGE_SIZE, offset)),
+      fetchBarangayScope(),
+    ]);
 
     downloadCsv(
       reportFileName('Resident Registry'),
@@ -130,7 +138,7 @@ export function IndividualsTable() {
           to: 'all dates',
           filters: query.trim() ? [{ label: 'Search', value: query.trim() }] : [],
         },
-        all.rows,
+        rows,
         exportColumns,
       ),
     );

@@ -1,6 +1,7 @@
-import { readAllPages, supabase } from '../lib/supabase';
+import { PULL_PAGE_SIZE, readAllPages, supabase } from '../lib/supabase';
 import { ADULT_BMI_MIN_AGE, ageInYears } from '../lib/utils';
 import type {
+  BhwPurokAssignment,
   HealthAssessment,
   Individual,
   InventoryItem,
@@ -146,18 +147,16 @@ export async function fetchBarangayScope(): Promise<string> {
   const [scope, barangays] = await Promise.all([
     // Null for an RHU account — that's the answer, not a missing one.
     supabase.rpc('current_barangay_id'),
-    supabase.from('barangays').select('barangay_id, name').order('name'),
+    readAllPages<{ barangay_id: string; name: string }>('Barangay', (from, to) =>
+      supabase.from('barangays').select('barangay_id, name').order('name').order('barangay_id').range(from, to),
+    ),
   ]);
 
   if (scope.error) {
     throw new Error(scope.error.message);
   }
 
-  if (barangays.error) {
-    throw new Error(barangays.error.message);
-  }
-
-  return describeBarangayScope(scope.data, barangays.data ?? []);
+  return describeBarangayScope(scope.data, barangays);
 }
 
 export function describeBarangayScope(scopeId: string | null, barangays: { barangay_id: string; name: string }[]): string {
@@ -303,21 +302,24 @@ export type AccountRow = {
 };
 
 export async function fetchAccounts(): Promise<AccountRow[]> {
+  // Paged, not a bare select: the accounts table reports its own row count as the
+  // total, so a read that stopped at the server's cap would look complete.
   const [profiles, assignments, puroks] = await Promise.all([
-    supabase.from('profiles').select('*').order('full_name'),
-    supabase.from('bhw_purok_assignments').select('*').is('ended_at', null),
-    supabase.from('puroks').select('*'),
+    readAllPages<Profile>('Account', (from, to) =>
+      supabase.from('profiles').select('*').order('full_name').order('user_id').range(from, to),
+    ),
+    readAllPages<BhwPurokAssignment>('Purok assignment', (from, to) =>
+      supabase.from('bhw_purok_assignments').select('*').is('ended_at', null).order('assignment_id').range(from, to),
+    ),
+    readAllPages<Purok>('Purok', (from, to) =>
+      supabase.from('puroks').select('*').order('purok_id').range(from, to),
+    ),
   ]);
 
-  const failure = [profiles, assignments, puroks].find((result) => result.error);
-  if (failure?.error) {
-    throw new Error(failure.error.message);
-  }
+  const purokNames = new Map(puroks.map((purok: Purok) => [purok.purok_id, purok.name]));
+  const active = new Map(assignments.map((assignment) => [assignment.bhw_id, assignment]));
 
-  const purokNames = new Map((puroks.data ?? []).map((purok: Purok) => [purok.purok_id, purok.name]));
-  const active = new Map((assignments.data ?? []).map((assignment) => [assignment.bhw_id, assignment]));
-
-  return (profiles.data ?? []).map((profile) => {
+  return profiles.map((profile) => {
     const assignment = active.get(profile.user_id);
 
     return {
@@ -352,8 +354,17 @@ export async function fetchResidentPage(query: string, limit: number, offset: nu
   let request = supabase.from('individuals').select('*', { count: 'exact' });
 
   if (search) {
-    const households = await supabase.from('households').select('household_id').ilike('household_number', `%${search}%`);
-    const householdIds = (households.data ?? []).map((household) => household.household_id);
+    // Paged: past the server's cap the `.in()` clause below would quietly lose
+    // household ids, and the search would under-return with nothing to show for it.
+    const households = await readAllPages<{ household_id: string }>('Household search', (from, to) =>
+      supabase
+        .from('households')
+        .select('household_id')
+        .ilike('household_number', `%${search}%`)
+        .order('household_id')
+        .range(from, to),
+    );
+    const householdIds = households.map((household) => household.household_id);
     const clauses = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`];
 
     if (householdIds.length) {
@@ -381,6 +392,32 @@ export async function fetchResidentPage(query: string, limit: number, offset: nu
     rows: rows.map((row) => ({ ...row, household_number: numbers.get(row.household_id) })),
     total: count ?? 0,
   };
+}
+
+/**
+ * Every resident behind a search, followed page by page to the end.
+ *
+ * An export cannot ask for the whole set in one range: the server trims it to
+ * `PULL_PAGE_SIZE` and says nothing, so the file stops at a thousand rows while
+ * printing its own row count as though it were complete. Takes the reader rather
+ * than calling `fetchResidentPage` itself, so the paging can be exercised without
+ * a network.
+ */
+export async function readAllResidentPages(
+  read: (offset: number) => Promise<ResidentPage>,
+): Promise<Individual[]> {
+  const rows: Individual[] = [];
+
+  for (let offset = 0; ; offset += PULL_PAGE_SIZE) {
+    const page = await read(offset);
+    rows.push(...page.rows);
+
+    // A short page is the end of the set; the total is the belt to that braces,
+    // and stops a reader that keeps handing back full pages from looping forever.
+    if (page.rows.length < PULL_PAGE_SIZE || rows.length >= page.total) {
+      return rows;
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------
