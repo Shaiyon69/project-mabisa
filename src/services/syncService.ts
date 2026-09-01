@@ -671,7 +671,17 @@ export async function pullRemoteUpdates(): Promise<void> {
 
     // Upsert data into local SQLite in the exact order of their dependencies
     await pullHouseholdsFromServer(withoutQuarantined('households', cloudHouseholds));
-    await pullIndividualsFromServer(withoutQuarantined('individuals', cloudIndividuals));
+
+    // Individuals need the same parent guard as the leaf tables below. A resident
+    // this device covers can be read through a household it does not hold — one
+    // such row fails the whole statement set against the local foreign keys, and
+    // because the watermark never advances past a throw, the pull then fails on
+    // that same row on every pass, forever.
+    const householdIds = await readExistingIds('households', 'household_id');
+
+    await pullIndividualsFromServer(
+      withKnownParents(withoutQuarantined('individuals', cloudIndividuals), 'household_id', householdIds),
+    );
     await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
 
     // Parents are read after the writes above, so a row that arrived in this same pass counts as held.

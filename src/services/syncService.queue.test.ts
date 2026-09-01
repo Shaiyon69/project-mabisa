@@ -26,6 +26,12 @@ const fake = vi.hoisted(() => {
     rejecting: new Set<string>(),
     /** false = the update matched no row, which is how a lost conflict looks. */
     updateMatches: true,
+    /** Rows the server hands back per table when the pull reads it. */
+    cloud: {} as Record<string, Record<string, unknown>[]>,
+    /** Primary keys already on the device, keyed by table, for the parent guards. */
+    known: {} as Record<string, string[]>,
+    /** What each pull writer was actually handed, after the guards ran. */
+    pulled: {} as Record<string, Record<string, unknown>[]>,
   };
 });
 
@@ -78,8 +84,8 @@ vi.mock('../lib/supabase', async (importOriginal) => {
             filters,
           );
         },
-        // The pull runs only on a clean pass and has nothing to say here.
-        select: () => resolving({ data: [], error: null }),
+        // The pull runs only on a clean pass; `fake.cloud` is what the server holds.
+        select: () => resolving({ data: fake.cloud[table] ?? [], error: null }),
       }),
     },
   };
@@ -110,12 +116,18 @@ vi.mock('./localDatabase', () => ({
     return Promise.resolve();
   },
   readDeadLetterEntries: () => Promise.resolve([]),
-  pullHouseholdsFromServer: () => Promise.resolve(),
-  pullIndividualsFromServer: () => Promise.resolve(),
+  pullHouseholdsFromServer: (rows: Record<string, unknown>[]) => {
+    fake.pulled.households = rows;
+    return Promise.resolve();
+  },
+  pullIndividualsFromServer: (rows: Record<string, unknown>[]) => {
+    fake.pulled.individuals = rows;
+    return Promise.resolve();
+  },
   pullInventoryFromServer: () => Promise.resolve(),
   pullHealthAssessmentsFromServer: () => Promise.resolve(),
   pullSupplyDisbursementsFromServer: () => Promise.resolve(),
-  readExistingIds: () => Promise.resolve(new Set<string>()),
+  readExistingIds: (table: string) => Promise.resolve(new Set(fake.known[table] ?? [])),
 }));
 
 const { syncPendingQueue } = await import('./syncService');
@@ -147,6 +159,9 @@ beforeEach(() => {
   fake.sent = [];
   fake.rejecting = new Set();
   fake.updateMatches = true;
+  fake.cloud = {};
+  fake.known = {};
+  fake.pulled = {};
 });
 
 describe('an interrupted pass', () => {
@@ -315,5 +330,24 @@ describe('a rejected write', () => {
     expect(result.deadLettered).toBe(0);
     expect(fake.queue[0].attempts).toBe(1);
     expect(fake.queue[0].next_attempt_at).not.toBeNull();
+  });
+});
+
+describe('the pull', () => {
+  // A resident this device covers can be reached through a household it does not
+  // hold. Local foreign keys are on, so writing that row fails the whole page, and
+  // because the watermark never advances past a throw, every later pass fails on
+  // the same row — the device stops receiving anything, permanently.
+  it('drops an individual whose household is not on this device, and keeps the rest', async () => {
+    fake.known.households = ['h1'];
+    fake.cloud.individuals = [
+      { resident_id: 'r1', household_id: 'h1', updated_at: '2026-08-18T02:00:00.000Z' },
+      { resident_id: 'r2', household_id: 'h-elsewhere', updated_at: '2026-08-18T02:00:00.000Z' },
+    ];
+
+    const result = await syncPendingQueue();
+
+    expect(result.status).toBe('synced');
+    expect(fake.pulled.individuals.map((row) => row.resident_id)).toEqual(['r1']);
   });
 });
