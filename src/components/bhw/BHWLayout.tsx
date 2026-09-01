@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
+import { useAppUpdate } from '../../hooks/useAppUpdate';
 import { PinGate } from './PinGate';
 import type { SyncStatus } from '../../services/syncService';
 import { PageHeader } from '../common/PageHeader';
@@ -58,6 +59,7 @@ function recordRail(
 export function BHWLayout({ logout }: BHWLayoutProps) {
   const { bhwId, isOnline, message, syncStatus, snapshot } = useMabisaData();
   const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
+  const { update, dismiss } = useAppUpdate();
 
   // BHW uses a phone-sized shell because this interface is packaged with Capacitor.
   return (
@@ -68,6 +70,23 @@ export function BHWLayout({ logout }: BHWLayoutProps) {
         <p className={`field-rail field-rail-${rail.tone}`} role="status">
           {rail.label}
         </p>
+
+        {/* A sideloaded app has no store to nag on its behalf, so the app says it itself.
+            ponytail: the link hands the APK to the system browser, which downloads it and
+            lets Android's installer take over — no in-app progress and no
+            REQUEST_INSTALL_PACKAGES permission. Swap for a Filesystem download plus a file
+            opener plugin if health workers lose the thread between the two. */}
+        {update ? (
+          <p className="field-rail field-rail-hold app-update-rail" role="status">
+            <span>Update {update.version} is ready</span>
+            <a href={update.url} target="_blank" rel="noreferrer">
+              Install
+            </a>
+            <button type="button" onClick={dismiss}>
+              Later
+            </button>
+          </p>
+        ) : null}
 
         {/* No header actions — connection state lives on the rail; theme/logout live on the Profile tab. */}
         <PageHeader eyebrow="Project MABISA" title="BHW Mobile" />

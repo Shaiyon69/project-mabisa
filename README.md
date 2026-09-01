@@ -118,6 +118,48 @@ adb install android/app/build/outputs/apk/debug/app-debug.apk
 `npm run open:android` opens the native project in Android Studio, whose Run button
 selects the correct JDK on its own.
 
+## Releasing
+
+Devices in the field check for a newer build themselves. On each launch the BHW client
+asks the repository's latest GitHub release for its tag, compares it against the installed
+`versionName`, and shows an "Update is ready" bar when the release is ahead. The link
+hands the APK to the system browser, which downloads it and lets Android's installer take
+over. Nothing downloads without a tap, and a check that fails for any reason — no
+connection, no release yet, a rate-limited barangay IP — shows nothing at all.
+
+Cutting a release:
+
+1. Bump `versionCode` and `versionName` in `android/app/build.gradle`. `versionCode` is
+   what Android compares to decide an install is an upgrade; `versionName` is what the
+   update check reads.
+2. Commit, then `git tag vX.Y.Z && git push --tags`, where `X.Y.Z` is exactly the new
+   `versionName`. `.github/workflows/release.yml` fails the build if the two disagree.
+3. The workflow builds the mobile bundle, syncs it into Android, builds a signed APK and
+   attaches it to a GitHub release. Phones prompt on their next launch.
+
+### Signing
+
+The workflow needs these repository secrets: `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_PUBLISHABLE_KEY`, `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+
+Generate the keystore once and base64 it into the secret:
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -alias mabisa \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 release.keystore
+```
+
+**Back the keystore up outside the repository.** Android installs an update only over an
+app signed with the same key. Lose this file and no device can ever take another update —
+every phone would have to uninstall first, which deletes its encrypted database along with
+any records that never synced.
+
+For the same reason the first release-signed APK will not install over a debug build:
+debug keys are generated per machine. Any device already carrying a debug install has to
+sync its records, uninstall, then install the release APK fresh.
+
 ## Roles and Access
 
 Every account has a role in `public.profiles`, and the role decides both which surface

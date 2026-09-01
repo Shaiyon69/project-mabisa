@@ -7,8 +7,12 @@ android {
         applicationId "ph.mabisa.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Bumped by hand before tagging a release. versionCode is what Android compares
+        // to decide an install is an upgrade; versionName is what the app reports to the
+        // update check, and .github/workflows/release.yml refuses a tag that disagrees
+        // with it.
+        versionCode 2
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +20,24 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Android installs an update only over an app signed with the same key, and a debug
+    // key is generated per machine — so without a stable release key there is no such
+    // thing as an update, only an uninstall that takes the encrypted database with it.
+    // The key itself never enters the repo: CI writes it from a secret and points these
+    // variables at it. Keep a backup somewhere outside the repo; losing it means every
+    // device in the field has to uninstall to move to another version.
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("ANDROID_KEYSTORE_PATH") ?: "release.keystore")
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: ""
+            keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: ""
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
