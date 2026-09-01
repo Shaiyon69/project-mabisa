@@ -46,12 +46,25 @@ function writeOwner(userId: string): void {
 }
 
 /** Every account's saved household draft. Plain local storage, so it outlives the database wipe unless it is named. */
+function draftKeys(): string[] {
+  try {
+    return Object.keys(localStorage).filter((key) => key.startsWith(HOUSEHOLD_DRAFT_PREFIX));
+  } catch {
+    // Storage unavailable — nothing to count and nothing to clear.
+    return [];
+  }
+}
+
+/**
+ * Belt and braces. A draft now blocks the handover outright, so by the time this
+ * runs there should be none — it stays because the invariant it enforces (no
+ * previous account's draft survives a handover) is the one that matters if the
+ * count above ever misses a key.
+ */
 function clearHouseholdDrafts(): void {
   try {
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith(HOUSEHOLD_DRAFT_PREFIX)) {
-        localStorage.removeItem(key);
-      }
+    for (const key of draftKeys()) {
+      localStorage.removeItem(key);
     }
   } catch {
     // Nothing to clear if storage is unavailable.
@@ -89,7 +102,11 @@ export async function claimDeviceFor(userId: string): Promise<Handover> {
   }
 
   if (owner !== null) {
-    const unsent = (await countRows('sync_queue')) + (await countRows('sync_dead_letter'));
+    // A saved draft counts as waiting too. It is an unfinished visit that has not
+    // reached the queue yet, `clearHouseholdDrafts` below deletes it, and it is
+    // the only copy there is.
+    const unsent =
+      (await countRows('sync_queue')) + (await countRows('sync_dead_letter')) + draftKeys().length;
 
     if (unsent > 0) {
       logDev('Device handover refused — records still waiting to send', { owner, userId, unsent });

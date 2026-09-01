@@ -73,7 +73,6 @@ describe('claiming a device for an account', () => {
 
   it('empties the previous purok when nothing is waiting to send', async () => {
     localStorage.setItem(OWNER_KEY, ANA);
-    localStorage.setItem(`mabisa.household_draft.${ANA}`, '{"members":[{}]}');
     localStorage.setItem('mabisa.pulled_through', '2026-08-30T00:00:00.000Z');
     localStorage.setItem('mabisa.last_sync_at', '2026-08-30T01:00:00.000Z');
 
@@ -81,11 +80,22 @@ describe('claiming a device for an account', () => {
 
     expect(cleared.records).toBe(1);
     expect(localStorage.getItem(OWNER_KEY)).toBe(ROSA);
-    // The draft carries the same names the database does, in plain storage.
-    expect(localStorage.getItem(`mabisa.household_draft.${ANA}`)).toBeNull();
     // Kept, the next pull reads only what changed since Ana's sync and Rosa opens an empty purok.
     expect(localStorage.getItem('mabisa.pulled_through')).toBeNull();
     expect(localStorage.getItem('mabisa.last_sync_at')).toBeNull();
+  });
+
+  // A saved draft is an unfinished visit that never reached the queue, and the
+  // handover deletes every draft on the phone. Counting it is what stops the wipe.
+  it('refuses while the previous account has an unfinished household draft', async () => {
+    localStorage.setItem(OWNER_KEY, ANA);
+    localStorage.setItem(`mabisa.household_draft.${ANA}`, '{"members":[{}]}');
+
+    expect(await claimDeviceFor(ROSA)).toEqual({ claimed: false, unsent: 1 });
+
+    expect(cleared.records).toBe(0);
+    expect(localStorage.getItem(OWNER_KEY)).toBe(ANA);
+    expect(localStorage.getItem(`mabisa.household_draft.${ANA}`)).not.toBeNull();
   });
 
   it('refuses while the previous account still has records on the queue', async () => {
