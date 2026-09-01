@@ -462,22 +462,30 @@ export async function markSyncQueueEntryFailed(
  */
 export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, errorMessage: string): Promise<void> {
   const database = await initializeLocalDatabase();
-  await database.run(
-    `insert into sync_dead_letter
+
+  // One transaction, not two statements: a kill between the insert and the delete
+  // would leave the record in both tables, so it would be pushed to the server and
+  // shown on the review screen as though it never went.
+  await database.executeSet([
+    {
+      statement: `insert into sync_dead_letter
      (original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at)
      values (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      entry.queue_id,
-      entry.operation_type,
-      entry.target_table,
-      JSON.stringify(entry.payload),
-      entry.created_at,
-      entry.attempts,
-      errorMessage,
-      new Date().toISOString(),
-    ],
-  );
-  await database.run('delete from sync_queue where queue_id = ?', [entry.queue_id]);
+      values: [
+        [
+          entry.queue_id,
+          entry.operation_type,
+          entry.target_table,
+          JSON.stringify(entry.payload),
+          entry.created_at,
+          entry.attempts,
+          errorMessage,
+          new Date().toISOString(),
+        ],
+      ],
+    },
+    { statement: 'delete from sync_queue where queue_id = ?', values: [[entry.queue_id]] },
+  ]);
 }
 
 export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
@@ -501,14 +509,35 @@ export async function requeueDeadLetterEntries(): Promise<number> {
   const database = await initializeLocalDatabase();
   const entries = await readDeadLetterEntries();
 
-  for (const entry of entries) {
-    await database.run(
-      `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at)
-       values (?, ?, ?, ?, 0, null, null)`,
-      [entry.operation_type, entry.target_table, JSON.stringify(entry.payload), entry.created_at],
-    );
-    await database.run('delete from sync_dead_letter where dead_letter_id = ?', [entry.dead_letter_id]);
+  if (!entries.length) {
+    return 0;
   }
+
+  // The whole batch in one transaction, and every insert before any delete: the
+  // rows come back in `original_queue_id` order, so the new `queue_id`s they are
+  // given run in that same order and a parent is still pushed before its children.
+  //
+  // ponytail: relative order inside the batch only. The batch is appended, so an
+  // entry enqueued while these were quarantined still sorts ahead of them — a
+  // child pushed before its requeued parent fails on the server and succeeds on
+  // a later retry, costing attempts rather than records. Reserve the original
+  // `queue_id`s if that retry cost ever shows up in the field.
+  await database.executeSet([
+    {
+      statement: `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at)
+       values (?, ?, ?, ?, 0, null, null)`,
+      values: entries.map((entry) => [
+        entry.operation_type,
+        entry.target_table,
+        JSON.stringify(entry.payload),
+        entry.created_at,
+      ]),
+    },
+    {
+      statement: 'delete from sync_dead_letter where dead_letter_id = ?',
+      values: entries.map((entry) => [entry.dead_letter_id]),
+    },
+  ]);
 
   await persistLocalDatabase();
   return entries.length;
