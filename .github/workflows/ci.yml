@@ -1,6 +1,7 @@
-# The 83 tests, the type-check and the lint only prove anything if something runs
-# them without being asked. The build is here too: it fails on things `tsc -b`
-# alone does not, and it produces what `cap sync` copies into the APK.
+# The tests, the type-check and the lint only prove anything if something runs them
+# without being asked. The suite prints its own count; nothing here repeats it. The
+# build is here too: it fails on things `tsc -b` alone does not, and it produces what
+# `cap sync` copies into the APK.
 name: CI
 
 on:
