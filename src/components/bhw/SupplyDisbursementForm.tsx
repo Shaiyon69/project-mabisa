@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { InventoryItem, SupplyDisbursement } from '../../types/database'; 
 import { createId, ignoreImplicitSubmit, isInFuture, scrollToFirstError, today } from '../../lib/utils';
 import { saveSupplyDisbursementLocally } from '../../services/localDatabase';
@@ -41,6 +41,9 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     isInFuture(disbursementDate) && 'a disbursement date on or before today',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
+  // Minted once and held until the row lands, so a retry after a failed write
+  // updates the same release instead of decrementing stock a second time.
+  const pendingId = useRef<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,8 +58,10 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     setSaving(true);
     const timestamp = new Date().toISOString();
 
+    pendingId.current ??= createId();
+
     const disbursement: SupplyDisbursement = {
-      log_id: createId(),
+      log_id: pendingId.current,
       resident_id: residentId,
       item_id: itemId,
       quantity: Number(quantity),
@@ -67,14 +72,24 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
 
     try {
       await saveSupplyDisbursementLocally(disbursement);
-      setResidentId('');
-      setQuantity('1');
-      await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Supply disbursement was not saved.');
       scrollToFirstError();
-    } finally {
       setSaving(false);
+      return;
+    }
+
+    // The release is recorded and the stock already decremented. Nothing below
+    // may report it as unsaved — a retry would take the quantity twice.
+    pendingId.current = null;
+    setResidentId('');
+    setQuantity('1');
+    setSaving(false);
+
+    try {
+      await onSaved();
+    } catch {
+      setFormError('Release was recorded. The screen could not be refreshed — it is on the queue either way.');
     }
   }
 
