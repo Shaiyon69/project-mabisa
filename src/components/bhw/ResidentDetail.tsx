@@ -129,15 +129,24 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
         'UPDATE',
       );
 
-      setDraft(null);
-      setShowValidation(false);
-      apply(await readResident(residentId));
-      await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Profile changes were not saved.');
       scrollToFirstError();
-    } finally {
       setSaving(false);
+      return;
+    }
+
+    // The correction is written and queued. Re-reading the row or refreshing the
+    // list can still fail, but neither un-saves it, so neither may say so.
+    setDraft(null);
+    setShowValidation(false);
+    setSaving(false);
+
+    try {
+      apply(await readResident(residentId));
+      await onSaved();
+    } catch {
+      setFormError('Changes were saved. The screen could not be refreshed — reopen the resident to see them.');
     }
   }
 

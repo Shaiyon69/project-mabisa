@@ -324,6 +324,15 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     const householdId = household.household_id ?? createId();
     const timestamp = new Date().toISOString();
     const overrideByMemberNumber = new Map(overriddenMembers.map((member) => [member.memberNumber, member]));
+    // Held in state before the write, not only in this call: a save that fails
+    // partway is retried with the same ids, so the retry updates what landed
+    // rather than minting a second household beside it.
+    const memberIds = members.map((member) => member.resident_id ?? createId());
+
+    setHousehold((current) => ({ ...current, household_id: householdId }));
+    setMembers((current) =>
+      current.map((member, index) => (member.resident_id ? member : { ...member, resident_id: memberIds[index] })),
+    );
 
     await saveHouseholdLocally(
       {
@@ -343,7 +352,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       await saveIndividualLocally(
         {
           ...(member as Individual),
-          resident_id: member.resident_id ?? createId(),
+          resident_id: memberIds[index],
           household_id: householdId,
           // Optional text is normalised here so the column holds NULL rather than
           // an empty string, which reads the same in the UI but not in a query.
@@ -369,8 +378,20 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     // The entries are now in SQLite and on the queue — the draft has nothing left to protect.
     discardDraft();
     setRestoredNotice(false);
+  }
 
-    await onSaved();
+  /**
+   * Runs after the household is committed. Refreshing the list and leaving the
+   * form can still fail, and neither un-saves anything, so neither may be
+   * reported as a failed save — a BHW told that would record the visit again.
+   */
+  async function leaveAfterSave(): Promise<void> {
+    try {
+      await onSaved();
+    } catch {
+      setFormError('Household was saved. The screen could not be refreshed — it is on the queue either way.');
+      scrollToFirstError();
+    }
   }
 
   async function handleOverride() {
@@ -379,15 +400,18 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
     try {
       await persistHousehold(flagged, overrideReason);
-      setFlagged([]);
-      setOverrideReason('');
     } catch (error) {
       setFlagged([]);
       setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
       scrollToFirstError();
-    } finally {
       setSaving(false);
+      return;
     }
+
+    setFlagged([]);
+    setOverrideReason('');
+    setSaving(false);
+    await leaveAfterSave();
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -450,9 +474,12 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
       scrollToFirstError();
-    } finally {
       setSaving(false);
+      return;
     }
+
+    setSaving(false);
+    await leaveAfterSave();
   }
 
   return (

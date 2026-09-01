@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { HealthAssessment, Individual, NutritionStatus } from '../../types/database';
 import {
   ADULT_BMI_MIN_AGE,
@@ -104,6 +104,9 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
   const caveats = bmiCaveats(resident);
+  // Minted once and held until the row lands, so a retry after a failed write
+  // updates the same assessment instead of recording the visit twice.
+  const pendingId = useRef<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -118,9 +121,11 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     setSaving(true);
     const timestamp = new Date().toISOString();
     
+    pendingId.current ??= createId();
+
     const assessment: HealthAssessment = {
-      assessment_id: createId(),
-      resident_id: residentId, 
+      assessment_id: pendingId.current,
+      resident_id: residentId,
       assessment_date: assessmentDate,
       weight: Number(weight),
       height: Number(height),
@@ -132,17 +137,28 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
 
     try {
       await saveHealthAssessmentLocally(assessment);
-      setWeight('');
-      setHeight('');
-      setAssessmentDate(today());
-      setResidentId('');
-      setResident(null);
-      await onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Health assessment was not saved.');
       scrollToFirstError();
-    } finally {
       setSaving(false);
+      return;
+    }
+
+    // The assessment is in SQLite and on the queue. Nothing below may report it
+    // as unsaved — a refresh or a navigation that throws here used to send the
+    // BHW back to record the same visit a second time.
+    pendingId.current = null;
+    setWeight('');
+    setHeight('');
+    setAssessmentDate(today());
+    setResidentId('');
+    setResident(null);
+    setSaving(false);
+
+    try {
+      await onSaved();
+    } catch {
+      setFormError('Assessment was saved. The screen could not be refreshed — it is on the queue either way.');
     }
   }
 
