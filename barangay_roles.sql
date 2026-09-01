@@ -1182,3 +1182,64 @@ comment on column public.individuals.status is
 
 comment on column public.individuals.status_changed_on is
   'The day the status last moved away from active. Null while active.';
+
+
+-- =============================================================================
+-- ACCESS GAPS  (applied 2026-09-01, migration `access_gaps`)
+--
+-- Three findings from an audit of the live schema, none of them in the Known
+-- Limitations list, meaning none of them were decided on.
+-- =============================================================================
+
+-- 1. A barangay administrator could read every barangay's audit trail.
+--
+-- `is_rhu_or_barangay_admin()` is true for both desk roles, and nothing after it
+-- narrowed the rows, so an account confined to one barangay everywhere else read
+-- the whole unit's history here -- who was disabled, who was allocated what, in
+-- barangays it cannot see a single resident of. The RHU account is the one that
+-- is meant to see across barangays; a barangay_admin sees its own, which is the
+-- same shape as `profiles_select_foundation`.
+drop policy if exists audit_events_select_admin on public.audit_events;
+create policy audit_events_select_admin
+  on public.audit_events for select to authenticated
+  using (
+    public.current_profile_is_active()
+    and (
+      public.is_admin()
+      or (
+        public.is_barangay_admin()
+        and public.profile_barangay_id(actor_user_id) = public.current_barangay_id()
+      )
+    )
+  );
+
+-- 2. `public.users` -- a legacy table, exposed, holding password hashes.
+--
+-- It predates `profiles` and nothing in `src/` reads it, but it is still on the
+-- API with SELECT/INSERT/UPDATE/DELETE policies gated on `is_lgu_staff()`, a
+-- helper testing for a role (`lgu`) that `app_role` does not contain. It is also
+-- the only DELETE policy in the schema, against the rule that no account deletes
+-- through the API.
+--
+-- The grants go, not the rows: this takes the table off PostgREST entirely and
+-- is reversible, where a drop is not. Drop it once its 11 rows are confirmed
+-- dead.
+revoke all on public.users from anon, authenticated;
+
+drop policy if exists users_select_own_or_lgu_staff on public.users;
+drop policy if exists users_insert_lgu_staff on public.users;
+drop policy if exists users_update_lgu_staff on public.users;
+drop policy if exists users_delete_lgu_staff on public.users;
+
+comment on table public.users is
+  'Legacy, superseded by public.profiles. Off the API as of the access_gaps migration -- no grants, no policies. Holds password hashes; drop once the rows are confirmed dead.';
+
+-- 3. The RPCs were callable by a signed-out session.
+--
+-- Every one of them asserts its own role internally, so this closed nothing that
+-- was open -- but a SECURITY DEFINER function reachable by `anon` is one missing
+-- assert away from being the hole, and the security advisor is right to say so.
+revoke execute on function public.barangay_admin_set_reorder_level(uuid, integer) from anon;
+revoke execute on function public.barangay_admin_create_item(text, text, integer) from anon;
+revoke execute on function public.barangay_admin_restock_item(uuid, integer, text) from anon;
+revoke execute on function public.barangay_admin_allocate_stock(uuid, uuid, integer, text) from anon;
