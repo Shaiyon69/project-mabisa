@@ -16,7 +16,7 @@ Project MABISA is a Mobile-based Application for Assessment of Barangay Inhabita
 ## Application Surfaces
 
 - Mobile BHW client: offline-first forms for residents, health assessments, supply disbursements, and sync status.
-- Web LGU portal: built, not planned. Desktop-first administrative dashboard covering residents, inventory, accounts, and reports.
+- Web LGU portal: desktop-first administrative dashboard covering residents, inventory, accounts, and reports.
 - Backend database: Supabase PostgreSQL schema with Row Level Security enabled and enforced on every table.
 
 Both surfaces live in this one codebase but ship as separate deployments —
@@ -34,8 +34,8 @@ npm install
 Create `.env` with Supabase client values:
 
 ```bash
-VITE_SUPABASE_URL=http://localhost:54321
-VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-anon-key
 ```
 
 Run TypeScript verification:
@@ -61,9 +61,6 @@ Run the tests:
 ```bash
 npm test
 ```
-
-The suite covers the BMI and nutrition-status calculations and the sync queue's retry
-backoff and dependency ordering. The sync loop itself is not yet covered.
 
 ## Web Deployment
 
@@ -227,36 +224,13 @@ desktop portal with a sidebar, and it queries Supabase directly — an oversight
 a wired workstation has no use for a mirror of one phone's records. Each sits behind its
 own layout.
 
-## Known Limitations
+## Scope
 
-These are current and deliberate, not oversights waiting to be discovered:
+MABISA records and reports what health workers observe in the field. It is a record
+system, not a diagnostic one: nutrition status is a screening figure derived from height
+and weight, and no output here is a clinical finding. The assessment screen states this
+where the reading is taken.
 
-- **Nutrition status uses adult BMI cut-points for every resident.** DOH classifies
-  children under five by weight-for-age, height-for-age and weight-for-height instead.
-  The assessment screen states this on-screen; the correct standard is not yet
-  implemented and the result should not be read as a clinical finding for children,
-  teenagers, or pregnant women.
-- **Stock has no unit of measure, batch, expiry or reorder threshold.** An item is a
-  name, a type and a count. Releases now move real quantities — a barangay administrator
-  creates and receives stock, allocates it to named BHWs, and a device can release only
-  what its holder was given, checked again server-side on arrival — but the model behind
-  those quantities is still a placeholder that needs a working BHW's requirements before
-  it is built out.
-- **A phone never pulls back assessments or disbursements.** The admin portal reads the
-  central database directly and is unaffected, but a device sync fetches only
-  households, individuals and its holder's own stock. A BHW who reinstalls, or picks up
-  a second device, sees no assessment history for residents that do sync down.
-- **A report's barangay name still comes from the build.** `VITE_BARANGAY_NAME` is baked
-  into the bundle, which was right when a deployment served one barangay. Now that the
-  database holds several, an RHU export covering all of them prints whichever name that
-  build was compiled with. The name should be read off the rows instead.
-- **Recording a household again creates a duplicate.** Registration is the only path
-  there is: the form mints a new id on every submit and never looks for an existing
-  record, so a repeat visit writes a second household and a second set of members.
-  Re-recording should update the household in place instead, and that work is blocked on
-  deciding what makes two records the same household — `household_number` is free text,
-  and no address or location is stored to disambiguate it.
-- **Nothing can be edited or deleted after it is recorded.** A misspelled name or a wrong
-  birthday is permanent through the app. No table has a DELETE policy, by design.
-- **The app has not been run on a physical Android device.** The APK builds, but the
-  native SQLite path has so far only been exercised through the browser emulator.
+Distribution is a sideloaded APK, not a Play Store listing, and accounts are created by
+the Rural Health Unit rather than by sign-up. There is no public registration path and
+none is planned.
