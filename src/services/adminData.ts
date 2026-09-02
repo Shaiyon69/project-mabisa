@@ -1,18 +1,22 @@
 import { PULL_PAGE_SIZE, readAllPages, supabase } from '../lib/supabase';
 import { ADULT_BMI_MIN_AGE, ageInYears } from '../lib/utils';
+import type { ChartRow } from '../lib/charts';
 import type {
   Barangay,
   BhwItemStock,
   BhwPurokAssignment,
   HealthAssessment,
   Individual,
+  IndividualSex,
   InventoryAllocation,
   InventoryItem,
   InventoryItemType,
   NutritionStatus,
   Profile,
   Purok,
+  ResidentStatus,
   SupplyDisbursement,
+  UserRole,
 } from '../types/database';
 
 /**
@@ -32,7 +36,78 @@ export type AdminFilters = {
    * `admin` who sets it is choosing to look at one of the several they may read.
    */
   barangayId: string | null;
+  /**
+   * Narrows through `households.purok_id` the same way `barangayId` narrows
+   * through `households.barangay_id` — one guard in `fetchAdminSnapshot` scopes
+   * residents, assessments and disbursements everywhere at once. Inventory is
+   * deliberately left out of that guard: stock is held at barangay level, not
+   * purok level, so a purok filter must not touch it.
+   */
+  purokId?: string | null;
+  // Residents tab.
+  sex?: IndividualSex | null;
+  /** An `AGE_BANDS` label, converted to a birthday window by `birthdayRangeFor`. */
+  ageBand?: string | null;
+  /**
+   * Absent means every membership state, which is today's registry behaviour
+   * and the reason the registry total and the dashboard tile deliberately
+   * disagree (only the tile counts `active` residents).
+   */
+  membership?: ResidentStatus | null;
+  // Inventory tab.
+  itemType?: InventoryItemType | null;
+  /**
+   * `filterInventory` decides this the same way `lowStockItems` does, so the
+   * table badge and the dashboard alert count can never drift apart.
+   */
+  stockLevel?: 'low' | 'sufficient' | null;
+  // Accounts tab.
+  accountRole?: UserRole | null;
+  accountActive?: 'active' | 'inactive' | null;
+  /** Which Reports cards to render. Absent or empty means all of them, so an unfiltered URL still shows everything. */
+  reportSections?: string[] | null;
 };
+
+/**
+ * Every narrow filter's key paired with the URL param it rides in, so the
+ * hook can parse and serialize the whole set with one loop instead of naming
+ * each key twice. `membership` deliberately maps to `member`, not `status`:
+ * `status` already names the nutrition-band drill-down `IndividualsTable`
+ * reads independently of `AdminFilters` (`ResidentStatusFilter` below), and
+ * the two must not collide in the query string. `reportSections` is not in
+ * this table at all — it is a list, not a single value, and rides separately
+ * as a comma-joined `sections` param.
+ */
+export const FILTER_PARAMS = [
+  ['barangayId', 'barangay'],
+  ['purokId', 'purok'],
+  ['sex', 'sex'],
+  ['ageBand', 'age'],
+  ['membership', 'member'],
+  ['itemType', 'type'],
+  ['stockLevel', 'stock'],
+  ['accountRole', 'role'],
+  ['accountActive', 'active'],
+] as const;
+
+/**
+ * The Reports cards, as the slugs `reportSections` selects them by. One list, so
+ * the drawer's checkboxes and the cards that render cannot drift apart — a slug
+ * added here appears in the picker with no other change.
+ */
+export const REPORT_SECTIONS = [
+  { id: 'demographics', label: 'Resident demographics' },
+  { id: 'nutrition', label: 'Nutrition status' },
+  { id: 'stock', label: 'Unallocated stock' },
+  { id: 'supply', label: 'Supply allocation' },
+] as const;
+
+export type ReportSectionId = (typeof REPORT_SECTIONS)[number]['id'];
+
+/** Whether a Reports card renders. An unset or empty list means every card, so an unfiltered URL still shows all of them. */
+export function showsSection(filters: AdminFilters, id: ReportSectionId): boolean {
+  return !filters.reportSections?.length || filters.reportSections.includes(id);
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -90,13 +165,25 @@ export function describePeriod(filters: AdminFilters): string {
   return `${filters.from} to ${filters.to}`;
 }
 
-/** The barangay clause a caption and a CSV preamble both need. */
-export function describeScope(filters: AdminFilters, barangays: Barangay[]): string {
+/**
+ * The scope clause a caption and a CSV preamble both need, naming the purok
+ * too once one is set. Takes a `Pick` of the snapshot rather than a bare
+ * `Barangay[]` because it now has two lists to search rather than one.
+ */
+export function describeScope(filters: AdminFilters, snapshot: Pick<AdminSnapshot, 'barangays' | 'puroks'>): string {
   if (!filters.barangayId) {
     return 'All barangays';
   }
 
-  return barangays.find((barangay) => barangay.barangay_id === filters.barangayId)?.name ?? 'Unknown barangay';
+  const barangayName = snapshot.barangays.find((barangay) => barangay.barangay_id === filters.barangayId)?.name ?? 'Unknown barangay';
+
+  if (!filters.purokId) {
+    return barangayName;
+  }
+
+  const purokName = snapshot.puroks.find((purok) => purok.purok_id === filters.purokId)?.name ?? 'Unknown purok';
+
+  return `${barangayName} — ${purokName}`;
 }
 
 /**
@@ -122,6 +209,8 @@ export type AdminHousehold = {
 export type AdminSnapshot = {
   /** Every barangay the session may read, for the scope picker and the map. */
   barangays: Barangay[];
+  /** Every active purok the session may read, for the scope picker and for naming one in `describeScope`. */
+  puroks: Purok[];
   /**
    * Households as rows rather than a bare count. The count is still what the
    * dashboard tile shows, but every per-barangay figure on this portal is a join
@@ -150,6 +239,7 @@ export type AdminSnapshot = {
 
 export const emptyAdminSnapshot: AdminSnapshot = {
   barangays: [],
+  puroks: [],
   households: [],
   householdCount: 0,
   residentCount: 0,
@@ -178,10 +268,14 @@ export const emptyAdminSnapshot: AdminSnapshot = {
  * actually been hit. It costs one helper to make sure it never is.
  */
 export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSnapshot> {
-  const [barangays, households, residents, assessments, disbursements, inventory, allocations, barangayLabel] = await Promise.all([
+  const [barangays, puroks, households, residents, assessments, disbursements, inventory, allocations, barangayLabel] = await Promise.all([
     readAllPages<Barangay>('Barangay', (from, to) =>
       supabase.from('barangays').select('*').order('name').order('barangay_id').range(from, to),
     ),
+    // Reused rather than a ninth bespoke query: this is the same active-purok
+    // read the assignment flow already runs, and every barangay-level number
+    // this snapshot exposes is the reader's call, not a fresh network shape.
+    fetchActivePuroks(),
     // Rows rather than a count: `individuals` carries no barangay of its own, so
     // every per-barangay figure below is a join through this list.
     readAllPages<AdminHousehold>('Household', (from, to) =>
@@ -239,9 +333,13 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
   // `admin` picking one of several is choosing what to look at, and a
   // `barangay_admin` who clears it still reads only the one barangay the policies
   // let through. Everything below is placed by its household, because that is the
-  // only table carrying `barangay_id`.
+  // only table carrying `barangay_id`. The purok filter narrows the same way,
+  // through the same household, so it can join this one clause instead of
+  // needing a filter of its own on every list below.
   const scope = filters.barangayId;
-  const householdRows = households.filter((household) => !scope || household.barangay_id === scope);
+  const householdRows = households.filter(
+    (household) => (!scope || household.barangay_id === scope) && (!filters.purokId || household.purok_id === filters.purokId),
+  );
   const inScope = new Set(householdRows.map((household) => household.household_id));
 
   const residentRows = residents.filter((resident) => inScope.has(resident.household_id));
@@ -249,12 +347,16 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
 
   const assessmentRows = assessments.filter((row) => residentIds.has(row.resident_id));
   const disbursementRows = disbursements.filter((row) => residentIds.has(row.resident_id));
+  // Barangay-scoped only — deliberately not also narrowed by purok. Stock is
+  // held at the barangay, not handed out to one purok at a time, so a purok
+  // filter here would not narrow the truth, it would misreport it.
   const inventoryRows = inventory.filter((item) => !scope || item.barangay_id === scope);
   const itemIds = new Set(inventoryRows.map((item) => item.item_id));
   const allocationRows = allocations.filter((row) => itemIds.has(row.item_id));
 
   return {
     barangays,
+    puroks,
     households: householdRows,
     householdCount: householdRows.length,
     residentCount: residentRows.length,
@@ -383,6 +485,51 @@ export function ageBandOf(birthday: string): string | null {
   return AGE_BANDS.find((band) => age >= band.min && age <= band.max)?.label ?? null;
 }
 
+/** A calendar date shifted back whole years, in local time — the same calendar arithmetic `ageInYears` reads a birthday against. */
+function yearsBefore(date: Date, years: number): Date {
+  return new Date(date.getFullYear() - years, date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+/** `YYYY-MM-DD` off a date's local calendar parts, matching `ageInYears`'s own local reading of a birthday rather than `isoDay`'s UTC one. */
+function isoLocalDay(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * The birthday window a resident in this `AGE_BANDS` label must fall in,
+ * `.gte`/`.lte` on `birthday` — the query-side counterpart to `ageBandOf`,
+ * which classifies a birthday already in hand. Kept in exact agreement with
+ * `ageBandOf`'s calendar arithmetic (whole years completed, compared against
+ * `on`'s month and day) so a server-side residents query and a client-side
+ * chart never disagree about which band a birthday close to a boundary falls
+ * into.
+ *
+ * `min: 0` (Under 5) needs no lower age bound, so it carries no upper
+ * `birthday` bound (`to`); `max: Infinity` (60 and over) needs no upper age
+ * bound, so it carries no lower `birthday` bound (`from`) — the one this band
+ * is called out for not having.
+ */
+export function birthdayRangeFor(label: string, on: Date = new Date()): { from: string | null; to: string | null } {
+  const band = AGE_BANDS.find((candidate) => candidate.label === label);
+
+  if (!band) {
+    return { from: null, to: null };
+  }
+
+  const to = band.min > 0 ? isoLocalDay(yearsBefore(on, band.min)) : null;
+  const from = Number.isFinite(band.max) ? isoLocalDay(addDays(yearsBefore(on, band.max + 1), 1)) : null;
+
+  return { from, to };
+}
+
 /**
  * Unallocated stock at or below this is an alert (matches InventoryTable). Measures
  * what's left to hand out, not total held — an item can read low here while its
@@ -408,6 +555,33 @@ export function lowStockItems(items: InventoryItem[]): InventoryItem[] {
   });
 }
 
+/**
+ * Inventory rows the Inventory tab's scope filters actually match: item type
+ * directly, and low stock by calling `lowStockItems` rather than re-deriving
+ * the rule — a second copy of "at or below its own reorder level, unless that
+ * level is 0" is exactly how the table's badge and the dashboard's alert
+ * count would end up disagreeing.
+ */
+export function filterInventory(items: InventoryItem[], filters: AdminFilters): InventoryItem[] {
+  const low = new Set(lowStockItems(items).map((item) => item.item_id));
+
+  return items.filter((item) => {
+    if (filters.itemType && item.type !== filters.itemType) {
+      return false;
+    }
+
+    if (filters.stockLevel === 'low' && !low.has(item.item_id)) {
+      return false;
+    }
+
+    if (filters.stockLevel === 'sufficient' && low.has(item.item_id)) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
 /** Quantity released per item over the period, largest first. */
 export function disbursementsByItem(disbursements: SupplyDisbursement[], items: InventoryItem[]): Tally[] {
   const names = new Map(items.map((item) => [item.item_id, item.item_name]));
@@ -430,6 +604,16 @@ export type AccountRow = {
   profile: Profile;
   purokName: string | null;
   assignedSince: string | null;
+  /** The purok a BHW currently carries the assignment for, or null for a desk account or an unassigned BHW. */
+  purokId: string | null;
+  /**
+   * The barangay this row belongs to, so the Accounts scope filter can narrow
+   * it the same way barangay/purok narrow everywhere else. Reached through the
+   * purok assignment for a BHW — a BHW's barangay is not stored on the profile
+   * (`database.ts:54`) — and falls back to the profile's own `barangay_id` for
+   * a `barangay_admin`, which is the only role that carries one directly.
+   */
+  barangayId: string | null;
 };
 
 export async function fetchAccounts(): Promise<AccountRow[]> {
@@ -448,16 +632,47 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
   ]);
 
   const purokNames = new Map(puroks.map((purok: Purok) => [purok.purok_id, purok.name]));
+  const purokBarangays = new Map(puroks.map((purok: Purok) => [purok.purok_id, purok.barangay_id]));
   const active = new Map(assignments.map((assignment) => [assignment.bhw_id, assignment]));
 
   return profiles.map((profile) => {
     const assignment = active.get(profile.user_id);
+    const purokId = assignment?.purok_id ?? null;
 
     return {
       profile,
       purokName: assignment ? purokNames.get(assignment.purok_id) ?? null : null,
       assignedSince: assignment?.started_at ?? null,
+      purokId,
+      barangayId: (purokId ? purokBarangays.get(purokId) : undefined) ?? profile.barangay_id ?? null,
     };
+  });
+}
+
+/** Account rows the Accounts tab's scope filters match: role, active state, and barangay/purok reached the same way `fetchAccounts` resolves them. */
+export function filterAccounts(rows: AccountRow[], filters: AdminFilters): AccountRow[] {
+  return rows.filter((row) => {
+    if (filters.accountRole && row.profile.role !== filters.accountRole) {
+      return false;
+    }
+
+    if (filters.accountActive === 'active' && !row.profile.is_active) {
+      return false;
+    }
+
+    if (filters.accountActive === 'inactive' && row.profile.is_active) {
+      return false;
+    }
+
+    if (filters.barangayId && row.barangayId !== filters.barangayId) {
+      return false;
+    }
+
+    if (filters.purokId && row.purokId !== filters.purokId) {
+      return false;
+    }
+
+    return true;
   });
 }
 
@@ -516,35 +731,75 @@ async function residentIdsWithStatus(filter: ResidentStatusFilter): Promise<stri
  * `household_number` and the barangay live on `households`, not on
  * `individuals`, so they take a second query keyed by the page's household ids —
  * ten of them, not the whole barangay. The same lookup runs first when the
- * search term might *be* a household number, and again when a barangay is
- * selected, since PostgREST cannot filter a row by a column on its parent
- * without an embed and the embeds are untyped here (`Relationships` is empty).
+ * search term might *be* a household number, and again when a barangay or a
+ * purok is selected, since PostgREST cannot filter a row by a column on its
+ * parent without an embed and the embeds are untyped here (`Relationships` is
+ * empty).
+ *
+ * `filters` carries every scope this registry can be narrowed by; `statusFilter`
+ * stays a separate trailing parameter rather than folding into `AdminFilters`
+ * because it is not something a person picks from the drawer — it arrives only
+ * from the dashboard's nutrition-band drill-down, and it names a period of its
+ * own rather than reading the screen's.
  */
 export async function fetchResidentPage(
   query: string,
   limit: number,
   offset: number,
+  filters: AdminFilters,
   statusFilter?: ResidentStatusFilter,
-  barangayId?: string | null,
 ): Promise<ResidentPage> {
   const search = sanitizeSearch(query);
   let request = supabase.from('individuals').select('*', { count: 'exact' });
 
-  if (barangayId) {
-    const scoped = await readAllPages<{ household_id: string }>('Barangay household', (from, to) =>
-      supabase.from('households').select('household_id').eq('barangay_id', barangayId).order('household_id').range(from, to),
-    );
+  if (filters.barangayId || filters.purokId) {
+    const scoped = await readAllPages<{ household_id: string }>('Barangay household', (from, to) => {
+      let householdQuery = supabase.from('households').select('household_id').order('household_id');
+
+      if (filters.barangayId) {
+        householdQuery = householdQuery.eq('barangay_id', filters.barangayId);
+      }
+
+      if (filters.purokId) {
+        householdQuery = householdQuery.eq('purok_id', filters.purokId);
+      }
+
+      return householdQuery.range(from, to);
+    });
 
     const scopedIds = scoped.map((household) => household.household_id);
 
-    // A barangay with no households is an empty registry, not an unfiltered one —
+    // An empty barangay or purok is an empty registry, not an unfiltered one —
     // `.in()` rejects an empty list, and dropping the filter would show every
-    // barangay under a heading naming one.
+    // barangay (or purok) under a heading naming one.
     if (!scopedIds.length) {
       return { rows: [], total: 0 };
     }
 
     request = request.in('household_id', scopedIds);
+  }
+
+  if (filters.sex) {
+    request = request.eq('sex', filters.sex);
+  }
+
+  if (filters.ageBand) {
+    const range = birthdayRangeFor(filters.ageBand);
+
+    if (range.from) {
+      request = request.gte('birthday', range.from);
+    }
+
+    if (range.to) {
+      request = request.lte('birthday', range.to);
+    }
+  }
+
+  if (filters.membership) {
+    // Absent means every membership state, which is today's registry
+    // behaviour and the reason it deliberately disagrees with the dashboard
+    // tile (see the `membership` field's own comment on `AdminFilters`).
+    request = request.eq('status', filters.membership);
   }
 
   if (statusFilter) {
@@ -775,6 +1030,25 @@ export type BarangayStats = {
 };
 
 /**
+ * Every resident's barangay, reached through their household — the only row
+ * that records one. Empty string covers both a household nobody stamped a
+ * barangay on and a resident whose household is missing from the snapshot
+ * entirely, which is why `barangayStats` and `nutritionByBarangay` both fold
+ * it into the same "Unassigned" bucket rather than treating it as an error.
+ * Shared so the two walk the households list once between them instead of
+ * each building this map from scratch.
+ */
+function residentBarangayMap(snapshot: Pick<AdminSnapshot, 'households' | 'residents'>): Map<string, string> {
+  const householdBarangay = new Map(
+    snapshot.households.map((household) => [household.household_id, household.barangay_id ?? '']),
+  );
+
+  return new Map(
+    snapshot.residents.map((resident) => [resident.resident_id, householdBarangay.get(resident.household_id) ?? '']),
+  );
+}
+
+/**
  * One row per barangay, which is what the map, the comparison table and the
  * coverage panel are all rendered from.
  *
@@ -784,12 +1058,7 @@ export type BarangayStats = {
  * with zeroes — a barangay missing from a comparison reads as an omission.
  */
 export function barangayStats(snapshot: AdminSnapshot): BarangayStats[] {
-  const householdBarangay = new Map(
-    snapshot.households.map((household) => [household.household_id, household.barangay_id ?? '']),
-  );
-  const residentBarangay = new Map(
-    snapshot.residents.map((resident) => [resident.resident_id, householdBarangay.get(resident.household_id) ?? '']),
-  );
+  const residentBarangay = residentBarangayMap(snapshot);
 
   const rows = new Map<string, BarangayStats>();
   const blank = (barangayId: string, name: string): BarangayStats => ({
@@ -867,6 +1136,54 @@ export function barangayStats(snapshot: AdminSnapshot): BarangayStats[] {
   );
 }
 
+/**
+ * One `ChartRow` per barangay, its four values in `NUTRITION_ORDER`, for the
+ * Analytics panel that shows the whole nutrition mix side by side rather than
+ * `barangayStats`'s single underweight share. Reuses `residentBarangayMap`
+ * rather than walking `households` a second time, and folds a household with
+ * no `barangay_id` into an "Unassigned" row instead of dropping it, the same
+ * data-quality treatment `barangayStats` gives it.
+ */
+export function nutritionByBarangay(snapshot: AdminSnapshot): ChartRow[] {
+  const residentBarangay = residentBarangayMap(snapshot);
+  const rows = new Map<string, { barangayId: string; name: string; counts: Map<NutritionStatus, number> }>();
+
+  const at = (barangayId: string, name: string) => {
+    const existing = rows.get(barangayId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const created = { barangayId, name, counts: new Map<NutritionStatus, number>() };
+    rows.set(barangayId, created);
+
+    return created;
+  };
+
+  for (const barangay of snapshot.barangays) {
+    at(barangay.barangay_id, barangay.name);
+  }
+
+  for (const assessment of snapshot.assessments) {
+    const barangayId = residentBarangay.get(assessment.resident_id) ?? '';
+    const row = at(barangayId, barangayId ? 'Unknown barangay' : 'Unassigned');
+
+    row.counts.set(assessment.nutrition_status, (row.counts.get(assessment.nutrition_status) ?? 0) + 1);
+  }
+
+  // Unassigned last, then by name — the same ordering `barangayStats` uses,
+  // since this is a data-quality row rather than a barangay and sorting it in
+  // among real ones invites it being read as one.
+  return [...rows.values()]
+    .sort((a, b) => (a.barangayId === b.barangayId ? 0 : !a.barangayId ? 1 : !b.barangayId ? -1 : a.name.localeCompare(b.name)))
+    .map((row) => ({
+      key: row.barangayId,
+      label: row.name,
+      values: NUTRITION_ORDER.map((status) => row.counts.get(status) ?? 0),
+    }));
+}
+
 export type TrendPoint = {
   /** `2026-03`, so points sort as strings. */
   month: string;
@@ -877,13 +1194,36 @@ export type TrendPoint = {
 };
 
 /**
- * Assessments per month across the selected period, with the underweight share
- * of each.
- *
- * Every month in the range is emitted, including the empty ones. A trend drawn
- * only from the months that have data is not a trend — it hides exactly the gap
- * an officer is looking for, which is the month nobody was assessed.
+ * Every month in the filtered period, in order, as the trend and the release
+ * charts both need it drawn — including the empty ones, since a chart drawn
+ * only from the months that have data hides exactly the gap it exists to show.
+ * Pulled out of `monthlyTrend` so `monthlyReleases` can walk the same months
+ * without a second copy of this loop drifting out of step with it.
  */
+export function monthsIn(filters: AdminFilters): { month: string; label: string }[] {
+  const months: { month: string; label: string }[] = [];
+  const start = new Date(`${filters.from.slice(0, 7)}-01T00:00:00Z`);
+  const end = `${filters.to.slice(0, 7)}`;
+
+  // ponytail: 36 months is the ceiling. A longer range would draw a column per
+  // month across a dashboard card; bucket by year here if one is ever asked for.
+  for (let step = 0; step < 36; step += 1) {
+    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + step, 1));
+    const month = cursor.toISOString().slice(0, 7);
+
+    months.push({
+      month,
+      label: cursor.toLocaleDateString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+    });
+
+    if (month >= end) {
+      break;
+    }
+  }
+
+  return months;
+}
+
 export function monthlyTrend(assessments: HealthAssessment[], filters: AdminFilters): TrendPoint[] {
   const counts = new Map<string, { assessments: number; underweight: number }>();
 
@@ -898,31 +1238,44 @@ export function monthlyTrend(assessments: HealthAssessment[], filters: AdminFilt
     counts.set(month, bucket);
   }
 
-  const points: TrendPoint[] = [];
-  const start = new Date(`${filters.from.slice(0, 7)}-01T00:00:00Z`);
-  const end = `${filters.to.slice(0, 7)}`;
-
-  // ponytail: 36 months is the ceiling. A longer range would draw a column per
-  // month across a dashboard card; bucket by year here if one is ever asked for.
-  for (let step = 0; step < 36; step += 1) {
-    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + step, 1));
-    const month = cursor.toISOString().slice(0, 7);
+  return monthsIn(filters).map(({ month, label }) => {
     const bucket = counts.get(month) ?? { assessments: 0, underweight: 0 };
 
-    points.push({
+    return {
       month,
-      label: cursor.toLocaleDateString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+      label,
       assessments: bucket.assessments,
       underweight: bucket.underweight,
       rate: bucket.assessments ? bucket.underweight / bucket.assessments : null,
-    });
+    };
+  });
+}
 
-    if (month >= end) {
-      break;
-    }
+/**
+ * Supply movement over the same months the assessment trend draws, built on
+ * `monthsIn` for the same reason: an empty month is drawn at zero rather than
+ * skipped, so a gap in releases is as visible as a gap in assessments.
+ */
+export function monthlyReleases(
+  disbursements: SupplyDisbursement[],
+  filters: AdminFilters,
+): { month: string; label: string; units: number; releases: number }[] {
+  const totals = new Map<string, { units: number; releases: number }>();
+
+  for (const disbursement of disbursements) {
+    const month = disbursement.disbursement_date.slice(0, 7);
+    const bucket = totals.get(month) ?? { units: 0, releases: 0 };
+
+    bucket.units += disbursement.quantity;
+    bucket.releases += 1;
+    totals.set(month, bucket);
   }
 
-  return points;
+  return monthsIn(filters).map(({ month, label }) => {
+    const bucket = totals.get(month) ?? { units: 0, releases: 0 };
+
+    return { month, label, units: bucket.units, releases: bucket.releases };
+  });
 }
 
 export type ItemUtilization = {
