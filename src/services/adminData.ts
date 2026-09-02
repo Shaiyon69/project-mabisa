@@ -649,6 +649,29 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
   });
 }
 
+/**
+ * Whether this session may act on that account, which decides only whether the
+ * Accounts table draws its buttons.
+ *
+ * The enforcement is `private.assert_can_manage_bhw()`, which both account RPCs
+ * open with: an `admin` reaches every account, a `barangay_admin` reaches `bhw`
+ * profiles in their own barangay and nothing else. This is the same rule in the
+ * browser, and it is here rather than inline in the component so it can be
+ * tested without rendering anything.
+ *
+ * Barangay is deliberately absent: rows outside a barangay administrator's own
+ * barangay never reach the client, because `profiles_select_foundation` filters
+ * them out of the read. Re-testing it here would assert something this code
+ * cannot actually see.
+ */
+export function managesAccount(viewer: UserRole | null, account: UserRole): boolean {
+  if (viewer === 'admin') {
+    return true;
+  }
+
+  return viewer === 'barangay_admin' && account === 'bhw';
+}
+
 /** Account rows the Accounts tab's scope filters match: role, active state, and barangay/purok reached the same way `fetchAccounts` resolves them. */
 export function filterAccounts(rows: AccountRow[], filters: AdminFilters): AccountRow[] {
   return rows.filter((row) => {
