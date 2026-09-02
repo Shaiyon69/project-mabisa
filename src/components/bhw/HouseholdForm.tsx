@@ -5,8 +5,7 @@ import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
   findLocalHouseholdByNumber,
   readLocalIndividuals,
-  saveHouseholdLocally,
-  saveIndividualLocally,
+  saveHouseholdWithMembersLocally,
 } from '../../services/localDatabase';
 import { DuplicateWarningModal, type FlaggedMember } from './DuplicateWarningModal';
 import { MemberChoice, MemberFields } from './MemberFields';
@@ -334,46 +333,49 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       current.map((member, index) => (member.resident_id ? member : { ...member, resident_id: memberIds[index] })),
     );
 
-    await saveHouseholdLocally(
+    // The whole visit in one call: one transaction, and one flush rather than one
+    // per member. See saveHouseholdWithMembersLocally.
+    await saveHouseholdWithMembersLocally(
       {
-        ...(household as Household),
-        household_id: householdId,
-        created_at: household.created_at ?? timestamp,
-        updated_at: timestamp,
-      },
-      isRevisit ? 'UPDATE' : 'INSERT',
-    );
-
-    for (const [index, member] of members.entries()) {
-      // Sorted most convincing first, so the head of the list is the record the
-      // BHW was actually weighing this person against.
-      const overridden = overrideByMemberNumber.get(index + 1);
-
-      await saveIndividualLocally(
-        {
-          ...(member as Individual),
-          resident_id: memberIds[index],
+        row: {
+          ...(household as Household),
           household_id: householdId,
-          // Optional text is normalised here so the column holds NULL rather than
-          // an empty string, which reads the same in the UI but not in a query.
-          occupation: emptyToNull(member.occupation),
-          educational_attainment: emptyToNull(member.educational_attainment),
-          philhealth_number: philhealthDigits(member.philhealth_number),
-          // Stripped here, not when the head box is ticked, so ticking and unticking keeps the answer already given.
-          relationship_to_head: member.is_household_head ? null : member.relationship_to_head ?? null,
-          created_at: member.created_at ?? timestamp,
+          created_at: household.created_at ?? timestamp,
           updated_at: timestamp,
-          updated_by: bhwId,
-          // Falls back to what the member already carries: a re-visit that raises no
-          // new warning must not erase an override recorded on an earlier visit.
-          duplicate_override_of: overridden?.matches[0]?.person.resident_id ?? member.duplicate_override_of ?? null,
-          duplicate_override_reason: overridden ? reason.trim() : member.duplicate_override_reason ?? null,
-          duplicate_override_by: overridden ? bhwId : member.duplicate_override_by ?? null,
-          duplicate_override_at: overridden ? timestamp : member.duplicate_override_at ?? null,
         },
-        member.resident_id ? 'UPDATE' : 'INSERT',
-      );
-    }
+        operationType: isRevisit ? 'UPDATE' : 'INSERT',
+      },
+      members.map((member, index) => {
+        // Sorted most convincing first, so the head of the list is the record the
+        // BHW was actually weighing this person against.
+        const overridden = overrideByMemberNumber.get(index + 1);
+
+        return {
+          row: {
+            ...(member as Individual),
+            resident_id: memberIds[index],
+            household_id: householdId,
+            // Optional text is normalised here so the column holds NULL rather than
+            // an empty string, which reads the same in the UI but not in a query.
+            occupation: emptyToNull(member.occupation),
+            educational_attainment: emptyToNull(member.educational_attainment),
+            philhealth_number: philhealthDigits(member.philhealth_number),
+            // Stripped here, not when the head box is ticked, so ticking and unticking keeps the answer already given.
+            relationship_to_head: member.is_household_head ? null : member.relationship_to_head ?? null,
+            created_at: member.created_at ?? timestamp,
+            updated_at: timestamp,
+            updated_by: bhwId,
+            // Falls back to what the member already carries: a re-visit that raises no
+            // new warning must not erase an override recorded on an earlier visit.
+            duplicate_override_of: overridden?.matches[0]?.person.resident_id ?? member.duplicate_override_of ?? null,
+            duplicate_override_reason: overridden ? reason.trim() : member.duplicate_override_reason ?? null,
+            duplicate_override_by: overridden ? bhwId : member.duplicate_override_by ?? null,
+            duplicate_override_at: overridden ? timestamp : member.duplicate_override_at ?? null,
+          },
+          operationType: member.resident_id ? ('UPDATE' as const) : ('INSERT' as const),
+        };
+      }),
+    );
 
     // The entries are now in SQLite and on the queue — the draft has nothing left to protect.
     discardDraft();

@@ -23,6 +23,8 @@ const harness = vi.hoisted(() => ({
   database: null as SqlJsDatabase | null,
   /** Every statement the module executed, so a test can assert on the SQL itself. */
   statements: [] as string[],
+  /** One entry per executeSet, holding that transaction's statements — the only way to see what committed together. */
+  sets: [] as string[][],
   savedToStore: 0,
 }));
 
@@ -74,6 +76,8 @@ vi.mock('@capacitor-community/sqlite', () => {
       return Promise.resolve({ values: rowsOf(statement, values) });
     },
     executeSet: (set: { statement: string; values: unknown[][] }[]) => {
+      harness.sets.push(set.map((item) => item.statement));
+
       for (const item of set) {
         harness.statements.push(item.statement);
 
@@ -222,6 +226,7 @@ describe('the local store', () => {
     }
 
     harness.statements = [];
+    harness.sets = [];
   });
 
   async function seed() {
@@ -239,6 +244,7 @@ describe('the local store', () => {
 
     await store.pullInventoryFromServer([item({ item_id: 'i1' })]);
     harness.statements = [];
+    harness.sets = [];
   }
 
   // ---------------------------------------------------------------------------
@@ -617,6 +623,68 @@ describe('the local store', () => {
       expect(await store.countRows('households')).toBe(1);
     });
 
+    // Android kills a backgrounded app routinely. If the row write and its queue
+    // entry commit separately, a kill in between leaves the visit on the phone
+    // looking saved with nothing queued to send it, and nothing ever reconciles
+    // that. So each save path has to commit both in one transaction.
+    it.each([
+      ['household', 'households', async () => store.saveHouseholdLocally(household({ household_id: 'h9' }))],
+      [
+        'resident',
+        'individuals',
+        async () => {
+          await store.saveHouseholdLocally(household());
+          harness.sets = [];
+          await store.saveIndividualLocally(individual({ resident_id: 'r9' }));
+        },
+      ],
+      [
+        'assessment',
+        'health_assessments',
+        async () => {
+          await seed();
+          await store.saveHealthAssessmentLocally(assessment({ assessment_id: 'a9' }));
+        },
+      ],
+    ])('writes a %s and its queue entry in one transaction', async (_label, table, save) => {
+      await save();
+
+      expect(harness.sets).toHaveLength(1);
+      expect(harness.sets[0].some((statement) => statement.includes(`into ${table}`))).toBe(true);
+      expect(harness.sets[0].some((statement) => statement.includes('into sync_queue'))).toBe(true);
+    });
+
+    // A visit used to be one save per member, each ending in its own flush — on
+    // web that serializes the whole database, so a six-member household wrote it
+    // seven times. One transaction also means a kill cannot leave a household
+    // holding some of its members.
+    it('writes a household and every member in one transaction', async () => {
+      await store.saveHouseholdWithMembersLocally(
+        { row: household({ household_id: 'h9' }), operationType: 'INSERT' },
+        [
+          { row: individual({ resident_id: 'r9', household_id: 'h9' }), operationType: 'INSERT' },
+          { row: individual({ resident_id: 'r8', household_id: 'h9' }), operationType: 'UPDATE' },
+        ],
+      );
+
+      expect(harness.sets).toHaveLength(1);
+      // Household first, so its queue entry is pushed before the members pointing at it.
+      expect(harness.sets[0].map((statement) => statement.trim().split(/\s+/).slice(0, 3).join(' '))).toEqual([
+        'insert into households',
+        'insert into sync_queue',
+        'insert into individuals',
+        'insert into sync_queue',
+        'insert into individuals',
+        'insert into sync_queue',
+      ]);
+
+      const queued = await store.readSyncQueue();
+
+      expect(queued.map((entry) => entry.target_table)).toEqual(['households', 'individuals', 'individuals']);
+      expect(queued.map((entry) => entry.operation_type)).toEqual(['INSERT', 'INSERT', 'UPDATE']);
+      expect(await store.countRows('individuals')).toBe(2);
+    });
+
     it('strips the joined household_number from a queued resident', async () => {
       await store.saveHouseholdLocally(household());
       await store.saveIndividualLocally({ ...individual({ resident_id: 'r9' }), household_number: 'HH-001' });
@@ -682,6 +750,17 @@ describe('the local store', () => {
       expect(await store.countRows('supply_disbursements')).toBe(1);
       // inventory_items has no BHW write policy — an absolute total must never be pushed.
       expect(queued.map((entry) => entry.target_table)).toEqual(['supply_disbursements']);
+    });
+
+    // Three statements on this path, so two ways to be left inconsistent: a
+    // release with nothing queued, or a release with the stock never moved.
+    it('writes the release, the stock move and the queue entry in one transaction', async () => {
+      await store.saveSupplyDisbursementLocally(disbursement({ log_id: 'd1', quantity: 5 }));
+
+      expect(harness.sets).toHaveLength(1);
+      expect(harness.sets[0].filter((statement) => statement.includes('into supply_disbursements'))).toHaveLength(1);
+      expect(harness.sets[0].filter((statement) => statement.includes('into inventory_items'))).toHaveLength(1);
+      expect(harness.sets[0].filter((statement) => statement.includes('into sync_queue'))).toHaveLength(1);
     });
 
     it('refuses to release more than the device holds, and writes nothing', async () => {
