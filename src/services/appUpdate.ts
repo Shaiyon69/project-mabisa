@@ -2,13 +2,9 @@ import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 
 /**
- * The app is sideloaded, so nothing tells a phone that a newer build exists. This
- * asks the repository's latest GitHub release and reports back only when it is
- * genuinely ahead of what is installed.
- *
- * The installed version is read from the APK itself (`App.getInfo().version` is
- * Android's `versionName`), never from a constant in this bundle: `build.gradle` is
- * the single source of truth and there is nothing here to drift from it.
+ * The app is sideloaded, so nothing tells a phone a newer build exists. This asks
+ * the repository's latest GitHub release and reports back only when it is ahead
+ * of what is installed, read from the APK itself rather than a constant here.
  */
 const LATEST_RELEASE_URL = 'https://api.github.com/repos/Shaiyon69/project-mabisa/releases/latest';
 
@@ -23,10 +19,8 @@ export type AvailableUpdate = {
 };
 
 /**
- * Compares release tags segment by segment as numbers. A string compare would call
- * 1.10.0 older than 1.9.0 and strand every device on the release before a tenth patch.
- * Anything unparseable is treated as "no update" — a malformed tag must never push
- * a download at a health worker.
+ * Compares release tags segment by segment as numbers, since a string compare
+ * calls 1.10.0 older than 1.9.0. Anything unparseable is treated as no update.
  */
 export function isNewerVersion(candidate: string, installed: string): boolean {
   const strip = (value: string) => value.trim().replace(/^v/i, '');
@@ -55,9 +49,9 @@ type ReleaseAsset = { browser_download_url?: string };
 type Release = { tag_name?: string; assets?: ReleaseAsset[] };
 
 /**
- * Null means "carry on" for every reason there is: this is the browser, the device is
- * offline, GitHub rate-limited the barangay's shared IP, the release has no APK yet.
- * A BHW mid-visit gets no error from a check she did not ask for.
+ * Null means "carry on" for every reason there is — the browser, an offline
+ * device, a rate limit, a release with no APK — so a check nobody asked for never
+ * raises an error mid-visit.
  */
 export async function checkForAppUpdate(): Promise<AvailableUpdate | null> {
   if (Capacitor.getPlatform() === 'web') {

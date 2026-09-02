@@ -7,8 +7,7 @@ export type CsvColumn<Row> = {
 
 /**
  * One cell, quoted only when it has to be. The leading apostrophe on `=+-@` guards
- * against formula injection — a resident's free-text field becomes the cell's
- * first character, and a spreadsheet treats one starting with those as a formula.
+ * against formula injection from a resident's free-text field.
  */
 export function escapeCsvCell(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) {
@@ -30,8 +29,7 @@ export function toCsv<Row>(rows: Row[], columns: CsvColumn<Row>[]): string {
 
 /**
  * What an export says about itself before its first data row: title, barangay,
- * date range, generation timestamp, active filters — so a saved CSV isn't just
- * a column of numbers nobody can tie back to a question.
+ * date range, generation timestamp and active filters.
  */
 export type ReportContext = {
   title: string;
@@ -62,10 +60,7 @@ export function buildReportCsv<Row>(context: ReportContext, rows: Row[], columns
   return `${preamble}\r\n\r\n${toCsv(rows, columns)}`;
 }
 
-/**
- * Build and hand over in one call, so a panel's export button is one line and
- * the file name is always derived from the same title the preamble carries.
- */
+/** Build and hand over in one call, so the file name comes from the title the preamble carries. */
 export function exportReport<Row>(context: ReportContext, rows: Row[], columns: CsvColumn<Row>[]): void {
   downloadCsv(reportFileName(context.title), buildReportCsv(context, rows, columns));
 }
@@ -77,7 +72,7 @@ export function reportFileName(title: string): string {
   return `${slug || 'report'}-${new Date().toISOString().slice(0, 10)}.csv`;
 }
 
-/** Hands the finished CSV to the browser's download flow. The BOM makes Excel read it as UTF-8, not the local code page. */
+/** Hands the finished CSV to the browser's download flow. The BOM makes Excel read it as UTF-8. */
 export function downloadCsv(fileName: string, content: string): void {
   const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);

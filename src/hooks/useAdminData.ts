@@ -22,27 +22,16 @@ export type AdminData = {
 };
 
 /**
- * Every narrow filter off the URL, read generically off `FILTER_PARAMS`
- * instead of naming each key by hand — a filter added to that table starts
- * round-tripping through the query string with no other change needed here.
- * Absent means unset for every one of them, which is what an unfiltered
- * screen shows. `reportSections` rides separately as a comma-joined
- * `sections` param, because it is a list rather than a single value and is
- * the one key `FILTER_PARAMS` deliberately excludes.
- *
- * Exported alongside its inverse below so the round trip is testable as plain
- * `URLSearchParams` logic without rendering the hook — this project's test
- * runner carries no DOM, and `useSearchParams` needs a router mounted around it.
+ * Every narrow filter off the URL, read generically off `FILTER_PARAMS`. Absent
+ * means unset. `reportSections` rides separately as a comma-joined `sections`
+ * param, since it is a list rather than a single value.
  */
 export function filtersFromParams(params: URLSearchParams): AdminFilters {
   const fallback = defaultAdminFilters();
 
-  // `FILTER_PARAMS` pairs a specific key with a specific literal union —
-  // `sex` with `IndividualSex`, `accountRole` with `UserRole`, and so on — but
-  // a value read off the query string is only ever a raw string, and the loop
-  // has no way to prove it belongs to whichever union its key happens to
-  // carry. The object is built loosely and cast once at the end instead; the
-  // same trust boundary the period and the barangay already crossed unchecked.
+  // Each key in `FILTER_PARAMS` carries its own literal union, and a value off
+  // the query string is only a raw string, so the object is built loosely and
+  // cast once at the end.
   const filters: Record<string, unknown> = {
     from: params.get('from') ?? fallback.from,
     to: params.get('to') ?? fallback.to,
@@ -58,7 +47,7 @@ export function filtersFromParams(params: URLSearchParams): AdminFilters {
   return filters as AdminFilters;
 }
 
-/** The inverse of `filtersFromParams`: merges a filter set onto an existing param bag, dropping a key that is unset rather than writing it empty. */
+/** The inverse of `filtersFromParams`, dropping an unset key rather than writing it empty. */
 export function paramsFromFilters(current: URLSearchParams, next: AdminFilters): URLSearchParams {
   const updated = new URLSearchParams(current);
 
@@ -90,26 +79,18 @@ export type AdminFiltersState = {
 };
 
 /**
- * Filter state alone, with no snapshot attached.
+ * Filter state alone, with no snapshot attached, for a screen like Accounts that
+ * wants the drawer without the full households and assessments read.
  *
- * Split out of `useAdminData` for Accounts: that screen needs the filter
- * drawer's state to populate its role dropdown and to narrow the accounts it
- * already holds in memory, but pulling in `useAdminData` just for that would
- * trigger the full households + residents + assessments read on a screen that
- * renders none of them.
- *
- * The filters live in the query string rather than in component state for the
- * same reason `useAdminData` keeps them there: a dashboard tile that links to
- * another screen has to carry its scope with it, and a filtered view has to
- * survive a reload and be pasteable to a colleague.
+ * The filters live in the query string, so a scope survives a reload, travels
+ * with a link between screens, and can be pasted to a colleague.
  */
 export function useAdminFilters(): AdminFiltersState {
   const [params, setParams] = useSearchParams();
 
   const filters = useMemo(() => filtersFromParams(params), [params]);
 
-  // `replace`, so changing a filter does not put a back-button step between
-  // the officer and the screen they arrived from.
+  // `replace`, so changing a filter adds no back-button step.
   const setFilters = useCallback(
     (next: AdminFilters) => {
       setParams((current) => paramsFromFilters(current, next), { replace: true });
@@ -121,14 +102,9 @@ export function useAdminFilters(): AdminFiltersState {
 }
 
 /**
- * Central data for one admin screen, refetched whenever a filter changes.
- *
- * Filter state lives in `useAdminFilters` rather than in a provider: each
- * admin page asks its own question over its own scope, and the portal is a
- * handful of screens on a wired workstation, so a shared cache would buy less
- * than it costs to keep in step. Callers get the snapshot and the filters
- * that produced it from the same hook, which is what lets every summary
- * caption state its scope honestly.
+ * Central data for one admin screen, refetched whenever a filter changes. Each
+ * page reads its own scope rather than sharing a provider, and callers get the
+ * snapshot and the filters that produced it from the same hook.
  */
 export function useAdminData(): AdminData {
   const { filters, setFilters } = useAdminFilters();
@@ -140,18 +116,11 @@ export function useAdminData(): AdminData {
     settledFor: '',
   });
 
-  // The scope this render is asking for, covering every key `FILTER_PARAMS`
-  // knows about plus the two it doesn't — `from`/`to`, and `reportSections`,
-  // which is a list rather than a single value. Missing a key here is the
-  // failure the plan calls out by name: a narrow filter that changes without
-  // changing this string never triggers a refetch, and `loading` never flips
-  // because nothing here said a new scope had been asked for. It is a plain
-  // derived value rather than a flag set in the effect body, so `loading` is
-  // the difference between it and the scope the state was last settled
-  // against — a new scope makes the screen busy on the render that changed
-  // it, with no second render needed to get there. The reload token is
-  // deliberately outside it: a re-read of the same scope keeps the numbers on
-  // screen instead of blanking them into a spinner every minute.
+  // The scope this render is asking for: every key in `FILTER_PARAMS`, plus
+  // `from`/`to` and `reportSections`. A filter missing here never triggers a
+  // refetch. Derived rather than set in the effect, so `loading` is the
+  // difference between it and the scope the state last settled against. The
+  // reload token stays out, so a re-read of the same scope keeps the numbers up.
   const filterKey = [
     filters.from,
     filters.to,
@@ -161,11 +130,8 @@ export function useAdminData(): AdminData {
   const requestKey = `${filterKey}|${reloadToken}`;
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
-  // The portal is a monitor of a database the BHWs are writing to all day, so it
-  // re-reads on its own rather than waiting to be asked. Only while the tab is
-  // in front: a portal left open on a workstation overnight should not spend the
-  // night polling, and the visibility listener re-reads the moment it returns,
-  // which is the case a timer alone handles worst.
+  // Re-reads on its own, since BHWs write to the database all day. Only while the
+  // tab is in front, with the visibility listener catching the return.
   useEffect(() => {
     const reread = () => {
       if (document.visibilityState === 'visible') refresh();
@@ -205,8 +171,7 @@ export function useAdminData(): AdminData {
       current = false;
     };
     // `filterKey` is already a substring of `requestKey`, so listing it adds no
-    // re-runs — it is here because the rule cannot see that, and a standing
-    // warning trains everyone to scroll past the next one.
+    // re-runs; it is here only to satisfy the lint rule.
   }, [filters, requestKey, filterKey]);
 
   return {

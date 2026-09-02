@@ -46,17 +46,15 @@ const columns: TableColumn<Individual>[] = [
   {
     key: 'barangay',
     header: 'Barangay',
-    // Joined in from the household, which is the only row that records it. A
-    // resident whose household carries no barangay is a backfill gap, and saying
-    // so is more useful than an empty cell.
+    // Joined in from the household, the only row that records it. A missing one
+    // is a backfill gap, so it is named rather than left blank.
     render: (individual) => individual.barangay_name || 'Unassigned',
   },
   {
     key: 'status',
     header: 'Membership',
     // The dashboard's resident count filters on `status` and this registry does
-    // not, so the two disagree by everyone who moved out. Naming the column is
-    // what makes that difference readable rather than a discrepancy.
+    // not, so the column is named to make the difference readable.
     render: (individual) =>
       !individual.status || individual.status === 'active' ? 'Active' : titleCase(individual.status),
   },
@@ -83,24 +81,13 @@ const exportColumns: CsvColumn<Individual>[] = [
 ];
 
 /**
- * The central resident registry.
+ * The central resident registry. Reads Supabase rather than this browser's SQLite
+ * mirror, which on a workstation is empty, and resolves search, paging and the
+ * total server-side.
  *
- * Reads Supabase, not this browser's SQLite mirror: on an LGU workstation that
- * mirror is empty, and on a shared machine it holds whatever the last field
- * device left behind — which is exactly the FR-06 defect. Search, paging and the
- * total are all resolved server-side, so the registry is not bounded by what one
- * page happened to download.
- *
- * The "Pending Sync" column is gone with it. It was derived from this browser's
- * own queue length and applied to every row alike, so on the portal it said
- * nothing about the record it sat beside.
- *
- * The barangay and purok narrow the registry through the household, which is the
- * only row that records either. Sex, age band and membership are columns on the
- * resident itself. All five come from the page's filter bar rather than controls
- * of their own, so the scope an officer chose on the dashboard is still in force
- * on the list they drilled into — and every one of them is resolved server-side,
- * alongside the search and the paging.
+ * Barangay and purok narrow through the household, the only row that records
+ * either; sex, age band and membership are columns on the resident. All five come
+ * from the page's filter bar, so a scope chosen on the dashboard still holds here.
  */
 type IndividualsTableProps = {
   filters: AdminFilters;
@@ -113,9 +100,8 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
 
-  // Arrived here from a dashboard bar. The band and the period that produced it
-  // both come from the link, so the list answers the same question the bar did
-  // rather than a similar one over a different range.
+  // Arrived from a dashboard bar: the band and its period both come from the
+  // link, so the list answers the same question the bar did.
   const statusFilter = useMemo<ResidentStatusFilter | undefined>(() => {
     const status = params.get('status');
     const from = params.get('from');
@@ -148,14 +134,9 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
     settledFor: '',
   });
 
-  // Back to page 1 when the drawer's filters change. They cannot go through a
-  // handler here — they arrive from the URL, changed by a control on another
-  // component — so this is the adjust-state-during-render pattern rather than
-  // an effect: React discards this render and restarts before anything is
-  // committed, so no request ever goes out at the stale offset. Narrowing to
-  // one purok while on page 4 of the whole registry would otherwise render an
-  // empty table reading "Page 4 of 1", which looks like a purok with no
-  // residents rather than a page that no longer exists.
+  // Back to page 1 when the drawer's filters change. They arrive from the URL
+  // rather than a handler here, so this adjusts state during render: React
+  // restarts before committing, and no request goes out at the stale offset.
   const scopeKey = FILTER_PARAMS.map(([key]) => filters[key] ?? '').join('|');
   const [pagedScope, setPagedScope] = useState(scopeKey);
 
@@ -164,11 +145,9 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
     setPage(1);
   }
 
-  // What this render is asking for. `loading` is derived from it rather than
-  // held in its own state, so a keystroke marks the table busy on the same
-  // render that changed the query. Every narrow filter is read off
-  // `FILTER_PARAMS` rather than named here: a filter this key misses is one
-  // that changes the request without ever triggering a refetch.
+  // What this render is asking for. `loading` is derived from it, so a keystroke
+  // marks the table busy on the same render. Filters are read off `FILTER_PARAMS`:
+  // one this key misses changes the request without triggering a refetch.
   const requestKey = [
     query,
     page,
@@ -179,8 +158,7 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
   const { rows, total, error } = result;
   const loading = result.settledFor !== requestKey;
 
-  // Reset to page 1 in the handler rather than an effect on [query], so the page
-  // never renders with a stale offset.
+  // Reset to page 1 in the handler, so the page never renders at a stale offset.
   function handleQueryChange(nextQuery: string) {
     setQuery(nextQuery);
     setPage(1);
@@ -216,10 +194,8 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
 
   /**
-   * Exports the whole filtered set, not the ten rows on screen — an export whose
-   * totals disagree with the count above it is the failure FR-09 names. Asking
-   * for `total` rows in one call would not have done it: the server caps a
-   * response below that and truncates silently.
+   * Exports the whole filtered set, not the rows on screen. Paged, since asking
+   * for `total` rows in one call is capped and truncated silently.
    */
   async function exportResidents() {
     const [all, barangay] = await Promise.all([
@@ -236,10 +212,8 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
           // The band is assessed over a period; an unfiltered registry is not.
           from: statusFilter?.from ?? 'all dates',
           to: statusFilter?.to ?? 'all dates',
-          // Every filter that narrowed the rows, named on the file. A preamble
-          // that lists the barangay but not the age band describes a wider set
-          // than the file holds, which is the FR-09 failure in a subtler form
-          // than a truncated export.
+          // Every filter that narrowed the rows, named on the file, so the
+          // preamble never describes a wider set than the file holds.
           filters: [
             ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
             ...(statusFilter ? [{ label: 'Nutrition status', value: titleCase(statusFilter.status) }] : []),

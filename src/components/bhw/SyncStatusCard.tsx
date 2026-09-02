@@ -17,12 +17,12 @@ type SyncStatusCardProps = {
   syncingManually: boolean;
   onManualSync: () => Promise<void>;
   onRetryDeadLetters: () => Promise<void>;
-  /** Returns to the sign-in screen. Local records and the queue survive it — nothing is uploaded or cleared. */
+  /** Returns to the sign-in screen. Local records and the queue survive it. */
   onSignInAgain: () => Promise<void>;
 };
 
-// Raw SyncStatus values are engine vocabulary. Exhaustive over the union, so a
-// new status is a build error here rather than untranslated jargon on screen.
+// Exhaustive over the union, so a new status is a build error here rather than
+// engine vocabulary on screen.
 const statusLabels: Record<SyncStatus, string> = {
   idle: 'Idle',
   offline: 'Offline',
@@ -42,7 +42,7 @@ const recordLabels: Record<LocalTableName, string> = {
   supply_disbursements: 'Supply release',
 };
 
-/** Date and time — a BHW needs to know if this morning's records have left the phone, not just the day. `formatDate` carries no clock. */
+/** Date and time, since "this morning" is the question here and `formatDate` carries no clock. */
 function formatSyncMoment(value: string): string {
   return new Intl.DateTimeFormat('en-PH', {
     month: 'short',
@@ -67,9 +67,8 @@ export function SyncStatusCard({
   // Exact status match, not a substring of the message — a `deferred` backoff must not paint the card red.
   const isError = syncStatus === 'failed';
   // A device offline for days comes back with a refresh token the server no longer
-  // accepts. Nothing on the phone is lost, but nothing leaves it either until the
-  // BHW signs in again — and the only route back used to be the logout button on
-  // another tab, which reads like the one action that would throw the records away.
+  // accepts. Nothing is lost, but nothing leaves the phone until the BHW signs in
+  // again, so the way back has to be here rather than behind the logout button.
   const needsSignIn = syncStatus === 'unauthenticated';
   const isPending = pendingQueueCount > 0;
   const setAsideCount = deadLetterEntries.length;

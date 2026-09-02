@@ -39,15 +39,13 @@ const FOOD_OPTIONS = [
   { label: 'None', value: 'none' }
 ];
 
-// Accepts dashes/spaces on input (as written on paper forms); digits-only storage prevents two spellings of one ID.
+// Accepts dashes and spaces on input, as written on paper forms; stored digits-only.
 const PHILHEALTH_ALLOWED = /^[\d\s-]+$/;
 
 /**
- * A household is minutes of typing on a phone that also rings, sleeps and runs out
- * of battery. The form keeps the entries in local storage as they are typed and
- * offers them back on the next visit, so a backgrounded tab is an interruption
- * rather than a re-survey. Keyed per health worker: two accounts on one device must
- * not inherit each other's half-finished household.
+ * Entries kept in local storage as they are typed and offered back on the next
+ * visit, so a backgrounded tab is an interruption rather than a re-survey. Keyed
+ * per health worker, so two accounts on one device stay separate.
  */
 type HouseholdDraft = {
   household: Partial<Household>;
@@ -87,7 +85,7 @@ function clearDraft(bhwId: string): void {
   }
 }
 
-/** An empty household and an empty member row. Written once — the form starts, resets and grows rows from the same shape. */
+/** An empty household and an empty member row, which the form starts, resets and grows rows from. */
 function blankHousehold(): Partial<Household> {
   return {
     household_number: '',
@@ -130,15 +128,15 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
-  // Members that look like an existing record, plus the BHW's reason for saving anyway.
-  // Non-empty `flagged` holds the save — the warning is raised before anything is written.
+  // Members that look like an existing record, plus the reason for saving anyway.
+  // Non-empty `flagged` holds the save until the warning is answered.
   const [flagged, setFlagged] = useState<FlaggedMember[]>([]);
   const [overrideReason, setOverrideReason] = useState('');
   // The household already recorded under the number being typed. Offered, never
-  // forced — the BHW decides whether this is the same house.
+  // forced.
   const [existingMatch, setExistingMatch] = useState<Household | null>(null);
   // Index of the member the BHW asked to remove, held until they confirm. Only a
-  // row with something typed in it gets that question — an empty one just goes.
+  // row with something typed in it gets that question.
   const [removingMember, setRemovingMember] = useState<number | null>(null);
   // The pending draft write, so a save can cancel one that is still armed.
   const draftTimer = useRef<number | undefined>(undefined);
@@ -155,8 +153,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
 
-  // Nothing typed yet is not a draft — an untouched form would otherwise offer
-  // itself back as one on the next visit.
+  // Nothing typed yet is not a draft, so an untouched form is not offered back.
   const hasEntries =
     Boolean(household.household_number?.trim()) ||
     Boolean(household.health_status_notes?.trim()) ||
@@ -165,11 +162,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     Boolean(household.food_production?.length) ||
     members.some((member) => memberHasEntries(member));
 
-  // Debounced: `household` and `members` are new objects on every change, so
-  // without the timer this serialized the whole household and every member to
-  // local storage on each keystroke — a synchronous write in the middle of
-  // typing, on the cheap phone this is actually used on. The worst a crash now
-  // costs is the last half-second of typing.
+  // Debounced: without the timer this writes the whole household to local storage
+  // on every keystroke. A crash now costs the last half-second of typing.
   useEffect(() => {
     if (!hasEntries) {
       return;
@@ -183,10 +177,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   }, [bhwId, hasEntries, household, members]);
 
   /**
-   * Discards the draft for good. The pending write is cancelled first: a BHW who
-   * taps Save within the debounce window still has a timer armed, and letting it
-   * fire would put the draft back after the household was written — offering a
-   * saved household back as unfinished work on the next visit.
+   * Discards the draft for good. The pending write is cancelled first, or a timer
+   * still armed from the debounce window puts the draft back after the save.
    */
   function discardDraft() {
     window.clearTimeout(draftTimer.current);
@@ -203,7 +195,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     setExistingMatch(null);
   }
 
-  /** Looks for an existing record under the number just typed, so a re-visit is offered before it is retyped. */
+  /** Looks for an existing record under the number just typed, so a re-visit is offered. */
   async function checkForExisting() {
     try {
       const existing = await findLocalHouseholdByNumber(household.household_number);
@@ -280,17 +272,16 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
   /**
    * Members who look like an existing record, checked before anything is written.
-   * Only local SQLite is consulted — a resident in another purok isn't on this
-   * device, so cross-purok duplicates are the admin portal's to catch.
+   * Only local SQLite is consulted, so cross-purok duplicates are the portal's to catch.
    */
   async function scanForDuplicates(): Promise<FlaggedMember[]> {
     const scans = await Promise.all(
       members.map(async (member, index) => {
-        // Former members included: someone who moved out and came back is exactly
-        // the person this warning exists to catch before she is entered twice.
+        // Former members included: someone who moved out and came back is who
+        // this warning exists to catch.
         const candidates = (await readLocalIndividuals({ searchQuery: member.last_name?.trim(), includeFormer: true }))
-          // On a re-visit every member already on file matches themselves; only
-          // people outside this household are a duplicate worth raising.
+          // On a re-visit every member matches themselves, so only people outside
+          // this household are worth raising.
           .filter((candidate) => !household.household_id || candidate.household_id !== household.household_id);
         const matches = findLikelyDuplicates(
           {
@@ -313,19 +304,18 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   }
 
   /**
-   * Writes the household and every member. `overriddenMembers` carries the
-   * flagged members once the BHW confirms they're different people — each gets
-   * the record they were shown, the reason, and who confirmed it stamped on.
+   * Writes the household and every member. `overriddenMembers` carries the flagged
+   * members once the BHW confirms they are different people, each stamped with the
+   * record shown, the reason, and who confirmed it.
    */
   async function persistHousehold(overriddenMembers: FlaggedMember[], reason: string): Promise<void> {
-    // A re-visit keeps the ids it was opened with, so the same house is updated
-    // rather than recorded twice. New members inside it are still inserts.
+    // A re-visit keeps the ids it was opened with, so the same house is updated.
+    // New members inside it are still inserts.
     const householdId = household.household_id ?? createId();
     const timestamp = new Date().toISOString();
     const overrideByMemberNumber = new Map(overriddenMembers.map((member) => [member.memberNumber, member]));
-    // Held in state before the write, not only in this call: a save that fails
-    // partway is retried with the same ids, so the retry updates what landed
-    // rather than minting a second household beside it.
+    // Held in state before the write, so a retry after a partial save updates what
+    // landed rather than minting a second household.
     const memberIds = members.map((member) => member.resident_id ?? createId());
 
     setHousehold((current) => ({ ...current, household_id: householdId }));
@@ -333,8 +323,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       current.map((member, index) => (member.resident_id ? member : { ...member, resident_id: memberIds[index] })),
     );
 
-    // The whole visit in one call: one transaction, and one flush rather than one
-    // per member. See saveHouseholdWithMembersLocally.
+    // The whole visit in one transaction and one flush. See saveHouseholdWithMembersLocally.
     await saveHouseholdWithMembersLocally(
       {
         row: {
@@ -347,7 +336,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       },
       members.map((member, index) => {
         // Sorted most convincing first, so the head of the list is the record the
-        // BHW was actually weighing this person against.
+        // BHW was weighing this person against.
         const overridden = overrideByMemberNumber.get(index + 1);
 
         return {
@@ -355,18 +344,18 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
             ...(member as Individual),
             resident_id: memberIds[index],
             household_id: householdId,
-            // Optional text is normalised here so the column holds NULL rather than
-            // an empty string, which reads the same in the UI but not in a query.
+            // Normalised so the column holds NULL rather than an empty string,
+            // which reads the same in the UI but not in a query.
             occupation: emptyToNull(member.occupation),
             educational_attainment: emptyToNull(member.educational_attainment),
             philhealth_number: philhealthDigits(member.philhealth_number),
-            // Stripped here, not when the head box is ticked, so ticking and unticking keeps the answer already given.
+            // Stripped here, not on tick, so unticking keeps the answer already given.
             relationship_to_head: member.is_household_head ? null : member.relationship_to_head ?? null,
             created_at: member.created_at ?? timestamp,
             updated_at: timestamp,
             updated_by: bhwId,
-            // Falls back to what the member already carries: a re-visit that raises no
-            // new warning must not erase an override recorded on an earlier visit.
+            // Falls back to what the member already carries, so a re-visit raising no
+            // new warning does not erase an earlier override.
             duplicate_override_of: overridden?.matches[0]?.person.resident_id ?? member.duplicate_override_of ?? null,
             duplicate_override_reason: overridden ? reason.trim() : member.duplicate_override_reason ?? null,
             duplicate_override_by: overridden ? bhwId : member.duplicate_override_by ?? null,
@@ -383,9 +372,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   }
 
   /**
-   * Runs after the household is committed. Refreshing the list and leaving the
-   * form can still fail, and neither un-saves anything, so neither may be
-   * reported as a failed save — a BHW told that would record the visit again.
+   * Runs after the household is committed. Neither refreshing the list nor leaving
+   * the form un-saves anything, so a failure here is not reported as a failed save.
    */
   async function leaveAfterSave(): Promise<void> {
     try {
@@ -434,8 +422,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       return;
     }
 
-    // Length is left unchecked on purpose — a partially remembered ID is still
-    // worth recording, and blocking a whole household over it helps nobody.
+    // Length is left unchecked: a partially remembered ID is still worth recording.
     const badPhilhealth = members.findIndex(
       (member) => member.philhealth_number?.trim() && !PHILHEALTH_ALLOWED.test(member.philhealth_number.trim()),
     );
@@ -449,11 +436,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
     try {
       // The identity rule, checked where the duplicate would otherwise be minted.
-      // The blur check above usually catches this first; a BHW who typed straight
-      // through to Save has not seen it yet.
+      // The blur check above usually catches this first.
       {
-        // Covers the renamed household too: an edited number that lands on another
-        // record would leave one purok holding two houses under one number.
+        // Covers the renamed household too, which would otherwise leave one purok
+        // holding two houses under one number.
         const existing = await findLocalHouseholdByNumber(household.household_number);
 
         if (existing && existing.household_id !== household.household_id) {
@@ -463,7 +449,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         }
       }
 
-      // Before the write, not after — a landed save would leave the BHW deleting a record they never got to decline.
+      // Before the write: a landed save leaves the BHW deleting a record they never declined.
       const flaggedMembers = await scanForDuplicates();
 
       if (flaggedMembers.length > 0) {

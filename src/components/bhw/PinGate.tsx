@@ -14,13 +14,9 @@ type PinGateProps = {
 type Phase = 'checking' | 'choose' | 'confirm' | 'entry';
 
 /**
- * The PIN between a signed-in session and this device's records.
- *
- * It is asked for on a cold start and after the device has been left alone, and
- * it is checked entirely on the device — a BHW in a purok with no signal still
- * has to reach their own work. A wrong PIN costs an escalating wait and nothing
- * else: no wipe, no permanent lockout, because this phone may hold the only copy
- * of a day's records.
+ * The PIN between a signed-in session and this device's records, asked for on a
+ * cold start and after the device has been left alone. Checked entirely on the
+ * device, and a wrong PIN costs an escalating wait and nothing else.
  */
 export function PinGate({ userId, pendingRecordCount, children }: PinGateProps) {
   const { locked, unlock } = useDeviceLock();
@@ -33,9 +29,8 @@ export function PinGate({ userId, pendingRecordCount, children }: PinGateProps) 
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Which screen this is follows from the two facts above, rather than being a
-  // third piece of state kept in step with them — a re-lock then needs nothing
-  // but the hook flipping `locked`.
+  // Derived from the two facts above rather than held as a third piece of state,
+  // so a re-lock needs nothing but the hook flipping `locked`.
   const phase: Phase = pinExists === null ? 'checking' : pinExists ? 'entry' : setupStep;
 
   // Whether this account has a PIN on this device decides which screen it gets.

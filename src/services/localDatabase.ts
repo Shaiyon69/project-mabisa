@@ -44,7 +44,7 @@ export type LocalTableName =
   | 'inventory_items'
   | 'supply_disbursements';
 
-// Mirror no Supabase table and are never pushed — kept out of LocalTableName but reachable by column upgrades.
+// Mirror no Supabase table and are never pushed.
 export type LocalBookkeepingTableName = 'sync_queue' | 'sync_dead_letter';
 
 type MigratableTableName = LocalTableName | LocalBookkeepingTableName;
@@ -81,12 +81,12 @@ export type SyncQueueEntry<TTable extends LocalTableName = LocalTableName> = {
   created_at: string;
   attempts: number; // Tracks retry counts if the network fails
   last_error: string | null;
-  // Earliest retry time, null means "now". Persisted, not in-memory — the app is
-  // killed constantly in the field and would reset the backoff on cold start.
+  // Earliest retry time, null means "now". Persisted so a cold start does not
+  // reset the backoff.
   next_attempt_at: string | null;
 };
 
-// A queue entry that exhausted its retries. Preserved in full so it can be requeued once the cause is fixed.
+// A queue entry that exhausted its retries, preserved in full so it can be requeued.
 export type DeadLetterEntry<TTable extends LocalTableName = LocalTableName> = {
   dead_letter_id: number;
   original_queue_id: number;
@@ -112,7 +112,7 @@ let localDatabaseSetup: Promise<SQLiteDBConnection> | null = null;
 
 // The schema definitions for the local offline database.
 const migrations = [
-  // toilet_type/water_source/food_production are arrays in Supabase; stored as JSON text here (SQLite has no array type).
+  // toilet_type/water_source/food_production are arrays in Supabase, JSON text here.
   `create table if not exists households (
     household_id text primary key,
     household_number text not null,
@@ -196,7 +196,7 @@ const migrations = [
     next_attempt_at text
   )`,
 
-  // Sync Dead Letter Table — exhausted retries, moved aside to keep the main queue draining. Quarantined, never discarded.
+  // Sync Dead Letter Table — exhausted retries, quarantined so the main queue keeps draining.
   `create table if not exists sync_dead_letter (
     dead_letter_id integer primary key autoincrement,
     original_queue_id integer not null,
@@ -219,39 +219,35 @@ const migrations = [
   'create index if not exists local_sync_dead_letter_failed_at_idx on sync_dead_letter(failed_at)',
 ];
 
-// Columns added after first release — `create table if not exists` never adds them
-// to an existing install, so each has to be added explicitly here.
+// Columns added after first release. `create table if not exists` never adds
+// them to an existing install.
 const columnUpgrades: { table: MigratableTableName; column: string; definition: string }[] = [
   { table: 'individuals', column: 'middle_name', definition: 'text' },
   // Retry backoff column — absent on devices installed before it existed.
   { table: 'sync_queue', column: 'next_attempt_at', definition: 'text' },
   // Who last wrote the row (updated_at already carries the when).
   { table: 'individuals', column: 'updated_by', definition: 'text' },
-  // Duplicate-override provenance. No foreign key on purpose — the referenced
-  // record may not be pulled to this device yet.
+  // Duplicate-override provenance. No foreign key: the referenced record may not
+  // be on this device yet.
   { table: 'individuals', column: 'duplicate_override_of', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_reason', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_by', definition: 'text' },
   { table: 'individuals', column: 'duplicate_override_at', definition: 'text' },
   // Relation to household head. Nullable and unconstrained — the central table already enforces the check.
   { table: 'individuals', column: 'relationship_to_head', definition: 'text' },
-  // Whether the member is still in the household. Every row that predates the
-  // column is active, which the default supplies; SQLite allows `not null` here
-  // only because the default is a constant.
+  // Whether the member is still in the household. Rows predating the column take
+  // the default.
   { table: 'individuals', column: 'status', definition: "text not null default 'active'" },
   { table: 'individuals', column: 'status_changed_on', definition: 'text' },
 ];
 
 /**
- * Columns dropped after release. A device that predates the drop still carries them,
- * and they are `not null` with no default, so an insert that no longer supplies one
- * fails on that device alone — the schema has to actually shrink, not just stop being
- * written to. Idempotent via `pragma table_info`, same as the additions above.
+ * Columns dropped after release. They are `not null` with no default, so a device
+ * that still carries one fails any insert that no longer supplies it.
  */
 const columnRemovals: { table: MigratableTableName; column: string }[] = [
-  // Dwelling, electricity and cooking fuel. Removed on a BHW's reading that none of
-  // the three is health data, after the form had been filling them with fixed
-  // placeholders to satisfy the `not null` — so nothing recorded here was ever asked.
+  // Dwelling, electricity and cooking fuel: not health data, and the form was
+  // filling them with placeholders.
   { table: 'households', column: 'dwelling_type' },
   { table: 'households', column: 'electric_service' },
   { table: 'households', column: 'fuel_used' },
@@ -260,11 +256,7 @@ const columnRemovals: { table: MigratableTableName; column: string }[] = [
 /**
  * Brings this device's tables up to the current column list: adds what it
  * predates, then drops what the schema has since removed. Additions run first,
- * so a column that was added and later removed does not survive on a device that
- * skipped both releases.
- *
- * `pragma table_info` is read once per table rather than once per column — this
- * runs on every app open, on a phone.
+ * so a column added and later removed does not survive a device that skipped both.
  */
 async function applyColumnChanges(database: SQLiteDBConnection): Promise<void> {
   const tables = new Set([...columnUpgrades, ...columnRemovals].map((change) => change.table));
@@ -294,8 +286,8 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
     return localDatabase;
   }
 
-  // Cache the in-flight promise, not just the connection — concurrent callers
-  // (refreshLocalData, useBackgroundSync) would otherwise each open their own connection.
+  // Cache the in-flight promise, not just the connection, so concurrent callers
+  // do not each open their own.
   if (!localDatabaseSetup) {
     localDatabaseSetup = openLocalDatabase().catch((error: unknown) => {
       localDatabaseSetup = null; // allow a later call to retry after a failed open
@@ -307,9 +299,9 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
 }
 
 /**
- * Which SQLCipher mode to open with, read from stored fact rather than guessed:
- * web has no keystore (`no-encryption`); a native device with no secret yet
- * generates one and encrypts in place (`encryption`, one-time only); otherwise `secret`.
+ * Which SQLCipher mode to open with: web has no keystore (`no-encryption`), a
+ * native device with no secret yet encrypts in place (`encryption`, once),
+ * otherwise `secret`.
  */
 async function prepareEncryption(): Promise<'no-encryption' | 'encryption' | 'secret'> {
   if (isWebPlatform) {
@@ -376,10 +368,7 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
   return database;
 }
 
-/**
- * Flushes the database to IndexedDB. Web builds hold it in memory otherwise and
- * lose everything on reload; native platforms persist on write, so this is a no-op there.
- */
+/** Flushes the database to IndexedDB. A no-op on native, which persists on write. */
 export async function persistLocalDatabase(): Promise<void> {
   if (!isWebPlatform) {
     return;
@@ -415,7 +404,7 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
   await database.executeSet([queueStatement(targetTable, operationType, payload)]);
 }
 
-/** The columns a queue row and a dead-letter row hold in common — the quarantined copy is the same operation, preserved. */
+/** The columns a queue row and a dead-letter row hold in common. */
 function parseQueuedOperation(row: Record<string, unknown>) {
   return {
     operation_type: parseOperationType(String(row.operation_type)),
@@ -449,10 +438,7 @@ export async function removeSyncQueueEntry(queueId: number): Promise<void> {
   await database.run('delete from sync_queue where queue_id = ?', [queueId]);
 }
 
-/**
- * Increments attempts, logs the error, and schedules the next retry —
- * `nextAttemptAt` stops a failing entry being hammered on every network flap.
- */
+/** Increments attempts, logs the error, and schedules the next retry. */
 export async function markSyncQueueEntryFailed(
   queueId: number,
   errorMessage: string,
@@ -465,16 +451,12 @@ export async function markSyncQueueEntryFailed(
   );
 }
 
-/**
- * Moves an entry into quarantine, payload preserved verbatim, so the main queue
- * can keep draining and no health record is ever silently dropped.
- */
+/** Moves an entry into quarantine, payload preserved verbatim, so the main queue keeps draining. */
 export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, errorMessage: string): Promise<void> {
   const database = await initializeLocalDatabase();
 
-  // One transaction, not two statements: a kill between the insert and the delete
-  // would leave the record in both tables, so it would be pushed to the server and
-  // shown on the review screen as though it never went.
+  // One transaction: a kill between the insert and the delete would leave the
+  // record in both tables.
   await database.executeSet([
     {
       statement: `insert into sync_dead_letter
@@ -513,7 +495,7 @@ export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
   }));
 }
 
-/** Puts every quarantined entry back on the queue, in original order so a parent is pushed before its children again. */
+/** Puts every quarantined entry back on the queue, in original order. */
 export async function requeueDeadLetterEntries(): Promise<number> {
   const database = await initializeLocalDatabase();
   const entries = await readDeadLetterEntries();
@@ -522,9 +504,8 @@ export async function requeueDeadLetterEntries(): Promise<number> {
     return 0;
   }
 
-  // The whole batch in one transaction, and every insert before any delete: the
-  // rows come back in `original_queue_id` order, so the new `queue_id`s they are
-  // given run in that same order and a parent is still pushed before its children.
+  // One transaction, every insert before any delete: rows come back in
+  // `original_queue_id` order, so the new `queue_id`s keep parents ahead of children.
   //
   // ponytail: relative order inside the batch only. The batch is appended, so an
   // entry enqueued while these were quarantined still sorts ahead of them — a
@@ -553,10 +534,9 @@ export async function requeueDeadLetterEntries(): Promise<number> {
 }
 
 // -----------------------------------------------------------------------------
-// Column Maps — one list per table drives both the local write and the server-pull
-// upsert, so a column added here reaches every path or none of them. Leaf tables
-// (health_assessments, supply_disbursements) skip this and keep `insert or replace`
-// since nothing references them.
+// Column Maps — one list per table drives both the local write and the
+// server-pull upsert. Leaf tables (health_assessments, supply_disbursements)
+// skip this and keep `insert or replace`, since nothing references them.
 // -----------------------------------------------------------------------------
 
 type ColumnDescriptor<TRow> = {
@@ -567,9 +547,8 @@ type ColumnDescriptor<TRow> = {
 };
 
 /**
- * Builds the upsert used by every write to a table, local or pulled. Not
- * `insert or replace`: with cascading FKs, REPLACE would delete-then-reinsert the
- * row and take its children with it. `on conflict do update` edits in place instead.
+ * Builds the upsert used by every write to a table, local or pulled. Not `insert
+ * or replace`: with cascading FKs that would take the row's children with it.
  */
 function buildUpsert<TRow>(
   table: MigratableTableName,
@@ -670,8 +649,8 @@ const individualColumns: ColumnDescriptor<Individual>[] = [
 
 const individualUpsert = buildUpsert('individuals', 'resident_id', individualColumns);
 
-// JSON-string columns (no array type in SQLite). `?? []` matters: these columns
-// are `not null`, and `JSON.stringify(undefined)` returns undefined, not a string.
+// JSON-string columns, since SQLite has no array type. `?? []` matters: they are
+// `not null`, and `JSON.stringify(undefined)` returns undefined, not a string.
 const householdColumns: ColumnDescriptor<Household>[] = [
   { name: 'household_id', value: (household) => household.household_id, mutableOnConflict: false },
   { name: 'household_number', value: (household) => household.household_number, mutableOnConflict: true },
@@ -705,22 +684,13 @@ const inventoryUpsert = buildUpsert('inventory_items', 'item_id', inventoryColum
 // -----------------------------------------------------------------------------
 
 /**
- * The local row and its queue entry, written as one transaction.
+ * The local row and its queue entry, written as one transaction. Separate
+ * statements commit separately, and a kill in between leaves a visit saved on the
+ * device with nothing queued to send it.
  *
- * Two statements would commit separately, and Android kills a backgrounded app
- * routinely: a kill in between leaves the visit in local SQLite with nothing on
- * the queue. It renders as saved, it sits on the resident's record, and it never
- * reaches the server — and nothing reconciles that, because nothing knows to
- * look. Same defect `moveSyncQueueEntryToDeadLetter` was fixed for, and the same
- * fix.
- *
- * `rows` is a list because the disbursement path writes the release and the
- * stock decrement together; everything else passes one.
- *
- * The IndexedDB flush stays outside the transaction. It is the web build's only
- * durability step and it writes the whole database at once, so a kill before it
- * loses the row and the queue entry together — which is the consistent outcome,
- * not a split one.
+ * `rows` is a list because the disbursement path writes the release and the stock
+ * decrement together. The IndexedDB flush stays outside the transaction, so a
+ * kill before it loses the row and the queue entry together.
  */
 async function writeAndQueue<TTable extends LocalTableName, TOperation extends SyncOperationType>(
   rows: { statement: string; values: SqlValue[] }[],
@@ -751,8 +721,7 @@ export async function saveHouseholdLocally(household: Household, operationType: 
 
 /**
  * What of a resident row may be pushed. `household_number` is joined in on read
- * but lives on `households`, not `individuals` — Supabase rejects the row over
- * the unknown column if it rides along.
+ * but lives on `households`, and Supabase rejects the unknown column.
  */
 function syncableIndividual(individual: Individual): Individual {
   const syncable = { ...individual };
@@ -772,17 +741,11 @@ export async function saveIndividualLocally(individual: Individual, operationTyp
 }
 
 /**
- * A whole visit — the household and every member — in one transaction and one flush.
+ * A whole visit — the household and every member — in one transaction and one
+ * flush, so a kill partway through cannot queue only some of the members. On web
+ * each flush serializes the entire database, so one per member was costly too.
  *
- * Saving each member through `saveIndividualLocally` meant one
- * `persistLocalDatabase()` per member, and on web that call serializes the
- * entire database: a six-member household wrote it seven times. It also left the
- * visit splittable, which is the same hazard `writeAndQueue` closes for a single
- * row — a kill partway through leaves a household on the phone holding some of
- * its members and queueing some of its members.
- *
- * The household goes first so its queue entry is pushed before the members that
- * point at it.
+ * The household goes first, ahead of the members that point at it.
  */
 export async function saveHouseholdWithMembersLocally(
   household: { row: Household; operationType: SyncOperationType },
@@ -803,9 +766,8 @@ export async function saveHouseholdWithMembersLocally(
 }
 
 /**
- * The two leaf tables keep `insert or replace` — nothing references them, so REPLACE
- * cascades into nothing. Both the local write and the server pull go through these,
- * so the column list cannot drift between the two the way it can when each has its own.
+ * The two leaf tables keep `insert or replace`: nothing references them, so
+ * REPLACE cascades into nothing. Both the local write and the server pull use these.
  */
 const assessmentInsert = {
   statement: `insert or replace into health_assessments
@@ -851,10 +813,7 @@ export async function saveHealthAssessmentLocally(
   );
 }
 
-/**
- * One inventory item, or null. Separate from readLocalInventoryItems() — the
- * disbursement path needs the current row, not a stale UI snapshot.
- */
+/** One inventory item, or null. The disbursement path needs the current row, not a stale UI snapshot. */
 export async function readLocalInventoryItem(itemId: string): Promise<InventoryItem | null> {
   const database = await initializeLocalDatabase();
   const result = await database.query('select * from inventory_items where item_id = ?', [itemId]);
@@ -866,11 +825,9 @@ export async function readLocalInventoryItem(itemId: string): Promise<InventoryI
 /**
  * Records a supply release and decrements the device's local stock in one call.
  *
- * Only the disbursement is queued; the decrement stays local and is never pushed —
- * `inventory_items` has no BHW write policy, and an absolute total would let two
- * offline devices overwrite each other's release. The server reconciles the real
- * figure live via the `bhw_item_stock` view (allocations minus disbursements),
- * which the next pull brings back down.
+ * Only the disbursement is queued; the decrement stays local, since two offline
+ * devices pushing an absolute total would overwrite each other. The server
+ * reconciles the real figure in `bhw_item_stock`, which the next pull brings back.
  */
 export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
@@ -895,8 +852,8 @@ export async function saveSupplyDisbursementLocally(
   const rows = [{ statement: disbursementInsert.statement, values: disbursementInsert.values(disbursement) }];
 
   if (item) {
-    // Local only, not enqueued. `updated_at` stays on the item's own value so the
-    // server's reconciled figure isn't mistaken for stale data on the next pull.
+    // Local only, not enqueued. `updated_at` keeps the item's own value so the
+    // next pull does not read the server's figure as stale.
     const movedStock: InventoryItem = {
       ...item,
       current_stock: item.current_stock - disbursement.quantity,
@@ -905,18 +862,11 @@ export async function saveSupplyDisbursementLocally(
     rows.push({ statement: inventoryUpsert.statement, values: inventoryUpsert.values(movedStock) });
   }
 
-  // Three statements here rather than two, so this path had two gaps: a kill
-  // could also leave the release recorded with the stock never moved.
   await writeAndQueue(rows, 'supply_disbursements', operationType, disbursement);
 }
 
 
-/**
- * How many rows a table holds. The dashboard and the login screen only ever want
- * the number: reading the rows meant parsing a purok's whole assessment and
- * release history on every refresh, which runs every 30 seconds while any queue
- * entry is waiting out a backoff.
- */
+/** How many rows a table holds, for the callers that want only the number. */
 export async function countRows(table: MigratableTableName): Promise<number> {
   const db = await initializeLocalDatabase();
   const result = await db.query(`select count(*) as total from ${table}`);
@@ -925,13 +875,9 @@ export async function countRows(table: MigratableTableName): Promise<number> {
 }
 
 /**
- * Empties the five data tables, leaving the schema and both queues alone.
- *
- * For the moment a device changes hands: the local copy is one purok's residents,
- * and the next health worker to sign in covers a different one. Deliberately does
- * not touch `sync_queue` or `sync_dead_letter` — an unsent record is the only copy
- * of a visit, so the caller checks both are empty before calling this and refuses
- * the handover otherwise. Children first, since `pragma foreign_keys` is on.
+ * Empties the five data tables for a device handover, leaving the schema and both
+ * queues alone: an unsent record is the only copy of a visit, so the caller checks
+ * both queues are empty first. Children first, since `pragma foreign_keys` is on.
  */
 export async function clearLocalRecords(): Promise<void> {
   const database = await initializeLocalDatabase();
@@ -947,8 +893,7 @@ export async function getIndividualCount(options?: IndividualFilter): Promise<nu
   const db = await initializeLocalDatabase();
   const filter = buildIndividualFilter(options);
 
-  // Mirrors the FROM/WHERE of readLocalIndividuals so a filtered count always
-  // matches the rows that query would return.
+  // Mirrors the FROM/WHERE of readLocalIndividuals, so the count matches the rows.
   const result = await db.query(
     `SELECT COUNT(*) as total
      FROM individuals i
@@ -959,18 +904,12 @@ export async function getIndividualCount(options?: IndividualFilter): Promise<nu
   return result.values?.[0]?.total || 0;
 }
 
-/** Shared search predicate for individual lookups — one place so the row and count queries can't drift apart. */
-/** The filters both the individual read and its count apply, built once so the two cannot drift. */
+/** The filters both the individual read and its count apply. */
 type IndividualFilter = Pick<PaginatedQuery, 'searchQuery' | 'residentId' | 'householdId' | 'includeFormer'>;
 
 /**
- * A contains-match pattern for LIKE, with the wildcards a BHW may have typed
- * escaped so they match literally. Shared by the resident and household searches:
- * the household one is the prefilter behind `findExistingHousehold`, and a
- * household number holding a `_` that silently matched any character is how a
- * re-visit gets missed and a second copy of a house recorded.
- *
- * Every caller must pair this with `ESCAPE '\'` in the SQL.
+ * A contains-match pattern for LIKE, with any wildcards the BHW typed escaped so
+ * they match literally. Every caller must pair this with `ESCAPE '\'` in the SQL.
  */
 function likePattern(term: string): string {
   return `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
@@ -1001,9 +940,8 @@ function buildIndividualFilter(options?: IndividualFilter): { clause: string; pa
     params.push(options.householdId);
   }
 
-  // A member who moved out, died or transferred is off the lists by default —
-  // that is what marking her was for. Her row, and everything hanging off it,
-  // is untouched and still opens by id.
+  // A member who moved out, died or transferred is off the lists by default, but
+  // the row is untouched and still opens by id.
   if (!options?.includeFormer) {
     conditions.push("i.status = 'active'");
   }
@@ -1017,10 +955,9 @@ function buildIndividualFilter(options?: IndividualFilter): { clause: string; pa
 
 /**
  * The LIMIT/OFFSET tail of a paginated read. SQLite rejects OFFSET without a
- * preceding LIMIT, so an offset-only call gets one supplied for it (-1 is
- * SQLite's "no limit").
+ * preceding LIMIT, so an offset-only call gets one supplied (-1 is "no limit").
  */
-/** An optional single-column WHERE — the two leaf histories read either one resident's or everyone's. */
+/** An optional single-column WHERE, for reads scoped to one resident or to everyone. */
 function scopedTo(column: string, value?: string): { clause: string; params: SqlValue[] } {
   return value ? { clause: ` where ${column} = ?`, params: [value] } : { clause: '', params: [] };
 }
@@ -1068,8 +1005,7 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
 
 /**
  * One resident by id, or null if this device has never seen them. `includeFormer`
- * is on: a member marked moved out by mistake has to stay reachable by id, which
- * is the only way back to her record.
+ * is on, so a member marked moved out by mistake stays reachable.
  */
 export async function readLocalIndividual(residentId: string): Promise<Individual | null> {
   const [person] = await readLocalIndividuals({ residentId, includeFormer: true, limit: 1 });
@@ -1108,16 +1044,10 @@ function toHousehold(row: Record<string, unknown>): Household {
 /**
  * The household recorded under exactly this number, or null.
  *
- * Not a LIKE search. This is the identity check behind the re-visit path, and a
- * contains-match has to be capped to stay affordable — at which point the row it
- * is looking for can fall outside the page and the form mints a second copy of a
- * house that is already on file. `HH-1` contains-matches `HH-10`, `HH-100` and
- * every other number it is a prefix of, so on a purok of any size the older exact
- * match is exactly the row that gets cut.
- *
- * Compared trimmed and case-folded on both sides, because "hh-001" and "HH-001 "
- * are one house on paper. `lower()` is ASCII-only in SQLite, which is all a
- * household number is.
+ * Exact, not LIKE: this is the identity check behind the re-visit path, and a
+ * capped contains-match can push the row it wants off the page, at which point
+ * the form mints a second copy of a house already on file. Compared trimmed and
+ * case-folded, because "hh-001" and "HH-001 " are one house on paper.
  */
 export async function findLocalHouseholdByNumber(householdNumber: string | null | undefined): Promise<Household | null> {
   const number = householdNumber?.trim().toLowerCase();
@@ -1179,14 +1109,12 @@ export async function readLocalSupplyDisbursements(residentId?: string): Promise
 // Parsers & Type Guards
 // -----------------------------------------------------------------------------
 
-/** Normalizes a nullable SQLite text column — `alter table` columns read back as undefined on older rows, so that collapses to null too. */
+/** Normalizes a nullable SQLite text column, collapsing undefined to null. */
 function nullableText(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
 }
 
-/**
- * Validates that an untyped string is a legitimate SyncOperationType.
- */
+/** Validates that an untyped string is a legitimate SyncOperationType. */
 function parseOperationType(value: string): SyncOperationType {
   if (value === 'INSERT' || value === 'UPDATE') {
     return value;
@@ -1195,9 +1123,7 @@ function parseOperationType(value: string): SyncOperationType {
   throw new Error(`Unsupported sync operation: ${value}`);
 }
 
-/**
- * Validates that an untyped string matches an actual SQLite table name.
- */
+/** Validates that an untyped string matches an actual SQLite table name. */
 function parseLocalTableName(value: string): LocalTableName {
   if (
     value === 'households' ||
@@ -1218,13 +1144,8 @@ function parseLocalTableName(value: string): LocalTableName {
 
 /**
  * Writes a page of pulled rows through the same statement the local write path
- * uses, so the two can't drift. One body for all five tables — they differed only
- * by which upsert they named and which word went in the error log.
- *
- * Deliberately does not flush: on web `persistLocalDatabase()` serializes the
- * whole database, and flushing per table made that five times a pull. The caller
- * flushes once at the end, the way the push side already does. A crash before
- * that replays safely — every statement here is an upsert.
+ * uses. Does not flush — the caller flushes once at the end, and a crash before
+ * that replays safely, since every statement here is an upsert.
  */
 async function pullRowsFromServer<TRow>(
   label: string,
@@ -1251,10 +1172,8 @@ export const pullSupplyDisbursementsFromServer = (rows: SupplyDisbursement[]) =>
   pullRowsFromServer('supply disbursements', disbursementInsert, rows);
 
 /**
- * Primary keys already in a local table. The pull uses this to drop a row whose
- * parent this device does not hold — a release recorded by another BHW can name an
- * item that was never allocated here, and `pragma foreign_keys = on` makes that a
- * failed statement rather than a skipped row.
+ * Primary keys already in a local table, so the pull can drop a row whose parent
+ * this device does not hold rather than fail the statement on the foreign key.
  */
 export async function readExistingIds(table: LocalTableName, column: string): Promise<Set<string>> {
   const db = await initializeLocalDatabase();

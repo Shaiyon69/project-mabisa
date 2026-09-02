@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalTableName, SyncOperationType, SyncQueueEntry } from './localDatabase';
 
-// The drain loop is the one piece of this app where a bug loses a health record
-// rather than misdrawing a screen, and none of it is reachable from a pure
-// function: it talks to SQLite and to Supabase. Both are replaced here with the
+// The drain loop talks to SQLite and to Supabase. Both are replaced with the
 // smallest fakes that still tell the truth about ordering, retries, and what was
-// actually sent — a real DOM or a real network would add nothing to the three
-// scenarios that matter (an interrupted pass, a replayed entry, a rejected one).
+// sent, for the three scenarios that matter: an interrupted pass, a replayed
+// entry, and a rejected one.
 
 const fake = vi.hoisted(() => {
   type Sent = {
@@ -39,9 +37,8 @@ vi.mock('@capacitor/network', () => ({
   Network: { getStatus: () => Promise.resolve({ connected: true }) },
 }));
 
-// Partial mock: only the client is faked. `readAllPages` lives in this module too
-// and is pure paging logic the pull genuinely depends on — replacing it would test
-// the fake instead of the code.
+// Partial mock: only the client is faked. `readAllPages` is the paging logic the
+// pull depends on and stays real.
 vi.mock('../lib/supabase', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/supabase')>();
 
@@ -173,8 +170,8 @@ describe('an interrupted pass', () => {
       queued('inventory_items', { item_id: 'i1' }),
     ];
 
-    // The inventory row shares no foreign key with the household, so a household
-    // that cannot be pushed must not strand it on the device.
+    // The inventory row shares no foreign key with the household, so a blocked
+    // household must not strand it.
     fake.rejecting.delete('inventory_items');
     const result = await syncPendingQueue();
 
@@ -182,8 +179,7 @@ describe('an interrupted pass', () => {
     expect(result.deferred).toBe(2);
     expect(result.status).toBe('deferred');
     expect(fake.sent.map((call) => call.table)).toEqual(['households', 'inventory_items']);
-    // The resident was never sent: its household does not exist centrally yet,
-    // so pushing it would either fail on the foreign key or orphan the row.
+    // The resident was never sent: its household does not exist centrally yet.
     expect(fake.sent.some((call) => call.table === 'individuals')).toBe(false);
     expect(fake.queue).toHaveLength(2);
   });
@@ -268,8 +264,7 @@ describe('a replayed entry', () => {
 
     const first = await syncPendingQueue();
 
-    // What a crash between the remote write and the queue deletion leaves behind:
-    // the same entry, still queued, replayed on the next pass.
+    // What a crash between the remote write and the queue deletion leaves behind.
     fake.queue = [queued('households', payload)];
     const second = await syncPendingQueue();
 
@@ -297,8 +292,7 @@ describe('a rejected write', () => {
     expect(result.deadLettered).toBe(1);
     expect(result.deferred).toBe(0);
     expect(fake.deadLetters[0].error).toContain('changed centrally');
-    // One attempt, not five: every retry would compare against a row that has
-    // moved on further still.
+    // One attempt, not five: every retry compares against a row that moved on further.
     expect(fake.deadLetters[0].entry.attempts).toBe(1);
   });
 
@@ -313,8 +307,8 @@ describe('a rejected write', () => {
 
     await syncPendingQueue();
 
-    // The primary key is stripped from the SET clause; the edit timestamp rides
-    // along, because the filter is built from it.
+    // The primary key is stripped from the SET clause; the edit timestamp stays,
+    // since the filter is built from it.
     expect(fake.sent[0].operation).toBe('update');
     expect(fake.sent[0].payload).not.toHaveProperty('resident_id');
     expect(fake.sent[0].payload.updated_at).toBe('2026-08-18T01:00:00.000Z');
@@ -334,10 +328,9 @@ describe('a rejected write', () => {
 });
 
 describe('the pull', () => {
-  // A resident this device covers can be reached through a household it does not
-  // hold. Local foreign keys are on, so writing that row fails the whole page, and
-  // because the watermark never advances past a throw, every later pass fails on
-  // the same row — the device stops receiving anything, permanently.
+  // A resident can be reached through a household this device does not hold. With
+  // local foreign keys on, that row fails the whole page, and the watermark never
+  // advances past the throw.
   it('drops an individual whose household is not on this device, and keeps the rest', async () => {
     fake.known.households = ['h1'];
     fake.cloud.individuals = [

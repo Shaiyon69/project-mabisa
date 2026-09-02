@@ -4,8 +4,8 @@ import { RELATIONSHIPS_TO_HEAD } from '../../types/database';
 import { isInFuture, titleCase, today } from '../../lib/utils';
 import { FormField, SelectField } from '../common/FormField';
 
-// The column is plain text with no check constraint, so a fixed list is safe here
-// and keeps the registry searchable in a way free text would not.
+// The column is plain text with no check constraint, so a fixed list is safe and
+// keeps the registry searchable.
 const EDUCATION_OPTIONS = [
   { label: '(Not specified)', value: '' },
   { label: 'None', value: 'none' },
@@ -39,21 +39,13 @@ type MemberFieldsProps = {
   member: Partial<Individual>;
   onChange: (field: keyof Individual, value: unknown) => void;
   showValidation: boolean;
-  /**
-   * Choices that belong to the calling screen rather than to a person — the
-   * household-head flag, which only means something while several members are
-   * being entered together.
-   */
+  /** Choices that belong to the calling screen rather than to a person, such as the household-head flag. */
   children?: ReactNode;
 };
 
 /**
- * The editable field set for one resident.
- *
- * Shared between household registration and the correction path on a saved
- * profile, because the two have to ask for the same things: a second copy of this
- * markup is how the two screens end up validating a birthday differently, or how
- * one of them quietly stops offering an education level the other still writes.
+ * The editable field set for one resident, shared between household registration
+ * and the correction path on a saved profile so the two ask for the same things.
  */
 export function MemberFields({ member, onChange, showValidation, children }: MemberFieldsProps) {
   return (

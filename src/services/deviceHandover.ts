@@ -5,24 +5,15 @@ import { forgetDeviceSyncState } from './syncService';
 /**
  * Whose records this phone is holding.
  *
- * A device carries one purok's residents in local SQLite, plus whatever has not
- * shipped yet in the sync queue, and neither is keyed by account — signing out
- * clears the session and the PIN and leaves all of it in place. Two things go
- * wrong when the next health worker signs in on the same phone:
+ * Local SQLite and the sync queue are not keyed by account, and signing out
+ * leaves both in place. The next health worker to sign in would read the previous
+ * worker's purok, and the previous worker's queue would drain under her session —
+ * the server stamps scope and actor from `auth.uid()`, so those households land
+ * in her purok under her name.
  *
- *  - She reads the previous worker's purok. Names, birthdays, PhilHealth numbers.
- *  - Worse, the previous worker's queue drains under *her* session. The server
- *    stamps scope and actor from `auth.uid()` (`households_stamp_scope`,
- *    `households_stamp_actor`), so those households land in her purok with her
- *    name on them. The rows are wrong and nothing says so.
- *
- * So ownership is recorded, and checked at the moment that matters — a sign-in,
- * not a sign-out. Sign-out stays as it was, which is what keeps "sign in again"
- * on the sync card working: that is the same account returning, and its unsent
- * records must survive it.
- *
- * The id is not a credential (the same argument `mabisa.user_role` makes), so
- * plain `localStorage` is where it goes.
+ * So ownership is recorded and checked at sign-in, not sign-out: the same account
+ * returning must keep its unsent records. The id is not a credential, so plain
+ * `localStorage` holds it.
  */
 const DEVICE_OWNER_KEY = 'mabisa.device_owner';
 
@@ -45,7 +36,7 @@ function writeOwner(userId: string): void {
   }
 }
 
-/** Every account's saved household draft. Plain local storage, so it outlives the database wipe unless it is named. */
+/** Every account's saved household draft, which outlives the database wipe unless named. */
 function draftKeys(): string[] {
   try {
     return Object.keys(localStorage).filter((key) => key.startsWith(HOUSEHOLD_DRAFT_PREFIX));
@@ -55,12 +46,7 @@ function draftKeys(): string[] {
   }
 }
 
-/**
- * Belt and braces. A draft now blocks the handover outright, so by the time this
- * runs there should be none — it stays because the invariant it enforces (no
- * previous account's draft survives a handover) is the one that matters if the
- * count above ever misses a key.
- */
+/** Belt and braces: no previous account's draft survives a handover, even if the count above misses a key. */
 function clearHouseholdDrafts(): void {
   try {
     for (const key of draftKeys()) {
@@ -75,24 +61,17 @@ function clearHouseholdDrafts(): void {
  * Hands this device to `userId`, or refuses.
  *
  * Same account, or a device nobody has claimed: nothing to do. A different
- * account with nothing waiting to send: the local records are emptied and the
- * sync markers with them, because what is on the phone is the wrong purok. A
- * different account with records still waiting: refused, because those are the
- * only copy of somebody's visits and this is not the account that can send them.
- *
- * The dead letter counts as waiting. A quarantined record has not reached the
- * server either, and wiping it would be the one way this app loses a household
- * for good.
+ * account with nothing waiting to send: the local records and sync markers are
+ * emptied, since what is on the phone is the wrong purok. A different account
+ * with records still waiting: refused, because those are the only copy of
+ * somebody's visits. The dead letter counts as waiting.
  *
  * ponytail: no override on the refusal. A phone stuck behind a record that can
  * never send needs a person to look at the dead letter, which is what that
  * screen is for; add an escape hatch when the field produces one, not before.
  *
- * An unclaimed device that already holds records is the one case this cannot
- * answer: it predates the key, so there is no evidence of whose they are. The
- * signed-in session is the only evidence there is, and on an upgrade it belongs
- * to the owner — a handover needs a sign-out and a sign-in, and from this release
- * on that is exactly where the claim gets written.
+ * An unclaimed device already holding records predates the key, so the signed-in
+ * session is the only evidence of whose they are, and it is treated as the owner.
  */
 export async function claimDeviceFor(userId: string): Promise<Handover> {
   const owner = readOwner();
@@ -102,9 +81,8 @@ export async function claimDeviceFor(userId: string): Promise<Handover> {
   }
 
   if (owner !== null) {
-    // A saved draft counts as waiting too. It is an unfinished visit that has not
-    // reached the queue yet, `clearHouseholdDrafts` below deletes it, and it is
-    // the only copy there is.
+    // A saved draft counts as waiting: it is an unfinished visit that has not
+    // reached the queue, and `clearHouseholdDrafts` below deletes it.
     const unsent =
       (await countRows('sync_queue')) + (await countRows('sync_dead_letter')) + draftKeys().length;
 

@@ -33,7 +33,7 @@ export type SyncStatus =
 export type SyncResult = {
   status: SyncStatus;
   processed: number;
-  /** Entries left on the queue for a later pass — waiting out a retry backoff, or held back behind one that is. */
+  /** Entries left on the queue for a later pass. */
   deferred: number;
   /** Entries moved to the dead-letter table during this pass. */
   deadLettered: number;
@@ -51,7 +51,7 @@ const RETRY_BASE_DELAY_MS = 30_000;
 const RETRY_MAX_DELAY_MS = 15 * 60_000;
 
 // -----------------------------------------------------------------------------
-// Pass bookkeeping — survives app restarts: last drain time, and how far the pull has read.
+// Pass bookkeeping, persisted: last drain time, and how far the pull has read.
 // -----------------------------------------------------------------------------
 
 const LAST_SYNC_AT_KEY = 'mabisa.last_sync_at';
@@ -78,10 +78,7 @@ export function readLastSyncAt(): string | null {
   return readStored(LAST_SYNC_AT_KEY);
 }
 
-/**
- * Forgets how far the pull has read. Called when requeuing quarantined entries —
- * the watermark has moved past their server rows, so a filtered pull would never re-offer them.
- */
+/** Forgets how far the pull has read, so a filtered pull re-offers rows the watermark has passed. */
 export function resetPullWatermark(): void {
   try {
     localStorage.removeItem(PULLED_THROUGH_KEY);
@@ -91,13 +88,9 @@ export function resetPullWatermark(): void {
 }
 
 /**
- * Forgets both pass markers, for a device changing hands.
- *
- * The watermark has to go with the records: it says the server was read through
- * a given moment, and once the tables are emptied that is no longer true — the
- * next health worker would pull only what changed since, and open an app holding
- * nothing but the last few hours of her purok. The last-drained time goes because
- * it describes somebody else's sync.
+ * Forgets both pass markers, for a device changing hands. Once the tables are
+ * emptied the watermark is no longer true, and the next health worker would pull
+ * only what changed since it.
  */
 export function forgetDeviceSyncState(): void {
   resetPullWatermark();
@@ -109,10 +102,7 @@ export function forgetDeviceSyncState(): void {
   }
 }
 
-/**
- * The central row changed after this device's edit. Retrying can't win that race,
- * so a conflict skips straight to the dead letter for a human to resolve.
- */
+/** The central row changed after this device's edit, so the entry goes straight to the dead letter. */
 export class SyncConflictError extends Error {
   constructor(table: LocalTableName) {
     super(`This ${table.replace(/_/g, ' ')} record was changed centrally after this device edited it.`);
@@ -153,8 +143,8 @@ export async function isNetworkConnected(): Promise<boolean> {
 }
 
 // -----------------------------------------------------------------------------
-// Dependency Tracking — a held-back entry holds back everything that references it,
-// so a child is never pushed with a foreign key the server doesn't have yet.
+// Dependency Tracking — a held-back entry holds back everything referencing it,
+// so a child is never pushed with a foreign key the server does not have yet.
 //
 //   households      <- individuals            (household_id)
 //   individuals     <- health_assessments     (resident_id)
@@ -165,7 +155,7 @@ export async function isNetworkConnected(): Promise<boolean> {
 /** `table:primary_key` — identifies the record an entry writes or depends on. */
 type EntityKey = string;
 
-/** Why a record is held back: `deferred` retries next pass; `quarantined` takes its dependants with it. */
+/** Why a record is held back: `deferred` retries next pass, `quarantined` takes its dependants with it. */
 type HoldReason = 'deferred' | 'quarantined';
 
 function entityKey(table: LocalTableName, id: string): EntityKey {
@@ -193,8 +183,8 @@ export function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
     case 'inventory_items':
       return [];
     case 'individuals':
-      // duplicate_override_of is a second parent — without it a resident saved
-      // over a duplicate warning can be pushed ahead of the record it references.
+      // duplicate_override_of is a second parent, so an override is not pushed
+      // ahead of the record it references.
       return [...reference('household_id', 'households'), ...reference('duplicate_override_of', 'individuals')];
     case 'health_assessments':
       return reference('resident_id', 'individuals');
@@ -203,10 +193,7 @@ export function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
   }
 }
 
-/**
- * Exponential backoff from the attempt count already recorded against the entry.
- * 30s, 1m, 2m, 4m, then quarantine at MAX_SYNC_ATTEMPTS.
- */
+/** Exponential backoff off the recorded attempt count: 30s, 1m, 2m, 4m, then quarantine. */
 export function nextAttemptTimestamp(attempts: number): string {
   const delay = Math.min(RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1), RETRY_MAX_DELAY_MS);
   return new Date(Date.now() + delay).toISOString();
@@ -214,8 +201,8 @@ export function nextAttemptTimestamp(attempts: number): string {
 
 /** Reads the local sync queue and pushes pending operations to Supabase. */
 export async function syncPendingQueue(): Promise<SyncResult> {
-  // Claim the lock before the first await — after it, a second trigger landing in
-  // that window would pass the same check and double-count retry attempts.
+  // Claim the lock before the first await, or a second trigger in that window
+  // passes the same check.
   if (syncInProgress) {
     return idleResult('syncing');
   }
@@ -237,7 +224,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
     }
 
     // RLS rejects every write from an anonymous client, so defer rather than
-    // burn retry attempts on a guaranteed failure.
+    // burn retry attempts.
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
       return {
@@ -263,8 +250,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
     for (const entry of queue) {
       const own = ownEntityKey(entry);
 
-      // Held back behind an earlier entry? Either its parent is held back,
-      // or an earlier operation on this same record is.
+      // Held back if its parent is, or if an earlier operation on this same record is.
       const blockingKey = [...parentEntityKeys(entry), ...(own ? [own] : [])].find((key) => heldBack.has(key));
 
       if (blockingKey) {
@@ -297,8 +283,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
         await removeSyncQueueEntry(entry.queue_id);
         processed += 1;
       } catch (error) {
-        // A failure holds back this entry and its dependants; the rest of the
-        // queue keeps draining.
+        // A failure holds back this entry and its dependants; the rest keeps draining.
         const errorMessage = error instanceof Error ? error.message : 'Sync failed';
         const attempts = entry.attempts + 1;
 
@@ -315,8 +300,7 @@ export async function syncPendingQueue(): Promise<SyncResult> {
           firstErrorMessage = errorMessage;
         }
 
-        // A conflict can't resolve by retrying — quarantine immediately rather
-        // than after five wasted passes.
+        // A conflict cannot resolve by retrying, so quarantine immediately.
         if (error instanceof SyncConflictError || attempts >= MAX_SYNC_ATTEMPTS) {
           await moveSyncQueueEntryToDeadLetter({ ...entry, attempts }, errorMessage);
           deadLettered += 1;
@@ -329,12 +313,12 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       }
     }
 
-    // Flush once rather than per-entry — saving the web store serializes the whole
-    // database. A crash before this replays safely since every push is an upsert.
+    // Flush once rather than per-entry. A crash before this replays safely,
+    // since every push is an upsert.
     await persistLocalDatabase();
 
-    // Pull only once the queue has drained — pulling while entries are still
-    // deferred would overwrite local edits that haven't shipped yet.
+    // Pull only once the queue has drained, or local edits that have not shipped
+    // get overwritten.
     if (deferred === 0) {
       try {
         await pullRemoteUpdates();
@@ -434,10 +418,7 @@ async function pushQueueEntry(entry: SyncQueueEntry): Promise<void> {
 
 /**
  * The table being written is a runtime value, so the generated `Database` types
- * cannot narrow either the row shape or the column names. One cast, here, rather
- * than a switch repeating the same statement once per table — the payload was
- * JSON-parsed out of SQLite text on the way in, so there was never a
- * compile-time shape to keep.
+ * cannot narrow the row shape or the column names. One cast, here.
  */
 type UntypedRows = {
   upsert(values: Record<string, unknown>, options: { onConflict: string }): PromiseLike<{ error: PostgrestError }>;
@@ -453,7 +434,7 @@ function rowsOf(table: LocalTableName): UntypedRows {
   return supabase.from(table) as unknown as UntypedRows;
 }
 
-/** Uses `.upsert()`, not `.insert()` — a retried push after a dropped connection must not fatal on a duplicate primary key. */
+/** Uses `.upsert()`, so a retry after a dropped connection does not fatal on a duplicate key. */
 async function insertPayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
   const { error } = await rowsOf(targetTable).upsert(payload, { onConflict: primaryKeys[targetTable] });
 
@@ -478,8 +459,8 @@ function assertApplied(targetTable: LocalTableName, rows: unknown[] | null): voi
 }
 
 /**
- * Strips the primary key from the payload before updating, and selects it back —
- * a no-op update (a concurrent central edit) is otherwise indistinguishable from success.
+ * Strips the primary key from the payload before updating, and selects it back:
+ * a no-op update is otherwise indistinguishable from success.
  */
 async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
   const primaryKey = primaryKeys[targetTable];
@@ -515,8 +496,8 @@ function withoutPrimaryKey(payload: object, key: string): Record<string, unknown
 // -----------------------------------------------------------------------------
 
 /**
- * Primary keys of dead-lettered records, grouped by table. These are the only
- * records where the device can be ahead of the server, so a pull must not overwrite them.
+ * Primary keys of dead-lettered records, grouped by table — the only rows where
+ * the device can be ahead of the server, so a pull must not overwrite them.
  */
 async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> {
   const quarantined = new Map<LocalTableName, Set<string>>();
@@ -544,9 +525,8 @@ async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> 
 }
 
 /**
- * Rows whose server value is derived from this entry, so pulling them back while
- * it's quarantined would double-release stock. Narrower than `parentEntityKeys`:
- * a disbursement's resident isn't derived from it, so that stays pullable.
+ * Rows whose server value is derived from this entry, so pulling one back while it
+ * is quarantined would double-release stock. Narrower than `parentEntityKeys`.
  */
 export function derivedEntityKeys(entry: {
   target_table: LocalTableName;
@@ -563,8 +543,8 @@ export function derivedEntityKeys(entry: {
 
 /**
  * Newest `updated_at` the server handed over, for the next watermark. Only rows
- * read *through* the current watermark belong here — an unfiltered row (like
- * `bhw_item_stock`) would drag it past records this device hasn't seen yet.
+ * read through the current watermark belong here; an unfiltered row would drag it
+ * past records this device has not seen.
  */
 export function newestUpdatedAt(rows: { updated_at?: string }[], fallback: string | null): string | null {
   return rows.reduce<string | null>(
@@ -574,17 +554,12 @@ export function newestUpdatedAt(rows: { updated_at?: string }[], fallback: strin
 }
 
 /**
- * Rows whose foreign key names a record this device holds.
+ * Rows whose foreign key names a record this device holds. The leaf tables are
+ * scoped by resident, so a row can come back naming an item never allocated here,
+ * and local foreign keys are enforced — that row would fail the whole statement.
  *
- * The two leaf tables are scoped by resident, so a release logged by another BHW for
- * a resident this one also covers comes back on the pull — pointing at an item that
- * was never allocated to this device. Local foreign keys are enforced, so that row
- * would fail the whole statement. Dropping it costs the device a line of another
- * worker's history it cannot render anyway; keeping it costs the pull.
- *
- * A skipped row still advances the watermark, so it is not offered again. That is
- * deliberate: the parent it names is not coming, and holding the watermark back for
- * it would re-download every row since, on every pass, forever.
+ * A skipped row still advances the watermark: the parent it names is not coming,
+ * and holding the watermark back would re-download every row since on every pass.
  */
 export function withKnownParents<TRow>(rows: TRow[], foreignKey: keyof TRow & string, known: Set<string>): TRow[] {
   const kept = rows.filter((row) => known.has(String(row[foreignKey])));
@@ -601,9 +576,8 @@ export function withKnownParents<TRow>(rows: TRow[], foreignKey: keyof TRow & st
 
 export async function pullRemoteUpdates(): Promise<void> {
   try {
-    // Row scope is enforced entirely by RLS, not repeated here as a client filter.
-    // `gte`, not `gt`: a row written in the same millisecond as the watermark
-    // must not be skipped forever.
+    // Row scope is enforced by RLS, not repeated here. `gte`, not `gt`, so a row
+    // written in the same millisecond as the watermark is not skipped.
     const pulledThrough = readStored(PULLED_THROUGH_KEY);
     const changedSince = <TQuery extends { gte(column: string, value: string): TQuery }>(query: TQuery): TQuery =>
       pulledThrough ? query.gte('updated_at', pulledThrough) : query;
@@ -617,15 +591,14 @@ export async function pullRemoteUpdates(): Promise<void> {
     );
 
     // Pulls `bhw_item_stock` (this BHW's allocations minus releases), not
-    // `inventory_items` (the barangay's unallocated total) — a phone only ever
-    // shows its own holding. Unfiltered: the view is derived, so its timestamps
-    // don't track the watermark.
+    // `inventory_items` (the barangay's unallocated total). Unfiltered, since the
+    // view is derived and its timestamps do not track the watermark.
     const cloudStock = await readAllPages('Inventory', (from, to) =>
       supabase.from('bhw_item_stock').select('*').order('updated_at').order('item_id').range(from, to),
     );
 
-    // Read back so a reinstalled device recovers the history it recorded, and so a
-    // resident's record shows the checks and releases made from another device.
+    // Read back so a reinstalled device recovers its history, and so a resident's
+    // record shows what another device recorded.
     const cloudAssessments = await readAllPages('Health assessment', (from, to) =>
       changedSince(supabase.from('health_assessments').select('*')).order('updated_at').order('assessment_id').range(from, to),
     );
@@ -635,7 +608,7 @@ export async function pullRemoteUpdates(): Promise<void> {
     );
 
     // `created_at` is not on the view and is not mutable on conflict, so it only
-    // ever stamps a row this device is seeing for the first time.
+    // stamps a row seen for the first time.
     const cloudInventory: InventoryItem[] = cloudStock.map((stock) => ({
       item_id: stock.item_id,
       item_name: stock.item_name,
@@ -672,11 +645,9 @@ export async function pullRemoteUpdates(): Promise<void> {
     // Upsert data into local SQLite in the exact order of their dependencies
     await pullHouseholdsFromServer(withoutQuarantined('households', cloudHouseholds));
 
-    // Individuals need the same parent guard as the leaf tables below. A resident
-    // this device covers can be read through a household it does not hold — one
-    // such row fails the whole statement set against the local foreign keys, and
-    // because the watermark never advances past a throw, the pull then fails on
-    // that same row on every pass, forever.
+    // Individuals need the same parent guard as the leaf tables below: a resident
+    // can be read through a household this device does not hold, and one such row
+    // fails the whole statement set on every pass.
     const householdIds = await readExistingIds('households', 'household_id');
 
     await pullIndividualsFromServer(
@@ -702,13 +673,11 @@ export async function pullRemoteUpdates(): Promise<void> {
       ),
     );
 
-    // One flush for the whole pull, not one per table — on web each is a full
-    // serialization of the database.
+    // One flush for the whole pull, since on web each is a full serialization.
     await persistLocalDatabase();
 
-    // Advance the watermark to the server's newest row, not this device's clock
-    // (clock drift would skip rows). Inventory is excluded — it's pulled
-    // unfiltered, so its timestamps aren't evidence of the filtered reads' progress.
+    // Advance the watermark to the server's newest row, not this device's clock,
+    // which can drift. Inventory is excluded: it is pulled unfiltered.
     const pulledRows: { updated_at?: string }[] = [
       ...cloudHouseholds,
       ...cloudIndividuals,

@@ -12,8 +12,7 @@ type ModalProps = {
 };
 
 export function Modal({ open, title, children, onClose, className = '' }: ModalProps) {
-  // Escape closes it. A panel laid over the page has to be dismissable without
-  // hunting for the control that opened it, and every caller wants that.
+  // Escape closes it, so a panel over the page is always dismissable.
   useEffect(() => {
     if (!open) {
       return;
@@ -27,10 +26,8 @@ export function Modal({ open, title, children, onClose, className = '' }: ModalP
     return null;
   }
 
-  // Portalled to the body. The admin rail and the admin header are both
-  // `position: sticky`, which creates a stacking context, so a dialog rendered
-  // inside either one paints underneath the page content beside it no matter how
-  // high its z-index goes.
+  // Portalled to the body: the admin rail and header are `position: sticky`, and a
+  // dialog inside either stacking context paints under the page beside it.
   return createPortal(
     <div className={`modal-backdrop ${className}`.trim()} role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}>
       <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">

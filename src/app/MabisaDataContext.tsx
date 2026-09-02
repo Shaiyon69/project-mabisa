@@ -23,8 +23,8 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
   const [syncError, setSyncError] = useState<string | null>(null); 
 
   const refreshLocalData = useCallback(async () => {
-    // Counts where the UI only counts. The pull now brings a whole purok's history
-    // onto the device, so reading these as rows would parse all of it every refresh.
+    // Counts where the UI only counts: reading these as rows would parse a whole
+    // purok's history every refresh.
     const [
       householdCount,
       individualCount,
@@ -69,8 +69,8 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     };
   }, [refreshLocalData, backgroundSync.lastResult]);
 
-  // A confirmation auto-clears rather than sitting on screen forever — the rail
-  // and SyncStatusCard carry any state that still needs attention.
+  // A confirmation auto-clears; the rail and SyncStatusCard carry anything that
+  // still needs attention.
   useEffect(() => {
     if (!message) {
       return;
@@ -124,7 +124,8 @@ export function MabisaDataProvider({ bhwId, children }: { bhwId: string; childre
     setSyncError(null);
 
     try {
-      // Forgets the pull watermark so the retry pass re-reads the central copies these records missed while quarantined.
+      // Forgets the pull watermark, so the retry pass re-reads what these records
+      // missed while quarantined.
       resetPullWatermark();
       const requeued = await requeueDeadLetterEntries();
       setMessage(`Returned ${requeued} set-aside change(s) to the sync queue.`);

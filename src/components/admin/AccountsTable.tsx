@@ -31,10 +31,8 @@ const exportColumns: CsvColumn<AccountRow>[] = [
 ];
 
 /**
- * What each role is called on screen. `admin` is the RHU or LGU account that
- * reads every barangay; `barangay_admin` runs one. They are different scopes and
- * different powers, so a table that showed both as "Admin" would be hiding the
- * distinction that decides what each of them can actually do.
+ * What each role is called on screen. `admin` is the RHU account that reads every
+ * barangay, `barangay_admin` runs one, and the labels keep them apart.
  */
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin / LGU',
@@ -47,48 +45,31 @@ type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
 
 type AccountsTableProps = {
   /**
-   * Who is looking, which decides which rows get controls.
-   *
-   * An `admin` manages every account. A `barangay_admin` manages the health
-   * workers in their own barangay and nothing else — not another barangay
-   * administrator, not an RHU account, not themselves. That rule lives in
-   * `private.assert_can_manage_bhw()`, which both RPCs open with; the check
-   * below only decides which buttons to draw, because offering a control that
-   * can only return an error is worse than offering none.
-   *
-   * Rows outside the barangay never arrive here at all — `profiles_select_foundation`
-   * filters them out before the read returns.
+   * Who is looking, which decides which rows get controls. An `admin` manages
+   * every account; a `barangay_admin` manages the health workers in their own
+   * barangay and nothing else. The rule is enforced in
+   * `private.assert_can_manage_bhw()`; this only decides which buttons to draw.
    */
   role: UserRole | null;
-  /**
-   * The page's filter drawer. Applied in memory rather than in the query: this
-   * screen reads every account the session may see in one go, and a role or a
-   * barangay is a narrowing of that list, not a different read.
-   */
+  /** The page's filter drawer, applied in memory over the accounts already read. */
   filters: AdminFilters;
 };
 
 /**
  * Accounts and their current purok, read from `public.profiles` — the same table
- * the route guard and every RLS helper read, so what this screen shows about an
- * account is what the database will actually enforce for it.
+ * the route guard and every RLS helper read.
  *
- * The two mutations here go through `admin_set_profile_active` and
- * `admin_assign_bhw_to_purok`, never a direct table write: the RPCs assert an
- * active admin and write the audit event in the same transaction, which is why
- * the foundation slice withholds table-level grants in the first place. Both
- * take a reason, and the form requires it for the same reason the function does
- * — an audit row is worth nothing if every entry says "update".
+ * The two mutations go through `admin_set_profile_active` and
+ * `admin_assign_bhw_to_purok`, never a direct table write: each asserts an active
+ * admin and writes the audit event in the same transaction. Both take a reason,
+ * which the form requires.
  *
- * Creating an account and resetting a password are deliberately still absent.
- * Both need the auth user to exist first, which is a service-role operation and
- * cannot happen from a browser holding a publishable key; see the foundation
- * bootstrap procedure.
+ * Creating an account and resetting a password are absent: both need the auth user
+ * to exist first, which a browser holding a publishable key cannot do.
  */
 export function AccountsTable({ role, filters }: AccountsTableProps) {
-  // Whether the Actions column is drawn at all, and whether this particular row
-  // gets buttons. Kept as two questions because they have different answers for
-  // a barangay administrator: the column is theirs, most of the rows in it are not.
+  // Whether the Actions column is drawn at all, and whether this row gets buttons.
+  // Two questions: a barangay administrator owns the column but not most rows.
   const managesAnyone = role === 'admin' || role === 'barangay_admin';
   const manages = (account: AccountRow) => managesAccount(role, account.profile.role);
 
@@ -101,15 +82,12 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     settledFor: number;
   }>({ rows: [], puroks: [], error: null, settledFor: -1 });
 
-  // `loading` is the difference between the read this render wants and the one
-  // the state was last settled against, the same shape `useAdminData` uses. A
-  // flag set inside the effect would mark the screen busy a render late — and
-  // is what `react-hooks/set-state-in-effect` reports.
+  // `loading` is the difference between the read this render wants and the one the
+  // state last settled against, the same shape `useAdminData` uses.
   const { rows, puroks, error } = result;
   const loading = result.settledFor !== reloadToken;
-  // What the drawer left. `rows` stays the whole set so the count below can say
-  // how much was filtered away, and so a mutation still refreshes against
-  // everything rather than against the current narrowing.
+  // What the drawer left. `rows` stays the whole set, so the count can say how
+  // much was filtered away and a mutation refreshes against everything.
   const visible = filterAccounts(rows, filters);
 
   useEffect(() => {
@@ -150,9 +128,8 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     {
       key: 'assigned-purok',
       header: 'Assigned Purok',
-      // A BHW with no active assignment can neither read nor write a field row
-      // under the purok policies, so an empty cell here is the reason a device
-      // that signs in successfully still sees nothing.
+      // A BHW with no active assignment can neither read nor write a field row, so
+      // an empty cell here explains a device that signs in and sees nothing.
       render: (account) =>
         account.purokName ?? (account.profile.role === 'bhw' ? 'None — cannot sync' : 'Not purok-scoped'),
     },
@@ -177,8 +154,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     columns.push({
       key: 'actions',
       header: 'Actions',
-      // Empty for a row this account may look at but not touch — a barangay
-      // administrator seeing their own row, or another administrator's.
+      // Empty for a row this account may look at but not touch.
       render: (account) =>
         manages(account) ? (
           <div className="table-actions">
@@ -198,9 +174,8 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     });
   }
 
-  // The scope is read at export time rather than held in state: it is one RPC, it
-  // is wanted only when a file is actually produced, and a CSV that names the wrong
-  // barangay is worse than one that takes a moment longer to build.
+  // The scope is read at export time rather than held in state, so the file cannot
+  // name a barangay the session has since moved off.
   async function exportAccounts() {
     downloadCsv(
       reportFileName('Accounts'),
@@ -210,9 +185,8 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
           barangay: await fetchBarangayScope(),
           from: 'all dates',
           to: 'all dates',
-          // The drawer's filters, named on the file. The export is of what is
-          // on screen, so a file taken while one role was selected must not
-          // read later as the whole account list.
+          // The drawer's filters, named on the file, so an export of a narrowed
+          // list does not read later as the whole account list.
           filters: [
             ...(filters.accountRole ? [{ label: 'Role', value: titleCase(filters.accountRole) }] : []),
             ...(filters.accountActive ? [{ label: 'Account state', value: titleCase(filters.accountActive) }] : []),
@@ -276,11 +250,7 @@ type AccountActionFormProps = {
   onDone: () => void;
 };
 
-/**
- * One dialog for both mutations. They ask almost the same question — a reason,
- * and for an assignment also a purok — so splitting them would duplicate the
- * submit, error and busy handling to save a single conditional field.
- */
+/** One dialog for both mutations: a reason, plus a purok when it is an assignment. */
 function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFormProps) {
   const { kind, account } = pending;
   const deactivating = account.profile.is_active;
@@ -294,9 +264,8 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
       ? `Assign ${account.profile.full_name} to a purok`
       : `${deactivating ? 'Deactivate' : 'Reactivate'} ${account.profile.full_name}`;
 
-  // Submit is withheld rather than validated on click: the RPC requires a reason,
-  // and an assignment also a purok, so a disabled button says so before the round
-  // trip rather than after it.
+  // Submit is withheld rather than validated on click, so the missing reason (and
+  // purok, on an assignment) shows before the round trip.
   const ready = reason.trim().length > 0 && (kind !== 'assign' || purokId !== '');
 
   async function submit() {

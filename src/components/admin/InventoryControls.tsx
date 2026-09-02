@@ -23,10 +23,10 @@ type InventoryControlsProps = {
 };
 
 /**
- * Stock management, barangay administrator only. **Receiving** adds to the
- * barangay's holding; **allocating** moves a quantity into one named BHW's hands —
- * the only way a field device gets anything to release. Every submission goes to
- * a database function that re-checks the same rules; this just makes a refusal readable.
+ * Stock management, barangay administrator only. Receiving adds to the barangay's
+ * holding; allocating moves a quantity into one named BHW's hands, which is the
+ * only way a field device gets anything to release. Every submission goes to a
+ * database function that re-checks the same rules.
  */
 export function InventoryControls({ items, onChanged }: InventoryControlsProps) {
   const [bhws, setBhws] = useState<AccountRow[]>([]);
@@ -44,9 +44,8 @@ export function InventoryControls({ items, onChanged }: InventoryControlsProps) 
     };
   }, []);
 
-  // activity-grid, not dashboard-grid: the twelve-column desktop grid gives a
-  // span to every child it knows about, and a card without one lands in a single
-  // 76px column. This is the same two-column row the report cards sit in.
+  // activity-grid, not dashboard-grid: the twelve-column grid spans only children
+  // it knows about, and a card without one lands in a single 76px column.
   return (
     <div className="activity-grid">
       {loadError ? <ErrorState title="Could not read health worker accounts" text={loadError} /> : null}
@@ -268,10 +267,8 @@ function ItemSelect({ items, value, onChange }: { items: InventoryItem[]; value:
 
 /**
  * The submit half of both cards: one in-flight guard, and the database's own
- * refusal shown verbatim rather than replaced with a generic failure. The RPCs
- * raise sentences meant to be read ("Only 12 of Paracetamol is unallocated"),
- * and rewriting those into "Something went wrong" throws away the only part that
- * tells an administrator what to do next.
+ * refusal shown verbatim. The RPCs raise sentences meant to be read, such as
+ * "Only 12 of Paracetamol is unallocated".
  */
 function useStockAction(onChanged: () => void) {
   const [busy, setBusy] = useState(false);

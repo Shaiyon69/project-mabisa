@@ -23,13 +23,12 @@ import { FormActions, FormField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
 
-// The rail draws roughly the range a field BMI lands in; readings outside it
-// still resolve to a band, the marker just parks at the end of the scale.
+// Roughly the range a field BMI lands in. A reading outside it still resolves to
+// a band; the marker parks at the end of the scale.
 const BMI_MIN = 12;
 const BMI_MAX = 40;
 
-// The cut-points are getNutritionStatus() written out, which is the whole point
-// of the rail: the BHW sees the rule that produced the verdict.
+// getNutritionStatus() written out, so the BHW sees the rule behind the verdict.
 const BMI_BANDS = [
   { status: 'underweight', from: BMI_MIN, to: 18.5 },
   { status: 'normal', from: 18.5, to: 25 },
@@ -40,7 +39,7 @@ const BMI_BANDS = [
 const BMI_TICKS = [18.5, 25, 30];
 
 
-// BMI also isn't a nutrition measure during pregnancy/nursing — recorded anyway, but flagged as not applying.
+// BMI is not a nutrition measure during pregnancy or nursing: recorded, but flagged.
 
 function bmiCaveats(person: Individual | null): string[] {
   if (!person) {
@@ -53,7 +52,7 @@ function bmiCaveats(person: Individual | null): string[] {
     age !== null &&
       age < ADULT_BMI_MIN_AGE &&
       `This resident is ${age} years old. Adult BMI does not classify anyone under ${ADULT_BMI_MIN_AGE} — read the result against the DOH/WHO growth chart instead.`,
-    // One column covers all three (pregnant/nursing/family planning) — only the first two invalidate the reading.
+    // One column covers all three; only pregnancy and nursing invalidate the reading.
     person.is_pregnant_nursing_fp &&
       'This resident is flagged pregnant, nursing, or on family planning. If pregnant or nursing, BMI does not measure their nutrition status.',
   ].filter(Boolean) as string[];
@@ -104,8 +103,8 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
   const caveats = bmiCaveats(resident);
-  // Minted once and held until the row lands, so a retry after a failed write
-  // updates the same assessment instead of recording the visit twice.
+  // Minted once and held until the row lands, so a retry updates the same
+  // assessment rather than recording the visit twice.
   const pendingId = useRef<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -144,9 +143,8 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       return;
     }
 
-    // The assessment is in SQLite and on the queue. Nothing below may report it
-    // as unsaved — a refresh or a navigation that throws here used to send the
-    // BHW back to record the same visit a second time.
+    // The assessment is in SQLite and on the queue, so nothing below may report it
+    // as unsaved.
     pendingId.current = null;
     setWeight('');
     setHeight('');
@@ -243,7 +241,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   );
 }
 
-// The numeric readout is authoritative; the scale is a faster second read of the same answer — safe to hide from screen readers.
+// The numeric readout is authoritative and the scale repeats it, so this is hidden from screen readers.
 function BmiRail({ bmi, status }: { bmi: number | null; status: NutritionStatus | null }) {
   return (
     <section className="bmi-rail">

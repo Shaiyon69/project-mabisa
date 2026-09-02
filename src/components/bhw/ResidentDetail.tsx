@@ -40,7 +40,7 @@ type ResidentRecord = {
   disbursements: SupplyDisbursement[];
 };
 
-/** Everything this screen shows about one resident, read in one go — same shape as BHWDashboard/IndividualSearch. */
+/** Everything this screen shows about one resident, read in one go. */
 async function readResident(residentId: string): Promise<ResidentRecord> {
   const [person, assessments, disbursements] = await Promise.all([
     readLocalIndividual(residentId),
@@ -53,16 +53,15 @@ async function readResident(residentId: string): Promise<ResidentRecord> {
 
 /**
  * One resident: who they are, every assessment and supply release, and a
- * corrections path for the profile. The two histories are read-only by design —
- * a wrong measurement is corrected by taking another, not by editing the record.
+ * corrections path for the profile. The two histories are read-only: a wrong
+ * measurement is corrected by taking another.
  */
 export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: ResidentDetailProps) {
   const [resident, setResident] = useState<Individual | null>(null);
   const [assessments, setAssessments] = useState<HealthAssessment[]>([]);
   const [disbursements, setDisbursements] = useState<SupplyDisbursement[]>([]);
-  // Which resident the three lists above describe. `loading` is derived from this
-  // rather than its own flag, or navigating between residents would flash the
-  // previous person's history under the new name for a frame.
+  // Which resident the three lists above describe. `loading` is derived from it,
+  // so moving between residents never flashes one person's history under another's name.
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
   const [draft, setDraft] = useState<Individual | null>(null);
@@ -70,7 +69,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
   const [showValidation, setShowValidation] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Applying the three reads in one step — no state where this name pairs with the last person's assessments.
+  // The three reads applied in one step, so a name never pairs with another person's assessments.
   const apply = useCallback((loaded: ResidentRecord) => {
     setResident(loaded.person);
     setAssessments(loaded.assessments);
@@ -79,8 +78,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
   }, []);
 
   const failed = useCallback((error: unknown) => {
-    // Still mark the read as settled, or the screen sits on "Opening record..."
-    // with the reason it failed hidden behind it.
+    // Still mark the read as settled, or the screen sits on "Opening record...".
     setResident(null);
     setLoadedId(residentId);
     setFormError(error instanceof Error ? error.message : 'Could not open this resident.');
@@ -114,15 +112,15 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
           occupation: emptyToNull(draft.occupation),
           educational_attainment: emptyToNull(draft.educational_attainment),
           philhealth_number: philhealthDigits(draft.philhealth_number),
-          // The head has no relationship to themself; promoting someone to head
-          // here has to drop the one they carried.
+          // The head has no relationship to themself, so promoting someone drops
+          // the one they carried.
           relationship_to_head: draft.is_household_head ? null : draft.relationship_to_head ?? null,
           // The engine filters every update on this value, so a correction that
-          // does not move it forward is indistinguishable from no edit at all.
+          // does not move it forward reads as no edit.
           updated_at: new Date().toISOString(),
           updated_by: bhwId,
-          // A member who left is marked here rather than deleted — her assessments
-          // and supply releases hang off this row.
+          // A member who left is marked rather than deleted: the assessments and
+          // supply releases hang off this row.
           status: draft.status ?? 'active',
           status_changed_on: statusChangedOn(resident?.status, draft.status, draft.status_changed_on),
         },
@@ -136,8 +134,8 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
       return;
     }
 
-    // The correction is written and queued. Re-reading the row or refreshing the
-    // list can still fail, but neither un-saves it, so neither may say so.
+    // The correction is written and queued. Neither the re-read nor the refresh
+    // below un-saves it, so neither reports a failed save.
     setDraft(null);
     setShowValidation(false);
     setSaving(false);

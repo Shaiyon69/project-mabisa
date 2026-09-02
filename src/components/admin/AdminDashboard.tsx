@@ -29,30 +29,21 @@ type AdminDashboardProps = {
 /**
  * What the officer needs before choosing where to go: the totals, the one
  * distribution the barangay is monitored on, and the items that need restocking.
- *
- * This screen used to also mount `IndividualsTable`, `InventoryTable` and the
- * whole of `ReportCards` — the Residents, Inventory and Reports pages rendered
- * again underneath the summary. Those pages are one click away in the rail, and
- * a dashboard that repeats them is three screens of scrolling with nothing on it
- * that the rail does not already lead to. Detail belongs on the page that owns
- * it; what stays here is what someone reads and then acts on.
+ * Detail belongs on the page that owns it, one click away in the rail.
  */
 export function AdminDashboard({ snapshot, filters, loading, error, onScope }: AdminDashboardProps) {
   const lowStock = lowStockItems(snapshot.inventoryItems);
   const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
   // Rows gathered under this scope, not units: a release of forty sachets is one
-  // record, the same as one household profile. `releasedTotal` above is the
-  // quantity question and this is the "is anything arriving" question.
+  // record. `releasedTotal` above is the quantity question.
   const recordsGathered =
     snapshot.householdCount + snapshot.residentCount + snapshot.assessments.length + snapshot.disbursements.length;
   const stats = barangayStats(snapshot);
-  // One tally feeding both the ring and the bars beside it, so the two halves of
-  // the card cannot disagree about a band.
+  // One tally feeding both the ring and the bars, so the two cannot disagree.
   const nutrition = tally(snapshot.assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER);
 
-  // Every link carries the period *and the barangay*, so the screen it opens
-  // answers the question this tile asked. A drill-down that silently changes
-  // either shows a different number under the same heading.
+  // Every link carries the period and the barangay, so the screen it opens answers
+  // the question the tile asked.
   const period = `from=${filters.from}&to=${filters.to}${filters.barangayId ? `&barangay=${filters.barangayId}` : ''}`;
 
   return (

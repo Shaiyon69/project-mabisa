@@ -5,16 +5,15 @@ import { secureStorage } from './secureStorage';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-// The <Database> generic makes every .from() return a typed row instead of `any`
-// — a renamed Postgres column then surfaces as a build error, not a runtime dead-letter.
+// The <Database> generic makes every .from() return a typed row, so a renamed
+// Postgres column is a build error rather than a runtime dead-letter.
 //
 // The session lives in `secureStorage` (Android Keystore on device, localStorage
-// in a browser) — a refresh token is a long-lived credential and shouldn't sit in
-// plain web storage on a phone that lives in a bag.
+// in a browser), since a refresh token is a long-lived credential.
 //
-// `mabisa.user_role` in App.tsx deliberately stays in plain localStorage instead:
-// it's read synchronously at mount for an offline cold start, holds a role rather
-// than a credential, and is keyed by auth id so it can't be replayed for another account.
+// `mabisa.user_role` in App.tsx stays in plain localStorage: it is read
+// synchronously at mount for an offline cold start, holds a role rather than a
+// credential, and is keyed by auth id.
 export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   auth: {
     storage: secureStorage,
@@ -29,20 +28,12 @@ export const PULL_PAGE_SIZE = 1000;
 /**
  * Reads one table to the end, a page at a time.
  *
- * A single `select('*')` stops at the server's row cap and says nothing about
- * it, and an unordered truncated read is the dangerous half: the phone's pull
- * watermark then advances to the newest row that happened to come back, and
- * every row the cap cut is below it, so `updated_at >= watermark` never offers
- * them again. The portal's failure is quieter but not smaller — a count, a chart
- * band and a CSV export all read as complete while missing everything past the
- * cap. Ordering by a column plus the primary key makes the pages a stable
- * sequence; the tiebreak matters because rows sharing a sort value would
- * otherwise shuffle between pages and one could fall through the seam.
+ * A single `select('*')` stops at the server's row cap and says nothing about it:
+ * on the phone the pull watermark then advances past rows it never saw, and on
+ * the portal a count or an export reads as complete while missing them. Ordering
+ * by a column plus the primary key keeps the pages a stable sequence.
  *
- * Lives here rather than in `syncService` because the admin portal needs it too,
- * and must not import the offline engine — `syncService` pulls in
- * `localDatabase`, and with it Capacitor SQLite, which has no business in the
- * portal bundle.
+ * Lives here rather than in `syncService`, which the portal must not import.
  */
 export async function readAllPages<TRow>(
   label: string,

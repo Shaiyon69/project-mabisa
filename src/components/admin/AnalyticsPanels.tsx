@@ -28,25 +28,17 @@ import { Table, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 /**
- * The analyses that answer questions the period summaries cannot.
- *
- * `ReportCards` says how many, in this period, right now. These say how it is
- * moving (trend), how the barangays compare, how much of the register has
- * actually been reached (coverage), and where the supplies have gone. Each is a
- * separate panel with its own export, because an officer takes one of them to a
- * meeting, not all four.
- *
- * Every panel is computed from the one snapshot the page already read, so no two
- * of them can disagree about a total — and none of them issues its own query.
+ * The analyses the period summaries cannot answer: how the numbers are moving,
+ * how the barangays compare, how much of the register has been reached, and where
+ * the supplies went. Each panel exports on its own, and all are computed from the
+ * one snapshot the page already read.
  */
 export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
   const stats = barangayStats(snapshot);
   const scope = describeScope(filters, snapshot);
 
   return (
-    // The two half-width panels are adjacent so they share a row: a narrow panel
-    // sitting next to a full-width one leaves the other half of its row empty,
-    // which is what interleaving them used to do.
+    // The two half-width panels are adjacent so they share a row.
     <div className="activity-grid report-grid">
       {/* Demographics and stock lead because they are the two panels drawn from
           rows that exist the moment a barangay is profiled. Everything below
@@ -71,8 +63,7 @@ type PanelProps = {
 /** The report context every export on this screen shares. */
 function contextFor(title: string, { filters, scope }: PanelProps) {
   // `barangay` is the heading the CSV prints, so it carries the same scope the
-  // panel's caption states — a file taken while one barangay was selected must
-  // not read later as the whole municipality.
+  // panel's caption states.
   return { title, barangay: scope, from: filters.from, to: filters.to, filters: [{ label: 'Barangay', value: scope }] };
 }
 
@@ -96,13 +87,8 @@ const trendColumns: CsvColumn<TrendPoint>[] = [
 
 /**
  * Assessments per month, with the underweight readings among them on the same
- * axis.
- *
- * Two lines rather than a rate: both are counts of assessments, so they share
- * one scale honestly. Read alone, a falling underweight count can mean the
- * barangay is improving or that nobody was weighed — the second line against the
- * first is what tells those apart, and the months drawn at zero are the same
- * ambiguity made visible.
+ * axis. Two counts rather than a rate, since a falling underweight count alone
+ * cannot tell improvement from nobody being weighed.
  */
 function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
   const points = monthlyTrend(snapshot.assessments, filters);
@@ -166,17 +152,9 @@ const distributionColumns: CsvColumn<Tally>[] = [
 ];
 
 /**
- * Who is on the register: the sex split and the age profile.
- *
- * The one panel here that answers a question from the household profile alone,
- * so it is readable in a barangay that has not weighed anybody yet. Both charts
- * count residents, not assessments, and therefore ignore the period entirely —
- * which the note says out loud, because every other panel on this screen is
- * period-scoped and a reader moving down the page will assume this one is too.
- *
- * Sex as a ring and age as bars, not two of the same shape: two categories are a
- * mix and read as a share; five ordered bands are a profile and read as a
- * silhouette, which is what tells a young barangay from an ageing one.
+ * Who is on the register: the sex split as a ring, the age profile as bars. Both
+ * count residents rather than assessments, so both ignore the period — which the
+ * note says out loud, since every other panel here is period-scoped.
  */
 function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
   const sexes = tally(snapshot.residents, (resident) => resident.sex, ['female', 'male']);
@@ -233,16 +211,9 @@ const stockColumns: CsvColumn<Tally>[] = [
 ];
 
 /**
- * The stock position by type, and how much of it is running out.
- *
- * Units per type rather than items per type: five sacks of rice and five boxes
- * of paracetamol are one item each and a very different holding, and the
- * question this panel is asked is how much is on the shelf. `tally` counts rows,
- * so the sum is done here.
- *
- * The low-stock ring reads the item's own reorder level through `lowStockItems`,
- * the same call the inventory table's badge and the dashboard's alert tile make,
- * so the three cannot disagree about what "low" is.
+ * The stock position by type, and how much of it is running out. Units per type
+ * rather than items, so the sum is done here rather than by `tally`. The
+ * low-stock ring reads `lowStockItems`, the same call the table's badge makes.
  */
 function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
   const types: InventoryItemType[] = ['medicine', 'food', 'equipment', 'hygiene', 'other'];
@@ -253,8 +224,7 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
         .filter((item) => item.type === type)
         .reduce((sum, item) => sum + item.current_stock, 0),
     }))
-    // A type the barangay stocks nothing of is not a category with a zero bar,
-    // it is a category that does not apply here.
+    // A type the barangay stocks nothing of does not apply here at all.
     .filter((row) => row.count > 0);
   const low = lowStockItems(snapshot.inventoryItems);
   const health: Tally[] = [
@@ -319,10 +289,7 @@ function ComparisonPanel({
 }: { snapshot: AdminSnapshot; stats: BarangayStats[] } & PanelProps) {
   const plotted = stats.some((row) => row.residents || row.assessments || row.underweight);
   // The whole nutrition mix per barangay, next to the single underweight share
-  // the bars and the table above already carry. Same panel rather than a
-  // seventh card: it is the same comparison asked at one more level of detail,
-  // and splitting them would put two charts of the same barangays on two cards
-  // that scroll apart.
+  // the bars and the table above carry.
   const mix = nutritionByBarangay(snapshot);
   const columns: TableColumn<BarangayStats>[] = [
     { key: 'name', header: 'Barangay', render: (row) => row.name },
@@ -401,12 +368,7 @@ function ComparisonPanel({
 
 /**
  * How much of the register has been reached, which is a different question from
- * what the assessments found.
- *
- * A barangay showing 4% underweight over six assessments and one showing 4% over
- * four hundred are not comparable claims, and the difference between them is
- * this number. It counts distinct residents, not assessments — someone weighed
- * three times in the period is one resident covered.
+ * what the assessments found. Counts distinct residents, not assessments.
  */
 function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & PanelProps) {
   const ranked = [...stats].filter((row) => row.residents > 0).sort((a, b) => (b.coverageRate ?? 0) - (a.coverageRate ?? 0));
@@ -457,10 +419,8 @@ const utilizationColumns: CsvColumn<ItemUtilization>[] = [
 /** Where each item's stock sits, and how much of it moved in the period. */
 function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
   const rows = supplyUtilization(snapshot);
-  // Two charts, never one: the ring is where the stock stands right now and the
-  // bars are what moved in the period. A position and a period figure on one
-  // scale invites reading one as the remainder of the other, which the table's
-  // note spends a sentence saying it is not.
+  // Two charts: the ring is where the stock stands now, the bars are what moved
+  // in the period. One scale would read as if one were the remainder of the other.
   const moved = rows.filter((row) => row.releasedInPeriod > 0);
   const position: Tally[] = [
     { label: 'unallocated', count: rows.reduce((sum, row) => sum + row.onHand, 0) },

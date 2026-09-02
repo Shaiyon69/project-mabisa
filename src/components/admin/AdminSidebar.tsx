@@ -8,34 +8,22 @@ type AdminSidebarProps = {
 };
 
 /**
- * Each destination carries an icon as well as its label. The portal is used on a
- * wide screen where the rail is read at a glance rather than word by word, and a
- * shape is what the eye lands on first; the label stays, because an icon alone
- * is a guess.
- *
- * The list is module-local and rendered by both components below, so the rail
- * and the narrow-window tab bar cannot drift apart. It is not exported: a
- * non-component export from a `.tsx` costs every consumer Fast Refresh.
+ * The portal's destinations, each with an icon as well as a label. Rendered by
+ * both components below, so the rail and the narrow-window tab bar cannot drift
+ * apart. Not exported: a non-component export from a `.tsx` costs Fast Refresh.
  */
 const adminNavItems = [
   { to: '/admin', label: 'Dashboard', icon: 'home' as const, end: true },
   { to: '/admin/residents', label: 'Residents', icon: 'users' as const },
   { to: '/admin/inventory', label: 'Inventory', icon: 'package' as const },
   { to: '/admin/accounts', label: 'Accounts', icon: 'shield' as const },
-  // Analytics and Reports are different questions and so are different rail
-  // items: Reports is "how many, in this period", Analytics is "how is it
-  // moving, and where". Folding the second into the first is what buried it.
+  // A separate item from Reports: that answers "how many, in this period", this
+  // answers "how is it moving, and where".
   { to: '/admin/analytics', label: 'Analytics', icon: 'chart' as const },
   { to: '/admin/reports', label: 'Reports', icon: 'clipboard' as const },
 ];
 
-/**
- * The rail carries navigation and, pinned to its foot, the account: who is signed
- * in and the way out of the portal. They sit together because they are the shell
- * rather than the page, and the foot of a rail is where the eye lands last — the
- * account is checked at the start of a session and at the end of one, not while
- * reading a table.
- */
+/** The rail: navigation, plus the account and the way out pinned to its foot. */
 export function AdminSidebar({ fullName, logout }: AdminSidebarProps) {
   return (
     <aside className="side-rail admin-sidebar" aria-label="Admin navigation">
@@ -67,12 +55,8 @@ export function AdminSidebar({ fullName, logout }: AdminSidebarProps) {
 }
 
 /**
- * The same destinations for a window too narrow for the rail.
- *
- * Below 860px `.admin-sidebar` is hidden, and until now nothing took its place —
- * the portal had no navigation at all in a half-width browser window, only the
- * address bar. This is that navigation, and it is hidden again at the breakpoint
- * where the rail comes back so the two are never both on screen.
+ * The same destinations for a window too narrow for the rail. `.admin-sidebar` is
+ * hidden below 860px, and this is hidden above it, so the two are never both on screen.
  */
 export function AdminTabs() {
   return (

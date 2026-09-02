@@ -27,16 +27,15 @@ type ReportCardsProps = {
 };
 
 /**
- * The four summaries FR-09 asks for, each with the CSV that reproduces it. Every
- * panel is an aggregate over the selected period and exports the exact rows it
- * was computed from, so the export can't drift from what's on screen.
+ * The four period summaries, each with the CSV that reproduces it. Every panel
+ * exports the exact rows it was computed from, so a file cannot drift from what
+ * is on screen.
  */
 export function ReportCards({ snapshot, filters }: ReportCardsProps) {
   const lowStock = lowStockItems(snapshot.inventoryItems);
   const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
-  // The barangay a CSV should name: the one that was picked, when one was, and
-  // otherwise the account's own scope. A file taken while one barangay was
-  // selected must not read later as the whole municipality.
+  // The barangay a CSV should name: the one that was picked, or the account's own
+  // scope when none was.
   const scopeLabel = filters.barangayId ? describeScope(filters, snapshot) : snapshot.barangayLabel;
 
   return (
@@ -135,12 +134,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
 }
 
 type ReportPanelProps = {
-  /**
-   * Which card this is, for the drawer's picker. The gate lives in the panel
-   * rather than around each call site: a card that is not rendered exports
-   * nothing and computes nothing, and one `if` here beats four ternaries
-   * wrapping four JSX blocks.
-   */
+  /** Which card this is, for the drawer's picker. An unrendered card computes and exports nothing. */
   section: ReportSectionId;
   title: string;
   note: string;
@@ -172,10 +166,9 @@ function ReportPanel({ section, title, note, filters, scope, filterNote, onExpor
 }
 
 /**
- * The nutrition panel's note. Says how many of the assessments are of residents the
- * adult cut-points do not classify, because the bars cannot show it themselves — a
- * child's reading stacks into the same four bands as everyone else's, and the reader
- * here never saw the caveat the BHW saw at the point of measurement.
+ * The nutrition panel's note: how many assessments are of residents the adult
+ * cut-points do not classify. The bars cannot show it, since a child's reading
+ * stacks into the same four bands as everyone else's.
  */
 function nutritionNote(snapshot: AdminSnapshot): string {
   const belowAge = assessmentsBelowAdultBmiAge(snapshot.assessments, snapshot.residents);
@@ -222,8 +215,8 @@ const assessmentColumns: CsvColumn<HealthAssessment>[] = [
   { header: 'Date', value: (row) => row.assessment_date },
   { header: 'Weight (kg)', value: (row) => row.weight },
   { header: 'Height (cm)', value: (row) => row.height },
-  // The reading is exported beside the measurements that produced it, the same
-  // rule the assessment screen follows — a status on its own is not reviewable.
+  // The reading is exported beside the measurements that produced it: a status on
+  // its own is not reviewable.
   { header: 'BMI', value: (row) => row.bmi },
   { header: 'Nutrition status', value: (row) => titleCase(row.nutrition_status) },
 ];

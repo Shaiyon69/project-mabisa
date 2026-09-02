@@ -20,8 +20,7 @@ export function CheckboxGroup({ label, options, selectedValues, onChange, error 
     }
   }
 
-  // fieldset/legend rather than a div and a span: it is what tells a screen
-  // reader that these options answer one question.
+  // fieldset/legend, so a screen reader hears these options as one question.
   return (
     <fieldset className={`choice-group${error ? ' has-error' : ''}`} aria-invalid={Boolean(error)}>
       <legend>
@@ -33,8 +32,8 @@ export function CheckboxGroup({ label, options, selectedValues, onChange, error 
           const checked = selectedValues.includes(option.value);
 
           return (
-            // The checked class rather than :has() — the state is already here,
-            // and some of the Android builds this ships to predate :has().
+            // A class rather than :has(), which some of the Android builds this
+            // ships to predate.
             <label key={option.value} className={`choice${checked ? ' is-checked' : ''}`}>
               <input type="checkbox" checked={checked} onChange={() => handleToggle(option.value)} />
               {option.label}

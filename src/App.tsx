@@ -17,25 +17,20 @@ type LoginState = {
   password: string;
 };
 
-// Caches the last known role so an offline BHW reaches the routes immediately
-// instead of waiting on a lookup that can't succeed. Keyed by auth id so a role
-// can never leak across accounts sharing a device.
+// Caches the last known role so an offline BHW reaches the routes without waiting
+// on a lookup that cannot succeed. Keyed by auth id, so nothing leaks between
+// accounts sharing a device.
 const ROLE_CACHE_KEY = 'mabisa.user_role';
 
 // The provider reaches localDatabase and syncService, and through them Capacitor
-// SQLite. A static import would put that whole subtree in the admin bundle, which
-// never renders this — `runsOfflineEngine` is false for a desk role, and the
-// portal reads Supabase directly. Lazy, so the portal's build drops it entirely.
-//
-// On the phone the chunk is on the filesystem, so the fallback below is a frame,
-// not a wait for a network.
+// SQLite. Lazy, so the admin bundle — which never renders it — drops the whole
+// subtree. On the phone the chunk is on the filesystem, so the fallback is a frame.
 const MabisaDataProvider = lazy(() =>
   import('./app/MabisaDataContext').then((module) => ({ default: module.MabisaDataProvider })),
 );
 
-// The name rides along in the same cache entry rather than in a second one. It
-// comes from the same row, it is wanted on the same screens, and a device offline
-// for a week should not be able to show a role it cannot show a name for.
+// The name rides in the same cache entry as the role: same row, same screens, and
+// a device cannot end up showing one without the other.
 type CachedRole = {
   userId: string;
   role: UserRole;
@@ -51,9 +46,8 @@ function readCachedRole(): CachedRole | null {
       return null;
     }
 
-    // An entry written before the name was cached is still a valid entry — it just
-    // has no name yet, and the next successful lookup fills it in. Reading it
-    // strictly would sign every existing device out of its cached role.
+    // An entry written before the name was cached is still valid; the next
+    // successful lookup fills it in.
     const fullName: unknown = parsed?.fullName;
 
     return { userId: parsed.userId, role, fullName: typeof fullName === 'string' ? fullName : null };
@@ -71,22 +65,20 @@ export function App() {
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [cachedRole, setCachedRole] = useState<CachedRole | null>(readCachedRole);
-  // Which account the profile lookup last answered for — an id, not a flag, so a
-  // new session starts unchecked rather than inheriting the previous account's answer.
+  // Which account the profile lookup last answered for. An id, not a flag, so a
+  // new session starts unchecked.
   const [checkedUserId, setCheckedUserId] = useState<string | null>(null);
   const [pendingRecordCount, setPendingRecordCount] = useState<number | null>(null);
-  // Whether this account may use this phone's local records, and which account
-  // that answer is about — an id rather than a flag, the same as `checkedUserId`
-  // above, so a new session starts undecided instead of inheriting the last one's answer.
+  // Whether this account may use this phone's local records, and which account the
+  // answer is about. An id rather than a flag, like `checkedUserId` above.
   const [handover, setHandover] = useState<{ userId: string; result: Handover } | null>(null);
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
   const role = cachedRole?.userId === bhwId ? cachedRole.role : null;
-  // Gated on the same id match as the role, so a phone two BHWs share can never
-  // show one of them the other's name while the lookup is still in flight.
+  // Gated on the same id match as the role, so a shared phone cannot show one
+  // worker the other's name while the lookup is in flight.
   const fullName = cachedRole?.userId === bhwId ? cachedRole.fullName : null;
-  // Whether null above means "not an admin" or "not known yet" — the admin
-  // surface must not turn someone away just because the fetch hasn't returned.
+  // Whether null above means "not an admin" or "not known yet".
   const roleChecked = bhwId !== null && checkedUserId === bhwId;
 
   useEffect(() => {
@@ -110,8 +102,8 @@ export function App() {
     };
   }, []);
 
-  // Role lives in public.profiles, keyed by auth id. A failed lookup (offline, or
-  // no profile row yet) leaves the session on the BHW surface — the safe direction to fail.
+  // Role lives in public.profiles, keyed by auth id. A failed lookup leaves the
+  // session on the BHW surface, the safe direction to fail.
   useEffect(() => {
     if (!bhwId) {
       return;
@@ -136,8 +128,8 @@ export function App() {
           return;
         }
 
-        // A deactivated profile resolves to no role (cosmetic only — RLS itself
-        // blocks a disabled account via current_profile_is_active()).
+        // A deactivated profile resolves to no role. Cosmetic only: RLS blocks a
+        // disabled account through current_profile_is_active().
         const nextRole = data?.is_active ? data.role : null;
         const next = nextRole ? { userId: bhwId, role: nextRole, fullName: data?.full_name ?? null } : null;
 
@@ -151,8 +143,8 @@ export function App() {
     };
   }, [bhwId]);
 
-  // How many unsent records sit on this device while signed out (an expired
-  // refresh token drops a BHW here mid-fieldwork). Field build only — the portal keeps no local records.
+  // How many unsent records sit on this device while signed out. Field build only,
+  // since the portal keeps no local records.
   useEffect(() => {
     if (bhwId || !buildsBhw) {
       return;
@@ -160,11 +152,9 @@ export function App() {
 
     let cancelled = false;
 
-    // Imported here rather than at module scope so the admin bundle does not
-    // carry it. This is the portal's only reachable path into localDatabase, and
-    // through it into Capacitor SQLite and jeep-sqlite — a whole offline engine
-    // the portal never runs, one accidental import away from being opened. A
-    // dynamic import behind the `buildsBhw` check above drops the entire subtree.
+    // Imported here rather than at module scope: this is the portal's only
+    // reachable path into localDatabase, and a dynamic import behind the
+    // `buildsBhw` check above keeps that subtree out of its bundle.
     import('./services/localDatabase')
       .then(({ countRows }) => countRows('sync_queue'))
       .then((count) => !cancelled && setPendingRecordCount(count))
@@ -178,9 +168,8 @@ export function App() {
     };
   }, [bhwId]);
 
-  // A phone that changes hands carries the previous worker's purok and her unsent
-  // queue, and neither is keyed by account. Settled before anything reads or
-  // pushes. Field build only — the portal keeps no local records.
+  // A phone that changes hands carries the previous worker's purok and unsent
+  // queue, so this settles before anything reads or pushes. Field build only.
   useEffect(() => {
     if (!bhwId || !buildsBhw) {
       return;
@@ -189,14 +178,13 @@ export function App() {
     let cancelled = false;
 
     // Dynamic for the same reason as the count above: deviceHandover imports both
-    // localDatabase and syncService, so a module-scope import here would put the
-    // offline engine back in the portal bundle from the other direction.
+    // localDatabase and syncService.
     import('./services/deviceHandover')
       .then(({ claimDeviceFor }) => claimDeviceFor(bhwId))
       .then((result) => !cancelled && setHandover({ userId: bhwId, result }))
       .catch((error: unknown) => {
         // The local database could not be read, so whose records these are is
-        // unknown. Holding is the safe direction; 0 unsent reads as "cannot tell".
+        // unknown. Holding is the safe direction.
         logDev('Device handover check failed', error instanceof Error ? error.message : String(error));
 
         return !cancelled && setHandover({ userId: bhwId, result: { claimed: false, unsent: 0 } });
@@ -233,9 +221,8 @@ export function App() {
   }
 
   async function handleLogout() {
-    // Clears the device PIN with the session: the next person to sign in on this
-    // phone sets their own, and signing in again is how someone who has forgotten
-    // theirs gets back in.
+    // Clears the device PIN with the session, so the next person sets their own and
+    // signing in again is the way back for someone who forgot theirs.
     if (bhwId) {
       await clearPin(bhwId);
     }
@@ -243,8 +230,7 @@ export function App() {
     await supabase.auth.signOut();
 
     // The sign-in screen renders outside the router, so nothing else resets the
-    // address bar — and the next person to sign in on this device would be
-    // dropped wherever the last one was standing.
+    // address bar for the next person to sign in.
     window.history.replaceState(null, '', '/');
   }
 
@@ -294,10 +280,9 @@ export function App() {
     );
   }
 
-  // The offline engine (local SQLite, sync queue) is BHW-only; the admin portal
-  // reads Supabase directly and must never pull residents into browser storage.
-  // Role starts null until checked, so this defaults on until a desk role is
-  // confirmed — the same fail-safe direction as the rest of the app.
+  // The offline engine (local SQLite, sync queue) is BHW-only: the portal reads
+  // Supabase directly and must never pull residents into browser storage. Role
+  // starts null, so this defaults on until a desk role is confirmed.
   const runsOfflineEngine = buildsBhw && !isDeskRole(role);
 
   const routes = <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} fullName={fullName} />;

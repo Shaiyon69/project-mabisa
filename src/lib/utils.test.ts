@@ -55,8 +55,8 @@ describe('isMeasurementInRange', () => {
 });
 
 describe('ageInYears', () => {
-  // Decides whether the health assessment form flags the adult-BMI caveat, so the
-  // day either side of a birthday is the case that matters.
+  // Decides whether the assessment form flags the adult-BMI caveat, so the day
+  // either side of a birthday is the case that matters.
   const on = new Date(2026, 7, 17);
 
   it('counts only birthdays that have already passed', () => {
@@ -108,8 +108,7 @@ describe('statusChangedOn', () => {
   });
 });
 
-// Both are shared by the household form and the resident editor. They used to be
-// a copy each, so a rule changed on one screen reached the other only by luck.
+// Both are shared by the household form and the resident editor.
 describe('emptyToNull', () => {
   it('stores blank optional text as NULL, not as an empty string', () => {
     expect(emptyToNull('')).toBeNull();

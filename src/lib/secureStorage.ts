@@ -2,21 +2,19 @@ import { Capacitor } from '@capacitor/core';
 import { SecureStorage } from '@aparajita/capacitor-secure-storage';
 
 /**
- * Key-value storage backed by the Android Keystore on a device, and by
- * `localStorage` in a browser — there's no browser equivalent of a hardware
- * keystore, so pretending otherwise would claim a protection the web build
- * doesn't have. Same `getPlatform() === 'web'` test as localDatabase.ts and main.tsx.
+ * Key-value storage backed by the Android Keystore on a device and by
+ * `localStorage` in a browser, which has no hardware keystore to offer.
  */
 const isWebPlatform = Capacitor.getPlatform() === 'web';
 
-/** Vitest runs this module in plain Node, which has no `localStorage` — a Map keeps that path working without pretending anything is persisted. */
+/** Vitest runs this in plain Node, which has no `localStorage`, so a Map stands in. */
 const memoryStore = new Map<string, string>();
 
 function webStore(): Storage | null {
   return typeof localStorage === 'undefined' ? null : localStorage;
 }
 
-/** Async because the native side is — lets the refresh token live somewhere better than `localStorage` without the client knowing the difference. */
+/** Async because the native side is, so callers do not know which backing store they got. */
 export const secureStorage = {
   async getItem(key: string): Promise<string | null> {
     if (isWebPlatform) {
@@ -26,7 +24,8 @@ export const secureStorage = {
     try {
       return await SecureStorage.getItem(key);
     } catch {
-      // A keystore read can fail after a credential reset — treat as "nothing stored" so the app can recover by re-signing-in.
+      // A keystore read can fail after a credential reset. Treated as nothing
+      // stored, so the app recovers by signing in again.
       return null;
     }
   },
@@ -57,16 +56,15 @@ export const secureStorage = {
     try {
       await SecureStorage.removeItem(key);
     } catch {
-      // Removing a key that is not there is not a failure worth propagating —
-      // sign-out has to succeed regardless.
+      // Removing a key that is not there is not a failure: sign-out must succeed.
     }
   },
 };
 
 /**
- * A passphrase for the local database, generated once on the device it protects —
- * 32 bytes from the platform CSPRNG. Not derived from the account password: that
- * would make the database unreadable until sign-in and orphan it if the password changes.
+ * A passphrase for the local database, 32 bytes from the platform CSPRNG,
+ * generated once on the device it protects. Not derived from the account
+ * password, which would orphan the database when that password changes.
  */
 export function generateDatabasePassphrase(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
