@@ -7,6 +7,7 @@ import '@fontsource-variable/nunito/wght.css';
 import './index.css';
 import { Capacitor } from '@capacitor/core';
 import { App } from './App.tsx';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { applyTheme, readTheme } from './lib/theme';
 import { buildsBhw } from './app/surface';
 
@@ -26,6 +27,8 @@ if (buildsBhw && Capacitor.getPlatform() === 'web') {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
