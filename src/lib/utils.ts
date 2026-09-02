@@ -193,7 +193,7 @@ export function scrollToFirstError(): void {
 
 export function logDev(message: string, data?: unknown): void {
   if (import.meta.env.DEV) {
-    console.info(`[MABISA] ${message}`, data ?? '');
+    console.info(`[BRHP-MSAM] ${message}`, data ?? '');
   }
 }
 

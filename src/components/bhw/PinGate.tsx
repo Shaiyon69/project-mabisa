@@ -138,7 +138,7 @@ export function PinGate({ userId, pendingRecordCount, children }: PinGateProps) 
     checking: { title: 'One moment', body: 'Opening this device.' },
     choose: {
       title: 'Choose a PIN',
-      body: `${PIN_LENGTH} digits. You will enter this to open MABISA on this phone, even with no signal.`,
+      body: `${PIN_LENGTH} digits. You will enter this to open BRHP-MSAM on this phone, even with no signal.`,
     },
     confirm: { title: 'Enter it again', body: 'Just to be sure it was typed the way you meant.' },
     entry: {

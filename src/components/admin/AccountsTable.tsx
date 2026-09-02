@@ -1,59 +1,20 @@
 import { useEffect, useState } from 'react';
 import { formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { fetchAccounts, type AccountRow, fetchBarangayScope } from '../../services/adminData';
-import type { UserRole } from '../../types/database';
+import {
+  assignBhwToPurok,
+  fetchAccounts,
+  fetchActivePuroks,
+  fetchBarangayScope,
+  setProfileActive,
+  type AccountRow,
+} from '../../services/adminData';
+import type { Purok, UserRole } from '../../types/database';
 import { Button } from '../common/Button';
+import { SelectField, TextAreaField } from '../common/FormField';
+import { Modal } from '../common/Modal';
 import { ErrorState } from '../common/StateMessage';
 import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
-
-/** Every role spelled out as a map, not a ternary — a ternary can't warn when a fourth role appears. */
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: 'RHU Administrator',
-  barangay_admin: 'Barangay Administrator',
-  bhw: 'Barangay Health Worker',
-};
-
-/** What the purok column means for a role that is not assigned to one. */
-const SCOPE_WITHOUT_PUROK: Record<UserRole, string> = {
-  admin: 'All barangays',
-  barangay_admin: 'Whole barangay',
-  // An unassigned BHW can't read or write a field row — this is why their signed-in device sees nothing.
-  bhw: 'None — cannot sync',
-};
-
-const columns: TableColumn<AccountRow>[] = [
-  {
-    key: 'name',
-    header: 'Name',
-    render: (account) => account.profile.full_name,
-  },
-  {
-    key: 'role',
-    header: 'Role',
-    render: (account) => ROLE_LABELS[account.profile.role],
-  },
-  {
-    key: 'assigned-purok',
-    header: 'Assigned Purok',
-    render: (account) => account.purokName ?? SCOPE_WITHOUT_PUROK[account.profile.role],
-  },
-  {
-    key: 'assigned-since',
-    header: 'Assigned Since',
-    render: (account) => (account.assignedSince ? formatDate(account.assignedSince) : '—'),
-  },
-  {
-    key: 'status',
-    header: 'Status',
-    render: (account) => (
-      <TableBadge
-        label={account.profile.is_active ? 'Active' : 'Deactivated'}
-        tone={account.profile.is_active ? 'success' : 'warning'}
-      />
-    ),
-  },
-];
 
 const exportColumns: CsvColumn<AccountRow>[] = [
   { header: 'User ID', value: (row) => row.profile.user_id },
@@ -67,41 +28,150 @@ const exportColumns: CsvColumn<AccountRow>[] = [
 ];
 
 /**
- * Accounts and their current purok, read from `public.profiles` — the same table
- * every RLS helper reads. Read-only: mutations go through the `admin_*` RPCs so
- * they carry an audit event, which a direct-table write here would bypass.
+ * What each role is called on screen. `admin` is the RHU or LGU account that
+ * reads every barangay; `barangay_admin` runs one. They are different scopes and
+ * different powers, so a table that showed both as "Admin" would be hiding the
+ * distinction that decides what each of them can actually do.
  */
-export function AccountsTable() {
-  const [rows, setRows] = useState<AccountRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Admin / LGU',
+  barangay_admin: 'Barangay Admin',
+  bhw: 'Barangay Health Worker',
+};
+
+/** Which dialog is open, and for whom. One value, so two cannot be open at once. */
+type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
+
+type AccountsTableProps = {
+  /**
+   * Every `admin_*` RPC asserts `is_admin()`, so a `barangay_admin` gets the
+   * table read-only. Hiding the buttons is not the enforcement — the function
+   * is — but offering a control that can only return an error is worse than
+   * offering none.
+   */
+  canManage: boolean;
+};
+
+/**
+ * Accounts and their current purok, read from `public.profiles` — the same table
+ * the route guard and every RLS helper read, so what this screen shows about an
+ * account is what the database will actually enforce for it.
+ *
+ * The two mutations here go through `admin_set_profile_active` and
+ * `admin_assign_bhw_to_purok`, never a direct table write: the RPCs assert an
+ * active admin and write the audit event in the same transaction, which is why
+ * the foundation slice withholds table-level grants in the first place. Both
+ * take a reason, and the form requires it for the same reason the function does
+ * — an audit row is worth nothing if every entry says "update".
+ *
+ * Creating an account and resetting a password are deliberately still absent.
+ * Both need the auth user to exist first, which is a service-role operation and
+ * cannot happen from a browser holding a publishable key; see the foundation
+ * bootstrap procedure.
+ */
+export function AccountsTable({ canManage }: AccountsTableProps) {
+  const [pending, setPending] = useState<PendingAction>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [result, setResult] = useState<{
+    rows: AccountRow[];
+    puroks: Purok[];
+    error: string | null;
+    settledFor: number;
+  }>({ rows: [], puroks: [], error: null, settledFor: -1 });
+
+  // `loading` is the difference between the read this render wants and the one
+  // the state was last settled against, the same shape `useAdminData` uses. A
+  // flag set inside the effect would mark the screen busy a render late — and
+  // is what `react-hooks/set-state-in-effect` reports.
+  const { rows, puroks, error } = result;
+  const loading = result.settledFor !== reloadToken;
 
   useEffect(() => {
     let current = true;
 
-    fetchAccounts()
-      .then((result) => {
+    Promise.all([fetchAccounts(), fetchActivePuroks()])
+      .then(([accounts, activePuroks]) => {
         if (current) {
-          setRows(result);
-          setError(null);
+          setResult({ rows: accounts, puroks: activePuroks, error: null, settledFor: reloadToken });
         }
       })
       .catch((cause: unknown) => {
         if (current) {
-          setError(cause instanceof Error ? cause.message : 'Could not read accounts.');
-        }
-      })
-      .finally(() => {
-        if (current) {
-          setLoading(false);
+          setResult((previous) => ({
+            ...previous,
+            error: cause instanceof Error ? cause.message : 'Could not read accounts.',
+            settledFor: reloadToken,
+          }));
         }
       });
 
     return () => {
       current = false;
     };
-  }, []);
+  }, [reloadToken]);
 
+  const columns: TableColumn<AccountRow>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (account) => account.profile.full_name,
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      render: (account) => ROLE_LABELS[account.profile.role],
+    },
+    {
+      key: 'assigned-purok',
+      header: 'Assigned Purok',
+      // A BHW with no active assignment can neither read nor write a field row
+      // under the purok policies, so an empty cell here is the reason a device
+      // that signs in successfully still sees nothing.
+      render: (account) =>
+        account.purokName ?? (account.profile.role === 'bhw' ? 'None — cannot sync' : 'Not purok-scoped'),
+    },
+    {
+      key: 'assigned-since',
+      header: 'Assigned Since',
+      render: (account) => (account.assignedSince ? formatDate(account.assignedSince) : '—'),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (account) => (
+        <TableBadge
+          label={account.profile.is_active ? 'Active' : 'Deactivated'}
+          tone={account.profile.is_active ? 'success' : 'warning'}
+        />
+      ),
+    },
+  ];
+
+  if (canManage) {
+    columns.push({
+      key: 'actions',
+      header: 'Actions',
+      render: (account) => (
+        <div className="table-actions">
+          {/* An admin covers every purok by policy, so there is no assignment to
+              make for one — the button would open a form whose only outcome is
+              an error from the RPC. */}
+          {account.profile.role === 'bhw' ? (
+            <Button variant="ghost" onClick={() => setPending({ kind: 'assign', account })}>
+              {account.purokName ? 'Reassign' : 'Assign purok'}
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={() => setPending({ kind: 'active', account })}>
+            {account.profile.is_active ? 'Deactivate' : 'Reactivate'}
+          </Button>
+        </div>
+      ),
+    });
+  }
+
+  // The scope is read at export time rather than held in state: it is one RPC, it
+  // is wanted only when a file is actually produced, and a CSV that names the wrong
+  // barangay is worse than one that takes a moment longer to build.
   async function exportAccounts() {
     downloadCsv(
       reportFileName('Accounts'),
@@ -116,11 +186,7 @@ export function AccountsTable() {
   return (
     <div className="ui-table-stack">
       <TableToolbar>
-        <Button
-          variant="ghost"
-          onClick={() => void exportAccounts()}
-          disabled={loading || !rows.length}
-        >
+        <Button variant="ghost" onClick={() => void exportAccounts()} disabled={loading || !rows.length}>
           Export CSV
         </Button>
       </TableToolbar>
@@ -140,6 +206,116 @@ export function AccountsTable() {
       />
 
       <TableMeta shown={rows.length} total={rows.length} label="account" />
+
+      {/* Keyed on the account and the action so the fields reset between
+          openings: a reason typed for one account must never be carried into
+          the dialog for the next. */}
+      {pending ? (
+        <AccountActionForm
+          key={`${pending.kind}:${pending.account.profile.user_id}`}
+          pending={pending}
+          puroks={puroks}
+          onClose={() => setPending(null)}
+          onDone={() => {
+            setPending(null);
+            setReloadToken((token) => token + 1);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+type AccountActionFormProps = {
+  pending: NonNullable<PendingAction>;
+  puroks: Purok[];
+  onClose: () => void;
+  onDone: () => void;
+};
+
+/**
+ * One dialog for both mutations. They ask almost the same question — a reason,
+ * and for an assignment also a purok — so splitting them would duplicate the
+ * submit, error and busy handling to save a single conditional field.
+ */
+function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFormProps) {
+  const { kind, account } = pending;
+  const deactivating = account.profile.is_active;
+  const [purokId, setPurokId] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const title =
+    kind === 'assign'
+      ? `Assign ${account.profile.full_name} to a purok`
+      : `${deactivating ? 'Deactivate' : 'Reactivate'} ${account.profile.full_name}`;
+
+  // Submit is withheld rather than validated on click: the RPC requires a reason,
+  // and an assignment also a purok, so a disabled button says so before the round
+  // trip rather than after it.
+  const ready = reason.trim().length > 0 && (kind !== 'assign' || purokId !== '');
+
+  async function submit() {
+    setBusy(true);
+    setFailure(null);
+
+    try {
+      if (kind === 'assign') {
+        await assignBhwToPurok(account.profile.user_id, purokId, reason.trim());
+      } else {
+        await setProfileActive(account.profile.user_id, !deactivating, reason.trim());
+      }
+
+      onDone();
+    } catch (cause: unknown) {
+      setFailure(cause instanceof Error ? cause.message : 'The change was not applied.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open title={title} onClose={onClose}>
+      <p className="muted">
+        {kind === 'assign'
+          ? 'A BHW reads and writes field records for one purok at a time. Assigning a new purok ends the current assignment.'
+          : deactivating
+            ? 'A deactivated account can still sign in, but every RLS helper starts from an active profile — so it reads nothing and writes nothing.'
+            : 'The account regains the access its role and purok assignment allow.'}
+      </p>
+
+      {kind === 'assign' ? (
+        <SelectField label="Purok" value={purokId} onChange={(event) => setPurokId(event.target.value)}>
+          <option value="">Select a purok</option>
+          {puroks.map((purok) => (
+            <option key={purok.purok_id} value={purok.purok_id}>
+              {purok.name}
+            </option>
+          ))}
+        </SelectField>
+      ) : null}
+
+      <TextAreaField
+        label="Reason"
+        hint="Recorded in the audit trail beside your name and the time."
+        rows={3}
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+      />
+
+      {failure ? <ErrorState title="The change was not applied" text={failure} /> : null}
+
+      <div className="modal-actions">
+        <Button variant="secondary" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        {/* The confirm button names the act, not the mechanism. "Apply change"
+            reads the same for an assignment and for cutting an account off from
+            every field record it can reach. */}
+        <Button variant={kind === 'active' && deactivating ? 'danger' : 'primary'} onClick={() => void submit()} disabled={!ready || busy}>
+          {busy ? 'Applying…' : kind === 'assign' ? 'Assign purok' : deactivating ? 'Deactivate account' : 'Reactivate account'}
+        </Button>
+      </div>
+    </Modal>
   );
 }

@@ -1,0 +1,14 @@
+# LGU admin portal. Values come from `.env` in this directory, which is
+# gitignored — see `.env.example` for the template. The `:?` suffix stops the
+# build rather than baking an empty string into the bundle.
+services:
+  admin:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?set it in .env}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:?set it in .env}
+        VITE_BARANGAY_NAME: ${VITE_BARANGAY_NAME:?set it in .env}
+    ports:
+      - "${ADMIN_PORT:-8080}:80"
+    restart: unless-stopped
