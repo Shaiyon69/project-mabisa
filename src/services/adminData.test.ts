@@ -1,28 +1,86 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AGE_BANDS,
+  FILTER_PARAMS,
   NUTRITION_ORDER,
   activePreset,
   ageBandOf,
   assessmentsBelowAdultBmiAge,
   barangayStats,
+  birthdayRangeFor,
   defaultAdminFilters,
   describeBarangayScope,
   describePeriod,
   describeScope,
   disbursementsByItem,
   emptyAdminSnapshot,
+  fetchAdminSnapshot,
+  filterAccounts,
+  filterInventory,
   LOW_STOCK_THRESHOLD,
   lowStockItems,
+  monthlyReleases,
   monthlyTrend,
+  nutritionByBarangay,
   presetRange,
   readAllResidentPages,
+  REPORT_SECTIONS,
   reorderLevelOf,
+  showsSection,
   tally,
+  type AccountRow,
+  type AdminFilters,
   type AdminSnapshot,
 } from './adminData';
+import { filtersFromParams, paramsFromFilters } from '../hooks/useAdminData';
 import type { HealthAssessment, Individual, InventoryItem, NutritionStatus, SupplyDisbursement } from '../types/database';
 import { PULL_PAGE_SIZE } from '../lib/supabase';
+
+// `fetchAdminSnapshot` is the one export here that talks to Supabase rather
+// than computing on rows already in hand, so the purok-narrowing test below
+// needs a fake client. Only `.from()` and `.rpc()` are replaced — `readAllPages`
+// stays real, since it is the paging logic the read genuinely depends on, and
+// faking it too would test the fake instead of the code.
+const fake = vi.hoisted(() => ({
+  tables: {} as Record<string, Record<string, unknown>[]>,
+}));
+
+vi.mock('../lib/supabase', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/supabase')>();
+
+  return {
+    ...actual,
+    supabase: {
+      from: (table: string) => {
+        let rows = [...(fake.tables[table] ?? [])];
+
+        const builder = {
+          select: () => builder,
+          order: () => builder,
+          eq: (column: string, value: unknown) => {
+            rows = rows.filter((row) => row[column] === value);
+            return builder;
+          },
+          gte: (column: string, value: unknown) => {
+            rows = rows.filter((row) => (row[column] as string) >= (value as string));
+            return builder;
+          },
+          lte: (column: string, value: unknown) => {
+            rows = rows.filter((row) => (row[column] as string) <= (value as string));
+            return builder;
+          },
+          range: () => Promise.resolve({ data: rows, error: null }),
+        };
+
+        return builder;
+      },
+      // Every account this test cares about is an RHU read (`current_barangay_id`
+      // null); `fetchBarangayScope`'s own tests already cover the branches this
+      // wouldn't exercise.
+      rpc: () => Promise.resolve({ data: null, error: null }),
+    },
+  };
+});
 
 const assessment = (
   assessment_id: string,
@@ -214,13 +272,27 @@ describe('barangay scope', () => {
   const barangays = [
     { barangay_id: 'b1', name: 'Cabugao', code: 'CABUGAO', is_active: true, created_at: '', updated_at: '', created_by: null },
   ];
+  const puroks = [
+    { purok_id: 'p1', barangay_id: 'b1', name: 'Purok 1', code: null, is_active: true, created_at: '', updated_at: '', created_by: '' },
+  ];
 
   it('names the scope, and says so when there is none', () => {
-    expect(describeScope({ from: 'a', to: 'b', barangayId: null }, barangays)).toBe('All barangays');
-    expect(describeScope({ from: 'a', to: 'b', barangayId: 'b1' }, barangays)).toBe('Cabugao');
+    expect(describeScope({ from: 'a', to: 'b', barangayId: null }, { barangays, puroks })).toBe('All barangays');
+    expect(describeScope({ from: 'a', to: 'b', barangayId: 'b1' }, { barangays, puroks })).toBe('Cabugao');
     // A scope naming a barangay this session cannot read must not silently read
     // as "everything" — that is the caption saying the opposite of the truth.
-    expect(describeScope({ from: 'a', to: 'b', barangayId: 'gone' }, barangays)).toBe('Unknown barangay');
+    expect(describeScope({ from: 'a', to: 'b', barangayId: 'gone' }, { barangays, puroks })).toBe('Unknown barangay');
+  });
+
+  it('names the purok too once one is set', () => {
+    expect(describeScope({ from: 'a', to: 'b', barangayId: 'b1', purokId: 'p1' }, { barangays, puroks })).toBe(
+      'Cabugao — Purok 1',
+    );
+    // A purok id this session cannot name is a data problem, not a reason to
+    // drop back to the barangay name as though nothing had been asked for.
+    expect(describeScope({ from: 'a', to: 'b', barangayId: 'b1', purokId: 'gone' }, { barangays, puroks })).toBe(
+      'Cabugao — Unknown purok',
+    );
   });
 });
 
@@ -423,5 +495,280 @@ describe('monthlyTrend', () => {
     expect(points.map((point) => point.month)).toEqual(['2026-01', '2026-02', '2026-03']);
     expect(points[1]).toMatchObject({ assessments: 0, underweight: 0, rate: null });
     expect(points[0]).toMatchObject({ assessments: 1, underweight: 1, rate: 1 });
+  });
+});
+
+describe('monthlyReleases', () => {
+  it('draws an empty month inside the range at zero, on the same months monthlyTrend walks', () => {
+    const points = monthlyReleases(
+      [
+        { ...release('1', 'a', 4), disbursement_date: '2026-01-05' },
+        { ...release('2', 'a', 6), disbursement_date: '2026-03-10' },
+      ],
+      { from: '2026-01-01', to: '2026-03-31', barangayId: null },
+    );
+
+    expect(points.map((point) => point.month)).toEqual(['2026-01', '2026-02', '2026-03']);
+    // February has neither release, and must be drawn at zero rather than skipped.
+    expect(points[1]).toMatchObject({ units: 0, releases: 0 });
+    expect(points[0]).toMatchObject({ units: 4, releases: 1 });
+    expect(points[2]).toMatchObject({ units: 6, releases: 1 });
+  });
+});
+
+describe('showsSection', () => {
+  const base = { from: 'a', to: 'b', barangayId: null };
+
+  it('shows every card when no section is picked', () => {
+    for (const section of REPORT_SECTIONS) {
+      expect(showsSection({ ...base, reportSections: null }, section.id)).toBe(true);
+      expect(showsSection({ ...base, reportSections: [] }, section.id)).toBe(true);
+    }
+  });
+
+  it('shows only the picked cards', () => {
+    const filters = { ...base, reportSections: ['demographics', 'stock'] };
+
+    expect(REPORT_SECTIONS.filter((section) => showsSection(filters, section.id)).map((section) => section.id)).toEqual([
+      'demographics',
+      'stock',
+    ]);
+  });
+});
+
+describe('filterInventory', () => {
+  const items = [
+    item('a', 'Paracetamol', 5, 10),
+    item('b', 'Bandage', 40, 10),
+    item('c', 'Leaflets', 0, 0),
+  ];
+  const withType = (row: InventoryItem, type: InventoryItem['type']): InventoryItem => ({ ...row, type });
+  const typed = [withType(items[0], 'medicine'), withType(items[1], 'hygiene'), withType(items[2], 'other')];
+
+  it('matches on item type', () => {
+    expect(filterInventory(typed, { from: 'a', to: 'b', barangayId: null, itemType: 'medicine' }).map((row) => row.item_id)).toEqual([
+      'a',
+    ]);
+  });
+
+  it('matches low stock the same way lowStockItems does', () => {
+    expect(filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'low' }).map((row) => row.item_id)).toEqual([
+      'a',
+    ]);
+    expect(
+      filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'sufficient' }).map((row) => row.item_id),
+    ).toEqual(['b', 'c']);
+  });
+
+  // `reorder_level: 0` is the office switching the warning off, so it must
+  // never surface under "low" even though its stock (0) is at its level (0).
+  it('keeps a reorder_level of 0 out of "low", matching lowStockItems', () => {
+    expect(filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'low' })).not.toContainEqual(
+      expect.objectContaining({ item_id: 'c' }),
+    );
+  });
+});
+
+const accountProfile = (
+  user_id: string,
+  role: 'admin' | 'barangay_admin' | 'bhw',
+  is_active: boolean,
+  barangay_id: string | null = null,
+): AccountRow['profile'] => ({
+  user_id,
+  role,
+  barangay_id,
+  full_name: user_id,
+  is_active,
+  created_at: '',
+  updated_at: '',
+  created_by: null,
+  disabled_at: null,
+  disabled_by: null,
+});
+
+const account = (row: Partial<AccountRow> & { profile: AccountRow['profile'] }): AccountRow => ({
+  purokName: null,
+  assignedSince: null,
+  purokId: null,
+  barangayId: null,
+  ...row,
+});
+
+describe('filterAccounts', () => {
+  const rows = [
+    account({ profile: accountProfile('rhu', 'admin', true) }),
+    account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' }),
+    account({ profile: accountProfile('bhw-active', 'bhw', true), purokId: 'p1', barangayId: 'b1' }),
+    account({ profile: accountProfile('bhw-inactive', 'bhw', false), purokId: 'p2', barangayId: 'b2' }),
+  ];
+  const ids = (filtered: AccountRow[]) => filtered.map((row) => row.profile.user_id);
+
+  it('matches role', () => {
+    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, accountRole: 'bhw' }))).toEqual([
+      'bhw-active',
+      'bhw-inactive',
+    ]);
+  });
+
+  it('matches active state', () => {
+    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, accountActive: 'inactive' }))).toEqual([
+      'bhw-inactive',
+    ]);
+  });
+
+  it('matches barangay', () => {
+    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: 'b1' }))).toEqual(['ba', 'bhw-active']);
+  });
+
+  it('matches purok', () => {
+    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, purokId: 'p2' }))).toEqual(['bhw-inactive']);
+  });
+
+  // The reason `AccountRow.barangayId` exists at all: a BHW's barangay is only
+  // reachable through their purok assignment, never `profile.barangay_id`.
+  it('finds a BHW whose barangay is reached only through their purok', () => {
+    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: 'b2' }))).toEqual(['bhw-inactive']);
+  });
+});
+
+describe('birthdayRangeFor', () => {
+  const on = new Date(2026, 7, 22); // 2026-08-22, local time, matching ageBandOf's own clock.
+
+  // "Under 5" has no lower age limit, so it needs no upper bound on the
+  // birthday (`to`) — only a lower one (`from`), for the age-4 ceiling.
+  it('gives Under 5 no upper bound on the birthday, only a lower one', () => {
+    expect(birthdayRangeFor('Under 5', on)).toEqual({ from: '2021-08-23', to: null });
+  });
+
+  it('brackets the middle bands on both sides', () => {
+    expect(birthdayRangeFor('5 to 9', on)).toEqual({ from: '2016-08-23', to: '2021-08-22' });
+    expect(birthdayRangeFor('10 to 19', on)).toEqual({ from: '2006-08-23', to: '2016-08-22' });
+    expect(birthdayRangeFor('20 to 59', on)).toEqual({ from: '1966-08-23', to: '2006-08-22' });
+  });
+
+  // The band the plan calls out by name: nobody is too old to be in it.
+  it('gives 60 and over no lower bound', () => {
+    expect(birthdayRangeFor('60 and over', on)).toEqual({ from: null, to: '1966-08-22' });
+  });
+
+  it('agrees with ageBandOf at every boundary it computes', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(on);
+
+    for (const band of AGE_BANDS) {
+      const range = birthdayRangeFor(band.label, on);
+
+      if (range.to) {
+        expect(ageBandOf(range.to)).toBe(band.label);
+      }
+
+      if (range.from) {
+        expect(ageBandOf(range.from)).toBe(band.label);
+      }
+    }
+
+    vi.useRealTimers();
+  });
+});
+
+describe('nutritionByBarangay', () => {
+  it('lands a household with no barangay_id in the Unassigned row rather than dropping it', () => {
+    const snapshot: AdminSnapshot = {
+      ...emptyAdminSnapshot,
+      barangays: [{ barangay_id: 'b1', name: 'Cabugao', code: null, is_active: true, created_at: '', updated_at: '', created_by: null }],
+      households: [{ household_id: 'h1', updated_at: '' }],
+      residents: [{ resident_id: 'r1', household_id: 'h1', sex: 'female', birthday: '2000-01-01', updated_at: '' }],
+      assessments: [assessment('a1', 'r1', '2026-05-01', 'underweight')],
+    };
+
+    const rows = nutritionByBarangay(snapshot);
+    const unassigned = rows.find((row) => row.label === 'Unassigned');
+
+    expect(unassigned).toBeDefined();
+    expect(unassigned?.values).toEqual(NUTRITION_ORDER.map((status) => (status === 'underweight' ? 1 : 0)));
+    // Nothing goes missing between the snapshot and the chart.
+    expect(rows.reduce((sum, row) => sum + row.values.reduce((a, b) => a + b, 0), 0)).toBe(snapshot.assessments.length);
+  });
+});
+
+describe('fetchAdminSnapshot purok narrowing', () => {
+  beforeEach(() => {
+    fake.tables = {
+      barangays: [{ barangay_id: 'b1', name: 'Cabugao', code: null, is_active: true, created_at: '', updated_at: '', created_by: null }],
+      puroks: [{ purok_id: 'p1', barangay_id: 'b1', name: 'Purok 1', code: null, is_active: true, created_at: '', updated_at: '', created_by: '' }],
+      households: [
+        { household_id: 'h1', purok_id: 'p1', barangay_id: 'b1', updated_at: '' },
+        { household_id: 'h2', purok_id: 'p2', barangay_id: 'b1', updated_at: '' },
+      ],
+      individuals: [
+        { resident_id: 'r1', household_id: 'h1', sex: 'female', birthday: '2000-01-01', updated_at: '', status: 'active' },
+        { resident_id: 'r2', household_id: 'h2', sex: 'male', birthday: '2000-01-01', updated_at: '', status: 'active' },
+      ],
+      health_assessments: [assessment('a1', 'r1', '2026-05-01', 'normal'), assessment('a2', 'r2', '2026-05-02', 'normal')],
+      supply_disbursements: [
+        { ...release('d1', 'i1', 3), resident_id: 'r1' },
+        { ...release('d2', 'i1', 5), resident_id: 'r2' },
+      ],
+      inventory_items: [item('i1', 'Rice', 20, 5)],
+      inventory_allocations: [],
+    };
+  });
+
+  it('drops another purok\'s residents, assessments and disbursements, but not the barangay-level inventory', async () => {
+    const snapshot = await fetchAdminSnapshot({ from: '2026-01-01', to: '2026-12-31', barangayId: null, purokId: 'p1' });
+
+    expect(snapshot.households.map((row) => row.household_id)).toEqual(['h1']);
+    expect(snapshot.residents.map((row) => row.resident_id)).toEqual(['r1']);
+    expect(snapshot.assessments.map((row) => row.assessment_id)).toEqual(['a1']);
+    expect(snapshot.disbursements.map((row) => row.log_id)).toEqual(['d1']);
+    // Stock is held at the barangay, not the purok — the purok filter must
+    // leave it alone even though it narrows everything reached via a resident.
+    expect(snapshot.inventoryItems.map((row) => row.item_id)).toEqual(['i1']);
+  });
+});
+
+describe('useAdminData URL round trip', () => {
+  // `useSearchParams` needs a router mounted around it, which this project's
+  // test runner has no DOM to provide — so this exercises the same plain
+  // `URLSearchParams` logic the hook wraps in `useMemo`/`useCallback`, which is
+  // the only place a narrow filter can actually fail to round-trip.
+  const sample: AdminFilters = {
+    from: '2026-01-01',
+    to: '2026-12-31',
+    barangayId: 'b1',
+    purokId: 'p1',
+    sex: 'female',
+    ageBand: '5 to 9',
+    membership: 'active',
+    itemType: 'medicine',
+    stockLevel: 'low',
+    accountRole: 'bhw',
+    accountActive: 'active',
+    reportSections: ['demographics', 'stock'],
+  };
+
+  it('carries every FILTER_PARAMS key, and the sections list, through a set/parse cycle', () => {
+    const params = paramsFromFilters(new URLSearchParams(), sample);
+    const parsed = filtersFromParams(params);
+
+    expect(parsed).toEqual(sample);
+
+    for (const [, param] of FILTER_PARAMS) {
+      expect(params.get(param)).not.toBeNull();
+    }
+    expect(params.get('sections')).toBe('demographics,stock');
+  });
+
+  it('writes no param, and parses back null, for a key that is unset', () => {
+    const params = paramsFromFilters(new URLSearchParams(), { from: '2026-01-01', to: '2026-12-31', barangayId: null });
+    const parsed = filtersFromParams(params);
+
+    for (const [key, param] of FILTER_PARAMS) {
+      expect(params.has(param)).toBe(false);
+      expect(parsed[key as keyof AdminFilters]).toBeNull();
+    }
+    expect(params.has('sections')).toBe(false);
+    expect(parsed.reportSections).toBeNull();
   });
 });
