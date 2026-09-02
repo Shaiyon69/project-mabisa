@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useMabisaData } from '../../app/mabisaData';
 import type { Individual } from '../../types/database';
-import { ageInYears, titleCase } from '../../lib/utils';
+import { ageInYears, logDev, titleCase } from '../../lib/utils';
 import { readLocalIndividuals } from '../../services/localDatabase';
 import { BHWDashboard } from '../../components/bhw/BHWDashboard';
 import { HealthAssessmentForm } from '../../components/bhw/HealthAssessmentForm';
@@ -15,7 +15,7 @@ import { Card } from '../../components/common/Card';
 import { FormField } from '../../components/common/FormField';
 import { Icon } from '../../components/common/Icon';
 import { Modal } from '../../components/common/Modal';
-import { EmptyState } from '../../components/common/StateMessage';
+import { EmptyState, ErrorState } from '../../components/common/StateMessage';
 import { ThemeToggle } from '../../components/common/ThemeToggle';
 import { supabase } from '../../lib/supabase';
 
@@ -61,6 +61,7 @@ export function ResidentsPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Individual[]>([]);
   const [searching, setSearching] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
 
   // The same debounce, `current` guard and accessor the resident picker uses; this
   // screen only shows the whole list rather than one selection.
@@ -75,9 +76,16 @@ export function ResidentsPage() {
         .then((rows) => {
           if (current) {
             setResults(rows);
+            setReadFailed(false);
           }
         })
-        .catch(console.error)
+        .catch((cause: unknown) => {
+          logDev('Resident list read failed', cause instanceof Error ? cause.message : cause);
+
+          if (current) {
+            setReadFailed(true);
+          }
+        })
         .finally(() => {
           if (current) {
             setSearching(false);
@@ -126,6 +134,11 @@ export function ResidentsPage() {
             </li>
           ))}
         </ul>
+      ) : readFailed ? (
+        <ErrorState
+          title="Could not read this device's records"
+          text="The residents are still saved. Search again to retry."
+        />
       ) : (
         <EmptyState
           title={searching ? 'Searching...' : 'No resident found'}

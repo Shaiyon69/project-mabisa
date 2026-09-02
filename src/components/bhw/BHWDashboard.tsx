@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { LocalSnapshot } from '../../app/mabisaData';
 import type { Individual } from '../../types/database';
-import { formatDate, titleCase } from '../../lib/utils';
+import { formatDate, logDev, titleCase } from '../../lib/utils';
 import { Badge } from '../common/Badge';
 import { Card } from '../common/Card';
 import { Icon } from '../common/Icon';
-import { EmptyState } from '../common/StateMessage';
+import { EmptyState, ErrorState } from '../common/StateMessage';
 import { SyncStatusCard } from './SyncStatusCard';
 import { readLocalIndividuals } from '../../services/localDatabase';
 import type { SyncStatus } from '../../services/syncService';
@@ -34,13 +34,31 @@ export function BHWDashboard({
   onRetryDeadLetters,
   onSignInAgain,
 }: BHWDashboardProps) {
-  // 1. Replaced the useMemo slice with a local state for our SQLite query
+  // The five most recent residents, read from SQLite rather than sliced off the snapshot.
   const [latestIndividuals, setLatestIndividuals] = useState<Individual[]>([]);
+  const [readFailed, setReadFailed] = useState(false);
 
   useEffect(() => {
+    let current = true;
+
     readLocalIndividuals({ limit: 5 })
-      .then(setLatestIndividuals)
-      .catch(console.error);
+      .then((rows) => {
+        if (current) {
+          setLatestIndividuals(rows);
+          setReadFailed(false);
+        }
+      })
+      .catch((error: unknown) => {
+        logDev('Recent residents read failed', error instanceof Error ? error.message : error);
+
+        if (current) {
+          setReadFailed(true);
+        }
+      });
+
+    return () => {
+      current = false;
+    };
   }, [snapshot.individualCount]);
 
 
@@ -143,6 +161,8 @@ export function BHWDashboard({
               </li>
             ))}
           </ul>
+        ) : readFailed ? (
+          <ErrorState title="Could not read this device's records" text="The profiles are still saved. Reopen this screen to try again." />
         ) : (
           <EmptyState title="No local profiles yet" text="Register a household to start the offline-first BHW workflow." />
         )}
