@@ -9,7 +9,17 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 //                  what a barangay_admin allocated to them personally.
 //
 // `is_admin()` means RHU specifically, not "a desk account" — use `is_rhu_or_barangay_admin()` for both.
-export type UserRole = 'admin' | 'barangay_admin' | 'bhw';
+export const USER_ROLES = ['admin', 'barangay_admin', 'bhw'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+/**
+ * Narrows an unknown to a role. Reads the tuple rather than a hand-written pair, so
+ * a role added to public.app_role is not silently rejected here and dropped onto the
+ * field surface.
+ */
+export function isUserRole(value: unknown): value is UserRole {
+  return USER_ROLES.includes(value as UserRole);
+}
 
 /** True for the two roles that sign in to the admin portal rather than the phone. */
 export function isDeskRole(role: UserRole | null): boolean {
@@ -115,7 +125,11 @@ export type Household = {
 export type Individual = {
   resident_id: string;
   household_id: string;
+  // Both joined in from the household rather than stored here — it is the only
+  // row that records either — so both are absent on a resident read straight
+  // from `individuals`.
   household_number?: string;
+  barangay_name?: string;
   first_name: string;
   middle_name?: string;
   last_name: string;
@@ -283,8 +297,13 @@ export type Database = {
     Views: {
       bhw_item_stock: RowDefinition<BhwItemStock, never, never>;
     };
-    // The helpers the database defines and grants to `authenticated`. The admin_*
-    // RPCs are omitted until a surface calls one.
+    // The helpers the database defines and grants to `authenticated`, plus the
+    // admin_* RPCs a surface actually calls. The rest stay out until one does —
+    // an unused entry here is a contract nothing checks.
+    //
+    // Argument names are the SQL parameter names, not a convenience renaming: the
+    // client sends them as named arguments, so a mismatch is a runtime 404 from
+    // PostgREST rather than a type error.
     Functions: {
       current_app_role: {
         Args: Record<string, never>;
@@ -301,6 +320,18 @@ export type Database = {
       current_barangay_id: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      // Account administration, RHU only. Both assert an active admin and write
+      // the audit event in the same transaction, which is why `profiles` and
+      // `bhw_purok_assignments` withhold the table-level grants that would let a
+      // direct write succeed at anything except losing the audit trail.
+      admin_set_profile_active: {
+        Args: { target_user_id: string; make_active: boolean; change_reason: string };
+        Returns: Profile;
+      };
+      admin_assign_bhw_to_purok: {
+        Args: { target_bhw_id: string; target_purok_id: string; assignment_reason: string };
+        Returns: BhwPurokAssignment;
       };
       barangay_admin_create_item: {
         Args: { target_item_name: string; target_type: InventoryItemType; target_initial_stock?: number };

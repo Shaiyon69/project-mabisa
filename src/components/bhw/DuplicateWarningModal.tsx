@@ -26,7 +26,7 @@ type DuplicateWarningModalProps = {
 /**
  * The duplicate warning, and the only thing standing between it and a save.
  *
- * It warns; it does not decide. MABISA performs no physical identity check, so
+ * It warns; it does not decide. The system performs no physical identity check, so
  * the person who can tell whether these are two people is the BHW in the room.
  * What the app owes in return is a record of the call they made — which is why
  * the override is disabled until a reason is typed.

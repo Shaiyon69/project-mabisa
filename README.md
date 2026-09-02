@@ -1,6 +1,10 @@
-# Project MABISA
+# BRHP-MSAM
 
-Project MABISA is a Mobile-based Application for Assessment of Barangay Inhabitants and Supply Allocation. It supports Barangay Health Workers during field visits with offline resident profiling, BMI-based health assessments, and local supply disbursement logging, while preparing queued records for synchronization to the LGU Supabase backend.
+BRHP-MSAM is the Barangay Residents Health Profiling and Medical Supply Allocation Monitoring System. It supports Barangay Health Workers during field visits with offline resident profiling, BMI-based health assessments, and local supply disbursement logging, while preparing queued records for synchronization to the LGU Supabase backend.
+
+The two halves of the name are the two halves of the system: health profiling in the field, and supply allocation monitoring at the LGU.
+
+The system was previously called MABISA. The rename covers what people read — the launcher label, the sign-in screen, the two shells and the documents. It deliberately stops short of identifiers that would cost something to change: the Android `appId` (`ph.mabisa.app`, whose change makes every installed APK a separate app with an empty database), the npm package name, the `localStorage` keys (`mabisa.user_role`, `mabisa.theme`, `mabisa.last_sync_at`, `mabisa.pulled_through`, whose change signs every device out and re-pulls every table), and the `MabisaData*` module names.
 
 ## Technical Stack
 
@@ -86,6 +90,27 @@ and `VITE_SUPABASE_PUBLISHABLE_KEY`. `.env` is gitignored, so the build has noth
 without them, and the Supabase client is constructed at module scope — a missing value is
 a blank page rather than a warning. Both are publishable client values and Row Level
 Security is the real boundary; the service role key never goes here.
+
+## Admin Portal Deployment
+
+The LGU portal is a static bundle served by nginx. Fill in `.env` from
+`.env.example`, then:
+
+```bash
+docker compose up -d --build
+```
+
+The portal is on `http://localhost:8080`; override with `ADMIN_PORT` in `.env`.
+
+Vite substitutes `import.meta.env.VITE_*` at build time, so the Supabase URL, the
+publishable key and the barangay name are build arguments rather than runtime
+environment. Changing any of them requires `--build` again — a restart alone keeps
+serving the values that were baked in. Only the publishable (anon) key belongs
+here; it is exposed in the bundle by design and is safe only because row level
+security is enabled on every table. The service role key must never be passed.
+
+The BHW client is deliberately not containerised. It ships as an APK wrapping
+`dist/`, and nothing in the field workflow may depend on a server.
 
 ## Android Build
 
@@ -226,7 +251,7 @@ own layout.
 
 ## Scope
 
-MABISA records and reports what health workers observe in the field. It is a record
+BRHP-MSAM records and reports what health workers observe in the field. It is a record
 system, not a diagnostic one: nutrition status is a screening figure derived from height
 and weight, and no output here is a clinical finding. The assessment screen states this
 where the reading is taken.

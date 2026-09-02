@@ -177,7 +177,7 @@ export function HealthAssessmentPage() {
 }
 
 export function ProfilePage() {
-  const { logout } = useOutletContext<BhwOutletContext>();
+  const { logout, fullName } = useOutletContext<BhwOutletContext>();
   const { snapshot } = useMabisaData();
   const [email, setEmail] = useState<string | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
@@ -198,6 +198,15 @@ export function ProfilePage() {
       </div>
 
       <dl className="profile-facts">
+        {/* The name first, then the account that carries it. A BHW checking this
+            screen is confirming the phone is signed in as them, and a name
+            answers that faster than an email address does. Falls back to the
+            email rather than a dash: an account with no profile row yet still
+            has something to identify it by. */}
+        <div>
+          <dt>Name</dt>
+          <dd>{fullName ?? email ?? '—'}</dd>
+        </div>
         <div>
           <dt>Signed in as</dt>
           <dd>{email ?? '—'}</dd>
@@ -222,7 +231,7 @@ export function ProfilePage() {
         Log out
       </Button>
 
-      <Modal open={confirmingLogout} title="Log out of MABISA?" onClose={() => setConfirmingLogout(false)}>
+      <Modal open={confirmingLogout} title="Log out of BRHP-MSAM?" onClose={() => setConfirmingLogout(false)}>
         <p className="logout-warning"><Icon name="warning" size={20} />Make sure pending records are synchronized before leaving this device.</p>
         <div className="modal-actions">
           <Button variant="ghost" onClick={() => setConfirmingLogout(false)}>Stay logged in</Button>

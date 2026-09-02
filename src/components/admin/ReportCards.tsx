@@ -6,6 +6,7 @@ import {
   NUTRITION_ORDER,
   ageBandOf,
   assessmentsBelowAdultBmiAge,
+  describeScope,
   disbursementsByItem,
   lowStockItems,
   tally,
@@ -31,16 +32,21 @@ type ReportCardsProps = {
 export function ReportCards({ snapshot, filters }: ReportCardsProps) {
   const lowStock = lowStockItems(snapshot.inventoryItems);
   const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
+  // The barangay a CSV should name: the one that was picked, when one was, and
+  // otherwise the account's own scope. A file taken while one barangay was
+  // selected must not read later as the whole municipality.
+  const scopeLabel = filters.barangayId ? describeScope(filters, snapshot.barangays) : snapshot.barangayLabel;
 
   return (
     <div className="activity-grid report-grid">
       <ReportPanel
         title="Resident Demographics"
-        note={`${snapshot.residentCount} resident(s) profiled centrally. Sex and age bands are counted over every resident, not the period.`}
+        note={`${snapshot.residentCount} resident(s) profiled centrally.`}
         filters={filters}
-        filterNote="none beyond the period (totals cover all residents)"
+        barangays={snapshot.barangays}
+        filterNote="all residents, period ignored"
         onExport={() =>
-          exportReport('Resident Demographics', snapshot.barangayLabel, filters, buildDemographicRows(snapshot), [
+          exportReport('Resident Demographics', scopeLabel, filters, buildDemographicRows(snapshot), [
             { header: 'Grouping', value: (row) => row.grouping },
             { header: 'Category', value: (row) => row.category },
             { header: 'Residents', value: (row) => row.count },
@@ -65,8 +71,9 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
         title="Nutrition Status Summary"
         note={nutritionNote(snapshot)}
         filters={filters}
+        barangays={snapshot.barangays}
         onExport={() =>
-          exportReport('Nutrition Status Summary', snapshot.barangayLabel, filters, snapshot.assessments, assessmentColumns)
+          exportReport('Nutrition Status Summary', scopeLabel, filters, snapshot.assessments, assessmentColumns)
         }
       >
         <SummaryBars
@@ -80,9 +87,10 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
         title="Unallocated Barangay Stock"
         note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. This is what the barangay still holds to hand out — quantities already allocated to a health worker are counted against that worker, not here. Stock is a current position and ignores the period.`}
         filters={filters}
+        barangays={snapshot.barangays}
         filterNote="none beyond the period (stock is current, not historical)"
         onExport={() =>
-          exportReport('Unallocated Barangay Stock', snapshot.barangayLabel, filters, snapshot.inventoryItems, inventoryColumns)
+          exportReport('Unallocated Barangay Stock', scopeLabel, filters, snapshot.inventoryItems, inventoryColumns)
         }
       >
         {lowStock.length ? (
@@ -103,10 +111,11 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
 
       <ReportPanel
         title="Supply Allocation"
-        note={`${releasedTotal} unit(s) released across ${snapshot.disbursements.length} disbursement(s) in this period.`}
+        note={`${releasedTotal} unit(s) across ${snapshot.disbursements.length} release(s).`}
         filters={filters}
+        barangays={snapshot.barangays}
         onExport={() =>
-          exportReport('Supply Allocation', snapshot.barangayLabel, filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
+          exportReport('Supply Allocation', scopeLabel, filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
         }
       >
         <SummaryBars
@@ -123,12 +132,13 @@ type ReportPanelProps = {
   title: string;
   note: string;
   filters: AdminFilters;
+  barangays: AdminSnapshot['barangays'];
   filterNote?: string;
   onExport: () => void;
   children: ReactNode;
 };
 
-function ReportPanel({ title, note, filters, filterNote, onExport, children }: ReportPanelProps) {
+function ReportPanel({ title, note, filters, barangays, filterNote, onExport, children }: ReportPanelProps) {
   return (
     <Card className="activity-card report-card" as="article">
       <div className="report-card-head">
@@ -137,7 +147,7 @@ function ReportPanel({ title, note, filters, filterNote, onExport, children }: R
           Export CSV
         </Button>
       </div>
-      <SummaryContext filters={filters} extra={filterNote} />
+      <SummaryContext filters={filters} extra={filterNote} barangays={barangays} />
       {children}
       <p className="muted report-note">{note}</p>
     </Card>

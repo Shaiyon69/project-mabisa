@@ -16,12 +16,15 @@ const bhwNavItems = [
 
 type BHWLayoutProps = {
   logout: () => Promise<void>;
+  /** The signed-in worker's name, cached with the role so the profile screen has it offline. */
+  fullName: string | null;
 };
 
-/** Logout is handed to the profile screen through the outlet rather than a prop
-    chain, because it is the only route that uses it. */
+/** Logout and the worker's name are handed to the profile screen through the outlet
+    rather than a prop chain, because it is the only route that uses either. */
 export type BhwOutletContext = {
   logout: () => Promise<void>;
+  fullName: string | null;
 };
 
 // Record safety is a rail on every screen, not a badge on one — a BHW shouldn't
@@ -56,7 +59,7 @@ function recordRail(
   return { tone: 'clear', label: 'All records sent' };
 }
 
-export function BHWLayout({ logout }: BHWLayoutProps) {
+export function BHWLayout({ logout, fullName }: BHWLayoutProps) {
   const { bhwId, isOnline, message, syncStatus, snapshot } = useMabisaData();
   const rail = recordRail(isOnline, syncStatus, snapshot.pendingQueueCount, snapshot.deadLetterEntries.length);
   const { update, dismiss } = useAppUpdate();
@@ -89,11 +92,11 @@ export function BHWLayout({ logout }: BHWLayoutProps) {
         ) : null}
 
         {/* No header actions — connection state lives on the rail; theme/logout live on the Profile tab. */}
-        <PageHeader eyebrow="Project MABISA" title="BHW Mobile" />
+        <PageHeader eyebrow="BRHP-MSAM" title="BHW Mobile" />
         {message ? <p className="notice">{message}</p> : null}
 
         <div className="bhw-mobile-content">
-          <Outlet context={{ logout } satisfies BhwOutletContext} />
+          <Outlet context={{ logout, fullName } satisfies BhwOutletContext} />
         </div>
 
         <nav className="bhw-bottom-nav" aria-label="BHW mobile sections">

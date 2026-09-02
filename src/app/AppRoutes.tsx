@@ -22,9 +22,11 @@ type AppRoutesProps = {
   role: UserRole | null;
   /** False until the profile lookup has settled, so a null role is not yet an answer. */
   roleChecked: boolean;
+  /** The signed-in account's name, cached alongside the role so it survives an offline start. */
+  fullName: string | null;
 };
 
-export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
+export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProps) {
   // One flag for both surfaces — a per-role predicate would leave a null (not-yet-known)
   // role rejected by both and bouncing between them. The portal itself doesn't branch
   // on admin vs. barangay_admin; RLS draws that line, not this flag.
@@ -37,8 +39,8 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
   // account both resolve to null.
   const adminRejection = roleChecked ? (
     <SurfaceNotice
-      title="This is the MABISA admin portal"
-      body="This account signs in through the MABISA app on a Barangay Health Worker's phone. Nothing is wrong with your account — this is the wrong place for it."
+      title="This is the BRHP-MSAM admin portal"
+      body="This account signs in through the BRHP-MSAM app on a Barangay Health Worker's phone. Nothing is wrong with your account — this is the wrong place for it."
       logout={logout}
     />
   ) : (
@@ -53,7 +55,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       <SurfaceNotice title="Checking your account" body="One moment." />
     ) : (
       <SurfaceNotice
-        title="This is the MABISA field app"
+        title="This is the BRHP-MSAM field app"
         body="Administrator accounts sign in to the admin portal in a web browser, not on this phone."
         logout={logout}
       />
@@ -67,7 +69,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
       <Route path="/" element={<Navigate to={home} replace />} />
 
       {buildsBhw ? (
-        <Route path="/bhw" element={isAdmin && buildsAdmin ? <Navigate to="/admin" replace /> : <BHWLayout logout={logout} />}>
+        <Route path="/bhw" element={isAdmin && buildsAdmin ? <Navigate to="/admin" replace /> : <BHWLayout logout={logout} fullName={fullName} />}>
           <Route index element={<BHWHomePage />} />
           <Route path="register-resident" element={<RegisterResidentPage />} />
           <Route path="residents" element={<BhwResidentsPage />} />
@@ -83,7 +85,7 @@ export function AppRoutes({ logout, role, roleChecked }: AppRoutesProps) {
           path="/admin"
           element={
             isAdmin ? (
-              <AdminLayout logout={logout} role={role} />
+              <AdminLayout logout={logout} role={role} fullName={fullName} />
             ) : roleChecked && buildsBhw ? (
               // A health worker who lands here has their own screens to go to, so
               // send them rather than explain. The notice below is for the build
