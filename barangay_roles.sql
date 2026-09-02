@@ -1292,3 +1292,35 @@ create trigger inventory_items_set_updated_at
 create trigger supply_disbursements_set_updated_at
   before update on public.supply_disbursements
   for each row execute function private.set_updated_at();
+
+
+-- =============================================================================
+-- THE SIGNUP TRIGGER WROTE TO THE TABLE THAT WAS TAKEN OUT OF SERVICE
+--   (applied 2026-09-03, migration `drop_legacy_signup_trigger`)
+--
+-- `on_auth_user_created` inserted into `public.users` -- legacy, stripped of
+-- grants and policies by `access_gaps` above, holding its own password hashes,
+-- commented "drop once the rows are confirmed dead". It never wrote to
+-- `public.profiles`, which is what `current_app_role()` and every policy here
+-- actually read.
+--
+-- So every account created since profiles took over got a row nobody reads and
+-- no profile at all: it signed in successfully and then saw an empty app, with
+-- no error anywhere to say why. Nine profiles existed because someone typed nine
+-- inserts; two tester accounts were sitting in the gap. The legacy rows had also
+-- gone stale where anyone looked -- shaiyon@gmail.com was `bhw` there and
+-- `admin` in profiles, and the app behaved as `admin`.
+--
+-- Dropped rather than rewritten, per the standing decision that onboarding is
+-- manual SQL. A rewrite would have to invent a role and a barangay for an
+-- account it knows nothing about, and the reason the old one hardcoded 'bhw' is
+-- that reading a role from client metadata would let anyone sign themselves up
+-- as an administrator. A trigger that half-onboards someone is worse than no
+-- trigger, because a broken account then looks like a finished one.
+--
+-- The table stays: `access_gaps` left the rows deliberately, and dropping them
+-- is a separate decision from stopping the writes.
+-- =============================================================================
+
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_auth_user();
