@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Individual } from '../../types/database';
+import { logDev } from '../../lib/utils';
 import { Combobox, type ComboboxOption } from '../common/Combobox';
 import { readLocalIndividuals } from '../../services/localDatabase';
 
@@ -23,6 +24,7 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Individual[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
   const [selected, setSelected] = useState<Individual | null>(null);
 
   // Debounced SQLite query, with loading set inside the timeout so typing does not
@@ -38,9 +40,16 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
         .then((results) => {
           if (current) {
             setSearchResults(results);
+            setReadFailed(false);
           }
         })
-        .catch(console.error)
+        .catch((cause: unknown) => {
+          logDev('Resident search failed', cause instanceof Error ? cause.message : cause);
+
+          if (current) {
+            setReadFailed(true);
+          }
+        })
         .finally(() => {
           if (current) {
             setIsLoading(false);
@@ -74,7 +83,7 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
       onQueryChange={setQuery}
       placeholder="Search by name..."
       error={error}
-      emptyText={isLoading ? 'Searching...' : 'No resident found'}
+      emptyText={isLoading ? 'Searching...' : readFailed ? "Could not read this device's records" : 'No resident found'}
     />
   );
 }
