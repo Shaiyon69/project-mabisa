@@ -753,6 +753,26 @@ describe('useAdminData URL round trip', () => {
     expect(params.has('sections')).toBe(false);
     expect(parsed.reportSections).toBeNull();
   });
+
+  // A malformed period does not fail a fetch, it throws inside `monthsIn` during
+  // render, which unmounts the screen. Falling back to the default is what keeps
+  // a hand-edited or truncated link from doing that.
+  it('falls back to the default period when a date in the URL is not a date', () => {
+    const fallback = defaultAdminFilters();
+
+    for (const bad of ['garbage', '2026-13-01', '2026-02-31', '2026-09']) {
+      const parsed = filtersFromParams(new URLSearchParams(`from=${bad}&to=${bad}`));
+
+      expect(parsed.from).toBe(fallback.from);
+      expect(parsed.to).toBe(fallback.to);
+    }
+  });
+
+  it('keeps a valid period from the URL', () => {
+    const parsed = filtersFromParams(new URLSearchParams('from=2026-01-01&to=2026-06-30'));
+
+    expect(parsed).toMatchObject({ from: '2026-01-01', to: '2026-06-30' });
+  });
 });
 
 describe('managesAccount', () => {

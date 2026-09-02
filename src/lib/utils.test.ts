@@ -5,6 +5,7 @@ import {
   emptyToNull,
   getNutritionStatus,
   HEIGHT_CM_RANGE,
+  isCalendarDate,
   isInFuture,
   isMeasurementInRange,
   philhealthDigits,
@@ -158,5 +159,35 @@ describe('isInFuture', () => {
 
   it('compares the day, not the moment, so a timestamp does not read as tomorrow', () => {
     expect(isInFuture('2026-08-30T23:59:00Z', '2026-08-30')).toBe(false);
+  });
+});
+
+describe('isCalendarDate', () => {
+  it('accepts a real date', () => {
+    expect(isCalendarDate('2026-09-03')).toBe(true);
+    expect(isCalendarDate('2024-02-29')).toBe(true);
+  });
+
+  // The values this guards arrive from a query string, where nothing has
+  // validated them. `monthsIn` builds a Date from them and calls toISOString(),
+  // which throws on an invalid one during render rather than failing a fetch.
+  it('rejects text that is not a date at all', () => {
+    expect(isCalendarDate('garbage')).toBe(false);
+    expect(isCalendarDate('2026-09')).toBe(false);
+    expect(isCalendarDate('03/09/2026')).toBe(false);
+  });
+
+  // Date rolls this forward to 3 March rather than refusing it, so the format
+  // test alone would let it through.
+  it('rejects a day the month does not have', () => {
+    expect(isCalendarDate('2026-02-31')).toBe(false);
+    expect(isCalendarDate('2025-02-29')).toBe(false);
+    expect(isCalendarDate('2026-13-01')).toBe(false);
+  });
+
+  it('rejects nothing at all', () => {
+    expect(isCalendarDate('')).toBe(false);
+    expect(isCalendarDate(null)).toBe(false);
+    expect(isCalendarDate(undefined)).toBe(false);
   });
 });
