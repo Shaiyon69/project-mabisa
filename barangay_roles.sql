@@ -1324,3 +1324,145 @@ create trigger supply_disbursements_set_updated_at
 
 drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_auth_user();
+
+
+-- =============================================================================
+-- A BARANGAY ADMINISTRATOR MANAGES THE HEALTH WORKERS IN THEIR OWN BARANGAY
+--   (applied 2026-09-03, migration `barangay_admin_manages_bhw_accounts`)
+--
+-- Both account RPCs opened with `private.assert_admin()`, so only the RHU could
+-- assign a purok or take an account out of service, and a barangay_admin got the
+-- Accounts page read-only. The person who knows a health worker has moved purok
+-- or left is the barangay administrator; routing that through the LGU is how an
+-- assignment stays wrong for a week.
+--
+-- Two hard limits, both enforced here and not in the browser:
+--
+--   * `bhw` profiles ONLY. Not another barangay administrator, not an RHU
+--     account, not themselves. There is still no role-change RPC anywhere, so
+--     nobody can promote anyone.
+--   * Their OWN barangay only, and only into a purok that belongs to it.
+--
+-- The RHU keeps exactly the reach it had.
+--
+-- Verified against the live project by impersonating the Cabugao administrator
+-- in rolled-back transactions: own-barangay BHW deactivate and reactivate both
+-- succeed; a Salay BHW, another barangay administrator, and a Salay purok are
+-- each refused with 42501; the RHU is unchanged.
+-- =============================================================================
+
+-- 1. Which barangay a health worker belongs to, including after they are disabled.
+--
+-- `profile_barangay_id()` resolves a BHW through their *active* assignment, and
+-- `admin_set_profile_active` ends every assignment when it disables one. As an
+-- ownership test that pair is a trap: an administrator disables a worker, the
+-- assignment closes, the worker's barangay becomes null, and the administrator
+-- can no longer see or reactivate the account they just disabled. This falls
+-- back to the most recent assignment rather than the active one. Active
+-- assignments still sort first, so a worker who genuinely moved barangays
+-- belongs to the new one from the moment the new assignment exists.
+create or replace function public.bhw_home_barangay_id(target_user_id uuid)
+returns uuid
+language sql
+stable security definer
+set search_path to 'pg_catalog'
+as $function$
+  select coalesce(
+    (select profile.barangay_id from public.profiles as profile where profile.user_id = target_user_id),
+    (select purok.barangay_id
+       from public.bhw_purok_assignments as assignment
+       join public.puroks as purok on purok.purok_id = assignment.purok_id
+      where assignment.bhw_id = target_user_id
+      order by (assignment.ended_at is null) desc, assignment.started_at desc
+      limit 1)
+  );
+$function$;
+
+revoke execute on function public.bhw_home_barangay_id(uuid) from public, anon;
+grant execute on function public.bhw_home_barangay_id(uuid) to authenticated;
+
+-- 2. The one gate both account RPCs now open with.
+--
+-- The null check on the actor's barangay is not defensive noise: the comparison
+-- below is null-safe, so without it an administrator with no barangay would
+-- match a health worker with no barangay and the write would be authorised.
+create or replace function private.assert_can_manage_bhw(target_user_id uuid)
+returns uuid
+language plpgsql
+stable security definer
+set search_path to 'pg_catalog'
+as $function$
+declare
+  actor_id uuid := auth.uid();
+  actor_barangay uuid;
+  target_role public.app_role;
+begin
+  if actor_id is null then
+    raise insufficient_privilege using message = 'Active admin access is required';
+  end if;
+
+  if public.is_admin() then
+    return actor_id;
+  end if;
+
+  if not public.is_barangay_admin() then
+    raise insufficient_privilege using message = 'Active admin access is required';
+  end if;
+
+  actor_barangay := public.current_barangay_id();
+
+  if actor_barangay is null then
+    raise insufficient_privilege using message = 'This administrator account has no barangay';
+  end if;
+
+  select profile.role into target_role
+  from public.profiles as profile
+  where profile.user_id = target_user_id;
+
+  if target_role is null then
+    raise no_data_found using message = 'Profile not found';
+  end if;
+
+  if target_role <> 'bhw'::public.app_role then
+    raise insufficient_privilege using message =
+      'A barangay administrator may only manage health worker accounts';
+  end if;
+
+  if public.bhw_home_barangay_id(target_user_id) is distinct from actor_barangay then
+    raise insufficient_privilege using message =
+      'A barangay administrator may only manage health workers in their own barangay';
+  end if;
+
+  return actor_id;
+end;
+$function$;
+
+-- 3. Both RPCs re-created with the gate swapped. Bodies otherwise unchanged --
+-- see the migration for the full text. `admin_assign_bhw_to_purok` additionally
+-- checks the destination purok is in the caller's own barangay when the caller
+-- is not the RHU: without it a barangay administrator could take a health worker
+-- who is legitimately theirs and post them into someone else's purok, which is a
+-- write into a barangay they cannot read.
+--
+--   admin_assign_bhw_to_purok:  actor_id := private.assert_can_manage_bhw(target_bhw_id);
+--                               + the destination-purok check above
+--   admin_set_profile_active:   actor_id := private.assert_can_manage_bhw(target_user_id);
+
+-- 4. A disabled health worker must stay visible to the administrator who
+-- disabled them. Same trap as section 1, on the read side: the policy resolved a
+-- BHW's barangay through the active assignment, so disabling one made the row
+-- vanish from the very table it was disabled from.
+drop policy if exists profiles_select_foundation on public.profiles;
+create policy profiles_select_foundation
+  on public.profiles for select to authenticated
+  using (
+    public.current_profile_is_active()
+    and (
+      public.is_admin()
+      or user_id = auth.uid()
+      or (
+        public.is_barangay_admin()
+        and public.bhw_home_barangay_id(user_id) = public.current_barangay_id()
+      )
+    )
+  );

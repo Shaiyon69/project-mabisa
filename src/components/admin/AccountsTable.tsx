@@ -7,6 +7,7 @@ import {
   fetchActivePuroks,
   fetchBarangayScope,
   filterAccounts,
+  managesAccount,
   setProfileActive,
   type AccountRow,
   type AdminFilters,
@@ -46,12 +47,19 @@ type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
 
 type AccountsTableProps = {
   /**
-   * Every `admin_*` RPC asserts `is_admin()`, so a `barangay_admin` gets the
-   * table read-only. Hiding the buttons is not the enforcement — the function
-   * is — but offering a control that can only return an error is worse than
-   * offering none.
+   * Who is looking, which decides which rows get controls.
+   *
+   * An `admin` manages every account. A `barangay_admin` manages the health
+   * workers in their own barangay and nothing else — not another barangay
+   * administrator, not an RHU account, not themselves. That rule lives in
+   * `private.assert_can_manage_bhw()`, which both RPCs open with; the check
+   * below only decides which buttons to draw, because offering a control that
+   * can only return an error is worse than offering none.
+   *
+   * Rows outside the barangay never arrive here at all — `profiles_select_foundation`
+   * filters them out before the read returns.
    */
-  canManage: boolean;
+  role: UserRole | null;
   /**
    * The page's filter drawer. Applied in memory rather than in the query: this
    * screen reads every account the session may see in one go, and a role or a
@@ -77,7 +85,13 @@ type AccountsTableProps = {
  * cannot happen from a browser holding a publishable key; see the foundation
  * bootstrap procedure.
  */
-export function AccountsTable({ canManage, filters }: AccountsTableProps) {
+export function AccountsTable({ role, filters }: AccountsTableProps) {
+  // Whether the Actions column is drawn at all, and whether this particular row
+  // gets buttons. Kept as two questions because they have different answers for
+  // a barangay administrator: the column is theirs, most of the rows in it are not.
+  const managesAnyone = role === 'admin' || role === 'barangay_admin';
+  const manages = (account: AccountRow) => managesAccount(role, account.profile.role);
+
   const [pending, setPending] = useState<PendingAction>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [result, setResult] = useState<{
@@ -159,25 +173,28 @@ export function AccountsTable({ canManage, filters }: AccountsTableProps) {
     },
   ];
 
-  if (canManage) {
+  if (managesAnyone) {
     columns.push({
       key: 'actions',
       header: 'Actions',
-      render: (account) => (
-        <div className="table-actions">
-          {/* An admin covers every purok by policy, so there is no assignment to
-              make for one — the button would open a form whose only outcome is
-              an error from the RPC. */}
-          {account.profile.role === 'bhw' ? (
-            <Button variant="ghost" onClick={() => setPending({ kind: 'assign', account })}>
-              {account.purokName ? 'Reassign' : 'Assign purok'}
+      // Empty for a row this account may look at but not touch — a barangay
+      // administrator seeing their own row, or another administrator's.
+      render: (account) =>
+        manages(account) ? (
+          <div className="table-actions">
+            {/* An admin covers every purok by policy, so there is no assignment to
+                make for one — the button would open a form whose only outcome is
+                an error from the RPC. */}
+            {account.profile.role === 'bhw' ? (
+              <Button variant="ghost" onClick={() => setPending({ kind: 'assign', account })}>
+                {account.purokName ? 'Reassign' : 'Assign purok'}
+              </Button>
+            ) : null}
+            <Button variant="ghost" onClick={() => setPending({ kind: 'active', account })}>
+              {account.profile.is_active ? 'Deactivate' : 'Reactivate'}
             </Button>
-          ) : null}
-          <Button variant="ghost" onClick={() => setPending({ kind: 'active', account })}>
-            {account.profile.is_active ? 'Deactivate' : 'Reactivate'}
-          </Button>
-        </div>
-      ),
+          </div>
+        ) : null,
     });
   }
 

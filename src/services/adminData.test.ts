@@ -19,6 +19,7 @@ import {
   filterInventory,
   LOW_STOCK_THRESHOLD,
   lowStockItems,
+  managesAccount,
   monthlyReleases,
   monthlyTrend,
   nutritionByBarangay,
@@ -770,5 +771,27 @@ describe('useAdminData URL round trip', () => {
     }
     expect(params.has('sections')).toBe(false);
     expect(parsed.reportSections).toBeNull();
+  });
+});
+
+describe('managesAccount', () => {
+  it('lets an RHU admin manage every role', () => {
+    expect(managesAccount('admin', 'admin')).toBe(true);
+    expect(managesAccount('admin', 'barangay_admin')).toBe(true);
+    expect(managesAccount('admin', 'bhw')).toBe(true);
+  });
+
+  it('lets a barangay admin manage health workers and nobody else', () => {
+    expect(managesAccount('barangay_admin', 'bhw')).toBe(true);
+    // The two that matter: a barangay administrator must never get controls on
+    // another administrator's row, their own included. The RPC refuses it either
+    // way, but a button whose only outcome is an error is worth not drawing.
+    expect(managesAccount('barangay_admin', 'barangay_admin')).toBe(false);
+    expect(managesAccount('barangay_admin', 'admin')).toBe(false);
+  });
+
+  it('gives a health worker and an unread role nothing', () => {
+    expect(managesAccount('bhw', 'bhw')).toBe(false);
+    expect(managesAccount(null, 'bhw')).toBe(false);
   });
 });

@@ -164,7 +164,7 @@ export function AccountsPage() {
         description={
           role === 'admin'
             ? 'Roles and purok assignments as the database enforces them.'
-            : 'Roles and purok assignments in your barangay. Changing them is an LGU administrator action.'
+            : 'Health workers in your barangay: assign a purok, or take an account out of service. Roles, other barangays and new accounts are an LGU administrator action.'
         }
         actions={
           <AdminFilterBar
@@ -178,7 +178,7 @@ export function AccountsPage() {
         }
       />
       <Card className="admin-monitor">
-        <AccountsTable canManage={role === 'admin'} filters={filters} />
+        <AccountsTable role={role} filters={filters} />
       </Card>
     </>
   );
