@@ -40,6 +40,11 @@ type AdminDashboardProps = {
 export function AdminDashboard({ snapshot, filters, loading, error, onScope }: AdminDashboardProps) {
   const lowStock = lowStockItems(snapshot.inventoryItems);
   const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
+  // Rows gathered under this scope, not units: a release of forty sachets is one
+  // record, the same as one household profile. `releasedTotal` above is the
+  // quantity question and this is the "is anything arriving" question.
+  const recordsGathered =
+    snapshot.householdCount + snapshot.residentCount + snapshot.assessments.length + snapshot.disbursements.length;
   const stats = barangayStats(snapshot);
   // One tally feeding both the ring and the bars beside it, so the two halves of
   // the card cannot disagree about a band.
@@ -51,7 +56,7 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
   const period = `from=${filters.from}&to=${filters.to}${filters.barangayId ? `&barangay=${filters.barangayId}` : ''}`;
 
   return (
-    <div className="dashboard-grid">
+    <div className="dashboard-grid admin-dashboard-grid">
       {error ? (
         <Card className="admin-monitor">
           <ErrorState title="Could not read the central database" text={error} />
@@ -64,6 +69,12 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
 
             Households has no `to`: the portal has no household screen, and a
             tile that looks clickable and is not is worse than a plain one. */}
+        {/* Everything this scope has gathered, in one figure. It is the first
+            question asked of a portal that exists to prove records are coming
+            in at all, and it is the one number no other tile answers — the four
+            below it each count one kind of row. It links nowhere because no
+            single screen owns the sum. */}
+        <StatCard label="Records gathered" value={recordsGathered} tone="green" icon="clipboard" />
         <StatCard label="Households" value={snapshot.householdCount} tone="blue" icon="home" />
         {/* "Active" is not decoration: the count filters on status, the registry
             table it links to does not, so the two disagree by everyone who moved out. */}
@@ -75,14 +86,14 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
           to={`/admin/residents?${period}`}
         />
         <StatCard
-          label="Assessments"
+          label="Assessments recorded"
           value={snapshot.assessments.length}
           tone="green"
           icon="heart"
           to={`/admin/reports?${period}`}
         />
         <StatCard
-          label="Units released"
+          label="Supplies released"
           value={releasedTotal}
           tone="amber"
           icon="package"
@@ -92,7 +103,7 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
             rationed on this surface, and a tile that is red at zero spends it
             on nothing. */}
         <StatCard
-          label="Low unallocated stock"
+          label="Items below reorder level"
           value={lowStock.length}
           tone={lowStock.length ? 'red' : 'blue'}
           icon="warning"
@@ -102,7 +113,7 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
 
       <p className="summary-context admin-metrics-note">
         Households and residents are running totals. Assessments and units released cover the selected period; stock is
-        the current position.
+        the current position. Records gathered adds the four together, so it mixes both.
       </p>
 
       {/* Where, before how many. The distribution below says what the readings
@@ -112,12 +123,12 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
           every panel on the screen rather than opening a new one. */}
       <Card className="admin-monitor">
         <div className="panel-heading">
-          <h2>Underweight Readings by Barangay</h2>
+          <h2>Underweight rate by barangay</h2>
           <Link className="admin-link" to={`/admin/analytics?${period}`}>
             Open analytics
           </Link>
         </div>
-        <SummaryContext filters={filters} barangays={snapshot.barangays} />
+        <SummaryContext filters={filters} snapshot={snapshot} />
         <BarangayMap
           stats={stats}
           barangays={snapshot.barangays}
@@ -126,54 +137,61 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
         />
       </Card>
 
-      <Card className="admin-monitor">
-        <div className="panel-heading">
-          <h2>Nutrition Status Distribution</h2>
-        </div>
-        <SummaryContext filters={filters} barangays={snapshot.barangays} />
-        {/* The ring is the mix and the bars are the counts, side by side rather
-            than one instead of the other: a share answers "how lopsided" and a
-            count answers "how many", and an officer acts on the second. Each
-            band opens the residents it counted, over this same period. */}
-        <div className="chart-with-bars">
-          {/* No ring at all when nothing was recorded — an empty circle round a
-              zero reads as a chart that failed to load. `SummaryBars` says why. */}
-          {nutrition.some((row) => row.count) ? (
-            <DonutChart rows={nutrition} colorFor={(row) => NUTRITION_COLORS[row.label]} unit="assessments" />
-          ) : null}
-          <SummaryBars
-            rows={nutrition}
-            emptyTitle="No assessments in this period"
-            emptyText="Widen the date range, or wait for a field device to sync."
-            hrefFor={(row) => `/admin/residents?status=${row.label}&${period}`}
-          />
-        </div>
-      </Card>
+      {/* Nutrition and restocking are two short panels, not one tall one, and
+          on a wide screen they sit beside the map rather than under it — the
+          wrapper is what lets the grid put them in the right column while the
+          map spans the left one. Below the two-column breakpoint this is a
+          plain block and the pair stacks exactly as it did before. */}
+      <div className="dashboard-side">
+        <Card className="admin-monitor">
+          <div className="panel-heading">
+            <h2>Nutrition status</h2>
+          </div>
+          <SummaryContext filters={filters} snapshot={snapshot} />
+          {/* The ring is the mix and the bars are the counts, side by side rather
+              than one instead of the other: a share answers "how lopsided" and a
+              count answers "how many", and an officer acts on the second. Each
+              band opens the residents it counted, over this same period. */}
+          <div className="chart-with-bars">
+            {/* No ring at all when nothing was recorded — an empty circle round a
+                zero reads as a chart that failed to load. `SummaryBars` says why. */}
+            {nutrition.some((row) => row.count) ? (
+              <DonutChart rows={nutrition} colorFor={(row) => NUTRITION_COLORS[row.label]} unit="assessments" />
+            ) : null}
+            <SummaryBars
+              rows={nutrition}
+              emptyTitle="No assessments in this period"
+              emptyText="Widen the date range, or wait for a field device to sync."
+              hrefFor={(row) => `/admin/residents?status=${row.label}&${period}`}
+            />
+          </div>
+        </Card>
 
-      {/* The one thing on this screen that asks for an action rather than a
-          reading, so it is the one list that stays. */}
-      <Card className="admin-monitor">
-        <div className="panel-heading">
-          <h2>Needs Restocking</h2>
-          <Link className="admin-link" to="/admin/inventory">
-            Open inventory
-          </Link>
-        </div>
-        {lowStock.length ? (
-          <ul className="compact-list">
-            {lowStock.map((item) => (
-              <li key={item.item_id}>
-                <span>{item.item_name}</span>
-                <small>
-                  {item.current_stock} on hand • {titleCase(item.type)}
-                </small>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">Every item is above the low-stock threshold.</p>
-        )}
-      </Card>
+        {/* The one thing on this screen that asks for an action rather than a
+            reading, so it is the one list that stays. */}
+        <Card className="admin-monitor">
+          <div className="panel-heading">
+            <h2>Needs restocking</h2>
+            <Link className="admin-link" to="/admin/inventory">
+              Open inventory
+            </Link>
+          </div>
+          {lowStock.length ? (
+            <ul className="compact-list">
+              {lowStock.map((item) => (
+                <li key={item.item_id}>
+                  <span>{item.item_name}</span>
+                  <small>
+                    {item.current_stock} on hand • {titleCase(item.type)}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Every item is above the low-stock threshold.</p>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
