@@ -1243,3 +1243,52 @@ revoke execute on function public.barangay_admin_set_reorder_level(uuid, integer
 revoke execute on function public.barangay_admin_create_item(text, text, integer) from anon;
 revoke execute on function public.barangay_admin_restock_item(uuid, integer, text) from anon;
 revoke execute on function public.barangay_admin_allocate_stock(uuid, uuid, integer, text) from anon;
+
+
+-- =============================================================================
+-- SERVER-STAMPED updated_at ON THE FIELD TABLES
+--   (applied 2026-09-02, migration `field_tables_set_updated_at`)
+--
+-- `set_updated_at` was wired to the access-model tables only -- profiles,
+-- puroks, barangays, authorized_devices and the legacy public.users -- so the
+-- `updated_at` on every household, resident, assessment, inventory item and
+-- release was whatever the writing device's clock said. Two consequences, both
+-- of which get worse the moment a second phone is in the field:
+--
+--   * The pull watermark is a device-written value. A phone whose clock runs
+--     ahead stamps a row in the future; every other device pulls it once, moves
+--     its `updated_at >= watermark` watermark to that future value, and then
+--     sees nothing new until real time catches up. This migration closes that
+--     outright -- stored `updated_at` is now server time, monotonic and bounded.
+--
+--   * The push conflict guard in `updatePayload()` filters on
+--     `updated_at <= the device's own timestamp`. This narrows that but does not
+--     close it: the left side is now a server clock, and the right side is still
+--     a value the writing device minted. Closing it needs the device to send the
+--     `updated_at` it last pulled for the row instead -- a client change, not a
+--     migration.
+--
+-- BEFORE UPDATE only. An INSERT keeps the device's value, which is right: a new
+-- row has nothing to race against, and offline work legitimately carries the
+-- time it was recorded rather than the time it reached the server.
+-- =============================================================================
+
+create trigger households_set_updated_at
+  before update on public.households
+  for each row execute function private.set_updated_at();
+
+create trigger individuals_set_updated_at
+  before update on public.individuals
+  for each row execute function private.set_updated_at();
+
+create trigger health_assessments_set_updated_at
+  before update on public.health_assessments
+  for each row execute function private.set_updated_at();
+
+create trigger inventory_items_set_updated_at
+  before update on public.inventory_items
+  for each row execute function private.set_updated_at();
+
+create trigger supply_disbursements_set_updated_at
+  before update on public.supply_disbursements
+  for each row execute function private.set_updated_at();
