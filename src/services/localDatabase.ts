@@ -392,6 +392,19 @@ export async function persistLocalDatabase(): Promise<void> {
 // Sync Queue Management
 // -----------------------------------------------------------------------------
 
+/** The queue insert as a statement, so it can ride in the same transaction as the row it describes. */
+function queueStatement<TTable extends LocalTableName, TOperation extends SyncOperationType>(
+  targetTable: TTable,
+  operationType: TOperation,
+  payload: SyncPayload<TTable, TOperation>,
+) {
+  return {
+    statement: `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error)
+     values (?, ?, ?, ?, 0, null)`,
+    values: [[operationType, targetTable, JSON.stringify(payload), new Date().toISOString()] as SqlValue[]],
+  };
+}
+
 /** Stringifies the payload and queues it — called right after the local write ("double-write"). */
 export async function enqueueSyncOperation<TTable extends LocalTableName, TOperation extends SyncOperationType>(
   targetTable: TTable,
@@ -399,11 +412,7 @@ export async function enqueueSyncOperation<TTable extends LocalTableName, TOpera
   payload: SyncPayload<TTable, TOperation>,
 ): Promise<void> {
   const database = await initializeLocalDatabase();
-  await database.run(
-    `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error)
-     values (?, ?, ?, ?, 0, null)`,
-    [operationType, targetTable, JSON.stringify(payload), new Date().toISOString()],
-  );
+  await database.executeSet([queueStatement(targetTable, operationType, payload)]);
 }
 
 /** The columns a queue row and a dead-letter row hold in common — the quarantined copy is the same operation, preserved. */
@@ -695,28 +704,101 @@ const inventoryUpsert = buildUpsert('inventory_items', 'item_id', inventoryColum
 // Write Operations (The "Double-Write" Pattern)
 // -----------------------------------------------------------------------------
 
+/**
+ * The local row and its queue entry, written as one transaction.
+ *
+ * Two statements would commit separately, and Android kills a backgrounded app
+ * routinely: a kill in between leaves the visit in local SQLite with nothing on
+ * the queue. It renders as saved, it sits on the resident's record, and it never
+ * reaches the server — and nothing reconciles that, because nothing knows to
+ * look. Same defect `moveSyncQueueEntryToDeadLetter` was fixed for, and the same
+ * fix.
+ *
+ * `rows` is a list because the disbursement path writes the release and the
+ * stock decrement together; everything else passes one.
+ *
+ * The IndexedDB flush stays outside the transaction. It is the web build's only
+ * durability step and it writes the whole database at once, so a kill before it
+ * loses the row and the queue entry together — which is the consistent outcome,
+ * not a split one.
+ */
+async function writeAndQueue<TTable extends LocalTableName, TOperation extends SyncOperationType>(
+  rows: { statement: string; values: SqlValue[] }[],
+  targetTable: TTable,
+  operationType: TOperation,
+  payload: SyncPayload<TTable, TOperation>,
+): Promise<void> {
+  const database = await initializeLocalDatabase();
+
+  await database.executeSet([
+    ...rows.map((row) => ({ statement: row.statement, values: [row.values] })),
+    queueStatement(targetTable, operationType, payload),
+  ]);
+
+  await persistLocalDatabase();
+}
+
 /** Writes household data to local storage and queues it for the cloud. */
 export async function saveHouseholdLocally(household: Household, operationType: SyncOperationType = 'INSERT'): Promise<void> {
-  const database = await initializeLocalDatabase();
-  await database.run(householdUpsert.statement, householdUpsert.values(household));
-
   // Queues the raw object, not the JSON string, so Supabase gets real arrays.
-  await enqueueSyncOperation('households', operationType, household);
-  await persistLocalDatabase();
+  await writeAndQueue(
+    [{ statement: householdUpsert.statement, values: householdUpsert.values(household) }],
+    'households',
+    operationType,
+    household,
+  );
+}
+
+/**
+ * What of a resident row may be pushed. `household_number` is joined in on read
+ * but lives on `households`, not `individuals` — Supabase rejects the row over
+ * the unknown column if it rides along.
+ */
+function syncableIndividual(individual: Individual): Individual {
+  const syncable = { ...individual };
+  delete syncable.household_number;
+  return syncable;
 }
 
 /** Writes individual data to local storage and queues it for the cloud. */
 export async function saveIndividualLocally(individual: Individual, operationType: SyncOperationType = 'INSERT'): Promise<void> {
-  const database = await initializeLocalDatabase();
-  await database.run(individualUpsert.statement, individualUpsert.values(individual));
-
-  // household_number is joined in on read but lives on `households`, not
-  // `individuals` — Supabase rejects the row over the unknown column if it rides along.
-  const syncable = { ...individual };
-  delete syncable.household_number;
-
   // Queue the raw object so Supabase receives actual booleans
-  await enqueueSyncOperation('individuals', operationType, syncable);
+  await writeAndQueue(
+    [{ statement: individualUpsert.statement, values: individualUpsert.values(individual) }],
+    'individuals',
+    operationType,
+    syncableIndividual(individual),
+  );
+}
+
+/**
+ * A whole visit — the household and every member — in one transaction and one flush.
+ *
+ * Saving each member through `saveIndividualLocally` meant one
+ * `persistLocalDatabase()` per member, and on web that call serializes the
+ * entire database: a six-member household wrote it seven times. It also left the
+ * visit splittable, which is the same hazard `writeAndQueue` closes for a single
+ * row — a kill partway through leaves a household on the phone holding some of
+ * its members and queueing some of its members.
+ *
+ * The household goes first so its queue entry is pushed before the members that
+ * point at it.
+ */
+export async function saveHouseholdWithMembersLocally(
+  household: { row: Household; operationType: SyncOperationType },
+  members: { row: Individual; operationType: SyncOperationType }[],
+): Promise<void> {
+  const database = await initializeLocalDatabase();
+
+  await database.executeSet([
+    { statement: householdUpsert.statement, values: [householdUpsert.values(household.row)] },
+    queueStatement('households', household.operationType, household.row),
+    ...members.flatMap((member) => [
+      { statement: individualUpsert.statement, values: [individualUpsert.values(member.row)] },
+      queueStatement('individuals', member.operationType, syncableIndividual(member.row)),
+    ]),
+  ]);
+
   await persistLocalDatabase();
 }
 
@@ -761,10 +843,12 @@ export async function saveHealthAssessmentLocally(
   assessment: HealthAssessment,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
-  const database = await initializeLocalDatabase();
-  await database.run(assessmentInsert.statement, assessmentInsert.values(assessment));
-  await enqueueSyncOperation('health_assessments', operationType, assessment);
-  await persistLocalDatabase();
+  await writeAndQueue(
+    [{ statement: assessmentInsert.statement, values: assessmentInsert.values(assessment) }],
+    'health_assessments',
+    operationType,
+    assessment,
+  );
 }
 
 /**
@@ -792,8 +876,6 @@ export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
-  const database = await initializeLocalDatabase();
-
   // Only a new release moves stock — editing an existing log has no reversal path yet.
   const item = operationType === 'INSERT' ? await readLocalInventoryItem(disbursement.item_id) : null;
 
@@ -810,8 +892,7 @@ export async function saveSupplyDisbursementLocally(
     }
   }
 
-  await database.run(disbursementInsert.statement, disbursementInsert.values(disbursement));
-  await enqueueSyncOperation('supply_disbursements', operationType, disbursement);
+  const rows = [{ statement: disbursementInsert.statement, values: disbursementInsert.values(disbursement) }];
 
   if (item) {
     // Local only, not enqueued. `updated_at` stays on the item's own value so the
@@ -821,10 +902,12 @@ export async function saveSupplyDisbursementLocally(
       current_stock: item.current_stock - disbursement.quantity,
     };
 
-    await database.run(inventoryUpsert.statement, inventoryUpsert.values(movedStock));
+    rows.push({ statement: inventoryUpsert.statement, values: inventoryUpsert.values(movedStock) });
   }
 
-  await persistLocalDatabase();
+  // Three statements here rather than two, so this path had two gaps: a kill
+  // could also leave the release recorded with the stock never moved.
+  await writeAndQueue(rows, 'supply_disbursements', operationType, disbursement);
 }
 
 
