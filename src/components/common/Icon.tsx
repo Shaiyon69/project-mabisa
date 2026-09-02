@@ -14,7 +14,8 @@ export type IconName =
   | 'chevron'
   | 'chart'
   | 'shield'
-  | 'clipboard';
+  | 'clipboard'
+  | 'filter';
 
 type IconProps = {
   name: IconName;
@@ -44,6 +45,8 @@ const paths: Record<IconName, React.ReactNode> = {
   // Access control, not protection: this marks the screen where roles and purok
   // assignments are granted.
   shield: <><path d="M12 2.6 4.5 5.6v6.1c0 4.6 3.1 8.4 7.5 9.7 4.4-1.3 7.5-5.1 7.5-9.7V5.6Z" /><path d="m9 12 2.2 2.2L15.4 10" /></>,
+  // Funnel. Marks the scope control that opens the filter drawer.
+  filter: <path d="M3 5h18l-7 8v6l-4 2v-8Z" />,
   clipboard: <><path d="M9 4.5H7.5A1.5 1.5 0 0 0 6 6v13.5A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H15" /><rect x="9" y="2.5" width="6" height="4" rx="1.2" /><path d="M9.5 12.5h5M9.5 16.5h3" /></>,
 };
 

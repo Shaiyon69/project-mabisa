@@ -1362,17 +1362,22 @@ tbody tr:hover {
 }
 
 /* A tile that opens the rows behind its number. The chevron sits in the corner
-   rather than after the label, so it does not push the number off centre. */
+   rather than after the label, so it does not push the number off centre.
+   Everything visual otherwise comes from `.metric`; this only removes the
+   anchor's own text styling and marks the tile as a target — for a mouse and
+   for a keyboard, since focus reaches a link a hover state never has to. */
 .metric-link {
   position: relative;
   text-decoration: none;
+  cursor: pointer;
   transition:
     border-color 160ms ease,
     background 160ms ease;
 }
 
-.metric-link:hover {
-  border-color: var(--primary);
+.metric-link:hover,
+.metric-link:focus-visible {
+  border-color: var(--secondary);
   background: var(--muted-surface);
 }
 
@@ -1411,6 +1416,53 @@ tbody tr:hover {
 .header-title-icon .ui-icon {
   flex: 0 0 auto;
   color: var(--secondary-strong);
+}
+
+/* Admin density — the phone-sized chrome above (28px card radii, 20px panel
+   padding, 18px/12px grid gaps) reads as clutter on a desk monitor: nothing
+   uses the width and everything demands scrolling. Every rule below is
+   scoped to `.admin-layout` so the BHW surface — read one-handed, held at
+   arm's length — keeps the roomier geometry it was sized for. Tokens are
+   read, never redefined: only what they are applied *at* changes here. */
+.admin-layout .screen-panel {
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  gap: 14px;
+}
+
+.admin-layout .dashboard-grid,
+.admin-layout .activity-grid,
+.admin-layout .report-grid {
+  gap: 14px;
+}
+
+/* Keep --display (Fraunces) — the family is the identity, the size was the
+   phone. Only the base rule's 22px, sized for a heading read at arm's
+   length, is scaled down for a panel heading read across a desk. */
+.admin-layout .panel-heading h2 {
+  font-size: 18px;
+}
+
+.admin-layout th,
+.admin-layout td {
+  padding: 10px 15px;
+}
+
+/* Long resident and accounts tables are the portal's main scroll surface,
+   and this is the cheapest real win on them: the header stays in view while
+   the rows scroll under it. The opaque background is what keeps a row from
+   showing through the header cells as it passes beneath. */
+.admin-layout .ui-table-wrap th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+
+/* Legibility floor: density here means less padding, not smaller type.
+   `.summary-context` was pinned at the phone's 12px; raised one step so
+   nothing on the desk view of the portal reads under 13px. */
+.admin-layout .summary-context {
+  font-size: 13px;
 }
 
 /* BHW mobile */
@@ -1889,6 +1941,41 @@ tbody tr:hover {
   }
 }
 
+/* Dashboard, two columns wide once there is a desk's worth of room for the
+   map beside the nutrition and restocking panels. Below 1180px
+   `.admin-dashboard-grid` stays the one-column stack the 860px block above
+   already set up, and `.dashboard-side` collapses to a plain block — the
+   current, narrow-screen behaviour, unchanged. Placed after that block
+   rather than beside the rest of the admin density rules above: its
+   `.metric-grid` override ties in specificity with `.dashboard-grid >
+   .metric-grid { grid-column: span 5 }` there, and a tie is decided by
+   source order, not by which rule looks more specific to a reader. */
+@media (min-width: 1180px) {
+  .admin-dashboard-grid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+
+  .admin-dashboard-grid > .metric-grid,
+  .admin-dashboard-grid > .admin-metrics-note {
+    grid-column: 1 / -1;
+  }
+
+  /* `.admin-monitor` is pinned full-width for the single-column, phone-derived
+     grid the 860px block above sets up; a direct child of the two-column
+     dashboard overrides that so the map — the widest thing on the screen,
+     and the one panel that earns the space — sits in the left column
+     instead of spanning both. */
+  .admin-dashboard-grid > .admin-monitor {
+    grid-column: auto;
+  }
+
+  .dashboard-side {
+    display: grid;
+    gap: 14px;
+    align-content: start;
+  }
+}
+
 @media (min-width: 700px) {
   .bhw-preview-shell {
     align-items: center;
@@ -2284,18 +2371,6 @@ tbody tr:hover {
    Resident registry and duplicate warning
    ----------------------------------------------------------------------------- */
 
-/* A metric that leads somewhere. Everything visual comes from `.metric`; this only
-   removes the anchor's own text styling and marks the tile as a target. */
-.metric-link {
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.metric-link:hover,
-.metric-link:focus-visible {
-  border-color: var(--secondary);
-}
-
 /* Rows in the registry are the whole tap target, not a link buried in the text —
    a thumb in the field is not a mouse pointer. The button and anchor reset back to
    the `.compact-list li` layout so both kinds of row look identical. */
@@ -2445,98 +2520,75 @@ tbody tr:hover {
 
 /* Admin period filter, summary captions and distribution bars ------------- */
 
-/* One line: what the screen is scoped to, and the read that produced it. The
-   controls live in the panel behind it, so the bar costs a row rather than a
-   third of the viewport. */
+/* The scope control lives in the page header now, so it is a pair of buttons
+   at the top right rather than a bar across the content column. */
 .admin-filter-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  margin-bottom: 18px;
-  padding: 8px 10px 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel);
+  gap: 8px;
 }
 
-.scope-picker {
-  position: relative;
-}
-
-.scope-picker > summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  border-radius: 999px;
-  padding: 6px 12px;
-  list-style: none;
-  cursor: pointer;
-  transition: background 160ms ease;
-}
-
-/* The default triangle sits outside the padded row and cannot be styled with
-   the rest of it; the caret on `.scope-hint` replaces it. */
-.scope-picker > summary::-webkit-details-marker {
-  display: none;
-}
-
-.scope-picker > summary:hover {
-  background: var(--muted-surface);
-}
-
-.scope-picker > summary:focus-visible {
-  outline: var(--ring);
-  outline-offset: 2px;
+.scope-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .scope-value {
-  color: var(--text-h);
-  font-size: 13px;
   font-weight: 600;
 }
 
-.scope-hint {
+/* The barangay, shown only when the view is scoped to one. Dimmed so the range
+   stays the first thing read off the button. */
+.scope-area {
   color: var(--muted);
-  font-size: 12px;
+  font-weight: 400;
 }
 
-.scope-hint::after {
-  content: ' ▾';
+.scope-area::before {
+  content: '· ';
 }
 
-.scope-picker[open] .scope-hint::after {
-  content: ' ▴';
+/* How many filters beyond the period and the area are on. A filtered screen
+   that looks unfiltered is the worst way this control can fail, and the drawer
+   is closed almost all of the time — so the count rides on the button. */
+.scope-count {
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 11px;
+  font-weight: 600;
 }
 
-/* Over the page, not above it: opening the controls must not push five panels
-   down and then pull them back up when a preset closes it again. */
-.scope-panel {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 8px);
-  left: 0;
-  display: grid;
-  gap: 12px;
-  width: min(560px, calc(100vw - 48px));
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-  box-shadow: var(--shadow-clay);
+/* Drawer over the right edge rather than a centred dialog: the controls change
+   what the page behind them shows, so the page stays visible while they do. */
+.filter-drawer {
+  place-items: stretch;
+  padding: 0;
 }
 
-.admin-filter-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
+.filter-drawer .modal-panel {
+  width: min(100%, 420px);
+  margin-left: auto;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  overflow-y: auto;
+  animation: drawer-in 180ms ease-out;
 }
 
-.admin-filter-actions small {
-  flex: 1 1 220px;
+@keyframes drawer-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+
+/* Someone who asked for less motion gets the panel, not the slide. */
+@media (prefers-reduced-motion: reduce) {
+  .filter-drawer .modal-panel {
+    animation: none;
+  }
 }
 
 .admin-pager {
@@ -2685,6 +2737,38 @@ tbody tr:hover {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* The area and the tab's own filters. Stacked rather than gridded beside each
+   other: the drawer is 420px at most, and two 180px selects on one row leave
+   neither label room to stay on one line. */
+.filter-fields {
+  display: grid;
+  gap: 12px;
+}
+
+/* Which report cards to print. A checkbox list, not a multi-select: four
+   options read at a glance and toggled one at a time. */
+.filter-sections {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.filter-sections legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.filter-sections label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
 }
 
 /* The line the two bare date inputs were missing: which numbers on the page the
@@ -3111,13 +3195,6 @@ tbody tr:hover {
 .report-note {
   margin: 4px 0 0;
   font-size: 12px;
-}
-
-@media (min-width: 860px) {
-  .admin-filter-bar {
-    grid-template-columns: minmax(0, 200px) minmax(0, 200px) minmax(0, 1fr);
-    align-items: end;
-  }
 }
 
 /* The update rail. Same pill as the record rail so it reads as the same class of
