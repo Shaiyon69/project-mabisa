@@ -1,6 +1,5 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
 
 // One codebase, two deployments. `--mode bhw` builds the web layer Capacitor
 // wraps into the APK; `--mode admin` builds the LGU portal. Each output contains
@@ -15,10 +14,7 @@ export default defineConfig(({ mode }) => {
   const surface = mode === 'bhw' || mode === 'admin' ? mode : 'both';
 
   return {
-    plugins: [
-      react(),
-      tailwindcss(),
-    ],
+    plugins: [react()],
     define: {
       'import.meta.env.VITE_SURFACE': JSON.stringify(surface),
     },
