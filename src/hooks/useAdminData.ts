@@ -204,7 +204,10 @@ export function useAdminData(): AdminData {
     return () => {
       current = false;
     };
-  }, [filters, requestKey]);
+    // `filterKey` is already a substring of `requestKey`, so listing it adds no
+    // re-runs — it is here because the rule cannot see that, and a standing
+    // warning trains everyone to scroll past the next one.
+  }, [filters, requestKey, filterKey]);
 
   return {
     snapshot: result.snapshot,
