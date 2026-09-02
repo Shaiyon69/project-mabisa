@@ -77,6 +77,21 @@ export function today(): string {
 }
 
 /**
+ * Whether a string is a real `YYYY-MM-DD` calendar date. The round trip is what
+ * rejects `2026-02-31`, which `Date` silently rolls forward to March instead of
+ * refusing. Guards the values that arrive from a URL rather than from a picker.
+ */
+export function isCalendarDate(value: string | null | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00Z`);
+
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/**
  * A date that has not happened yet. Compared as strings, since `YYYY-MM-DD` sorts
  * as the calendar does and `new Date()` would read it as UTC midnight. The `max`
  * attribute stops the picker but not the keyboard, so this is the real guard.

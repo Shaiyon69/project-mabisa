@@ -8,6 +8,7 @@ import {
   type AdminFilters,
   type AdminSnapshot,
 } from '../services/adminData';
+import { isCalendarDate } from '../lib/utils';
 
 /** How often an open portal re-reads. Slow enough to stay a monitor, not a poller. */
 const AUTO_REFRESH_MS = 60_000;
@@ -32,9 +33,16 @@ export function filtersFromParams(params: URLSearchParams): AdminFilters {
   // Each key in `FILTER_PARAMS` carries its own literal union, and a value off
   // the query string is only a raw string, so the object is built loosely and
   // cast once at the end.
+  //
+  // The period is the one pair that must be a real date: it reaches `monthsIn`,
+  // which builds a `Date` from it and calls `toISOString()`, so a malformed value
+  // throws during render rather than failing a fetch. An unusable one falls back
+  // to the default period instead.
+  const from = params.get('from');
+  const to = params.get('to');
   const filters: Record<string, unknown> = {
-    from: params.get('from') ?? fallback.from,
-    to: params.get('to') ?? fallback.to,
+    from: isCalendarDate(from) ? from : fallback.from,
+    to: isCalendarDate(to) ? to : fallback.to,
   };
 
   for (const [key, param] of FILTER_PARAMS) {
