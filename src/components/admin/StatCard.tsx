@@ -6,7 +6,7 @@ type StatCardProps = {
   value: number;
   tone: 'blue' | 'green' | 'amber' | 'red';
   /** Marks what the number counts. Five tiles in a row read as five numbers otherwise. */
-  icon: 'home' | 'users' | 'heart' | 'package' | 'warning';
+  icon: 'home' | 'users' | 'heart' | 'package' | 'warning' | 'clipboard';
   /** Where this number can be seen as rows. Omitted where the portal has no such screen. */
   to?: string;
 };
