@@ -45,7 +45,10 @@ export function AdminSidebar({ fullName, logout }: AdminSidebarProps) {
         </span>
         <div>
           <p className="eyebrow">BRHP-MSAM</p>
-          <strong>Admin Dashboard</strong>
+          {/* Names the product, not the current page — "Dashboard" is already the
+              first item in the rail below, and repeating it here just says the
+              same word twice at the top of the screen. */}
+          <strong>Admin Portal</strong>
         </div>
       </div>
       <nav className="admin-nav">

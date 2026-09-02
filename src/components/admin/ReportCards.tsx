@@ -9,9 +9,11 @@ import {
   describeScope,
   disbursementsByItem,
   lowStockItems,
+  showsSection,
   tally,
   type AdminFilters,
   type AdminSnapshot,
+  type ReportSectionId,
 } from '../../services/adminData';
 import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../../types/database';
 import { Button } from '../common/Button';
@@ -35,15 +37,16 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
   // The barangay a CSV should name: the one that was picked, when one was, and
   // otherwise the account's own scope. A file taken while one barangay was
   // selected must not read later as the whole municipality.
-  const scopeLabel = filters.barangayId ? describeScope(filters, snapshot.barangays) : snapshot.barangayLabel;
+  const scopeLabel = filters.barangayId ? describeScope(filters, snapshot) : snapshot.barangayLabel;
 
   return (
     <div className="activity-grid report-grid">
       <ReportPanel
-        title="Resident Demographics"
+        section="demographics"
+        title="Resident demographics"
         note={`${snapshot.residentCount} resident(s) profiled centrally.`}
         filters={filters}
-        barangays={snapshot.barangays}
+        scope={snapshot}
         filterNote="all residents, period ignored"
         onExport={() =>
           exportReport('Resident Demographics', scopeLabel, filters, buildDemographicRows(snapshot), [
@@ -68,10 +71,11 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
       </ReportPanel>
 
       <ReportPanel
-        title="Nutrition Status Summary"
+        section="nutrition"
+        title="Nutrition status summary"
         note={nutritionNote(snapshot)}
         filters={filters}
-        barangays={snapshot.barangays}
+        scope={snapshot}
         onExport={() =>
           exportReport('Nutrition Status Summary', scopeLabel, filters, snapshot.assessments, assessmentColumns)
         }
@@ -84,10 +88,11 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
       </ReportPanel>
 
       <ReportPanel
-        title="Unallocated Barangay Stock"
+        section="stock"
+        title="Unallocated barangay stock"
         note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. This is what the barangay still holds to hand out — quantities already allocated to a health worker are counted against that worker, not here. Stock is a current position and ignores the period.`}
         filters={filters}
-        barangays={snapshot.barangays}
+        scope={snapshot}
         filterNote="none beyond the period (stock is current, not historical)"
         onExport={() =>
           exportReport('Unallocated Barangay Stock', scopeLabel, filters, snapshot.inventoryItems, inventoryColumns)
@@ -110,10 +115,11 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
       </ReportPanel>
 
       <ReportPanel
-        title="Supply Allocation"
+        section="supply"
+        title="Supply allocation"
         note={`${releasedTotal} unit(s) across ${snapshot.disbursements.length} release(s).`}
         filters={filters}
-        barangays={snapshot.barangays}
+        scope={snapshot}
         onExport={() =>
           exportReport('Supply Allocation', scopeLabel, filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
         }
@@ -129,16 +135,27 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
 }
 
 type ReportPanelProps = {
+  /**
+   * Which card this is, for the drawer's picker. The gate lives in the panel
+   * rather than around each call site: a card that is not rendered exports
+   * nothing and computes nothing, and one `if` here beats four ternaries
+   * wrapping four JSX blocks.
+   */
+  section: ReportSectionId;
   title: string;
   note: string;
   filters: AdminFilters;
-  barangays: AdminSnapshot['barangays'];
+  scope: Pick<AdminSnapshot, 'barangays' | 'puroks'>;
   filterNote?: string;
   onExport: () => void;
   children: ReactNode;
 };
 
-function ReportPanel({ title, note, filters, barangays, filterNote, onExport, children }: ReportPanelProps) {
+function ReportPanel({ section, title, note, filters, scope, filterNote, onExport, children }: ReportPanelProps) {
+  if (!showsSection(filters, section)) {
+    return null;
+  }
+
   return (
     <Card className="activity-card report-card" as="article">
       <div className="report-card-head">
@@ -147,7 +164,7 @@ function ReportPanel({ title, note, filters, barangays, filterNote, onExport, ch
           Export CSV
         </Button>
       </div>
-      <SummaryContext filters={filters} extra={filterNote} barangays={barangays} />
+      <SummaryContext filters={filters} extra={filterNote} snapshot={scope} />
       {children}
       <p className="muted report-note">{note}</p>
     </Card>

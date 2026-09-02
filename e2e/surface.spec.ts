@@ -14,7 +14,7 @@ test.describe('which surface a session lands on', () => {
     await page.goto('/admin');
 
     await expect(page).toHaveURL(/\/bhw$/);
-    await expect(page.getByText('This is the MABISA admin portal')).toBeHidden();
+    await expect(page.getByText('This is the BRHP-MSAM admin portal')).toBeHidden();
   });
 
   test('sends them on from a deep admin path too, not just the index', async ({ page }) => {
