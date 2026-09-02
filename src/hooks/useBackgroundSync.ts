@@ -28,7 +28,16 @@ export function useBackgroundSync(): BackgroundSyncState {
     try {
       const result = await syncPendingQueue();
       setStatus(result.status);
-      setLastResult(result);
+
+      // `syncing` means a pass was already running and this call did nothing —
+      // its counters describe no pass at all. Storing it would overwrite the real
+      // last result with `deferred: 0`, and the retry effect below reads that as
+      // "nothing waiting" and stops re-arming its timer: entries left deferred by
+      // the running pass would then sit until a network flap or a manual tap.
+      if (result.status !== 'syncing') {
+        setLastResult(result);
+      }
+
       return result;
     } catch (error) {
       const failedResult: SyncResult = {
