@@ -230,6 +230,7 @@ test.describe('admin portal screens', () => {
     ['admin residents', '/admin/residents'],
     ['admin inventory', '/admin/inventory'],
     ['admin accounts', '/admin/accounts'],
+    ['admin analytics', '/admin/analytics'],
     ['admin reports', '/admin/reports'],
   ];
 
