@@ -74,6 +74,52 @@ export function BHWDashboard({
         <Metric label="Released" value={snapshot.disbursementCount} detail="Supply logs" tone="red" />
       </section>
 
+      {/* What this health worker is still carrying. The numbers were already on the
+          device — the pull fetches `bhw_item_stock`, which is her allocations minus
+          her releases — but until this card the only place they appeared was the
+          item dropdown inside the release form, one item at a time. "Do I have
+          enough for today" is a question asked before leaving the house, not
+          halfway through a form for a resident already standing there.
+
+          Lowest count first, so whatever is about to run out is at the top. An item
+          she has released down to zero still shows, because that is precisely what
+          she needs to know; an item never allocated to her is absent from the view
+          entirely and so cannot appear here. */}
+      <Card className="list-section">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">On this phone</p>
+            <h2>My Supplies</h2>
+          </div>
+          {/* Stock only moves when the barangay office allocates or this phone
+              syncs, so the age of the figure is part of the figure. */}
+          <Badge
+            label={lastSyncAt ? `Synced ${formatDate(lastSyncAt)}` : 'Not synced yet'}
+            tone={lastSyncAt ? 'success' : 'warning'}
+          />
+        </div>
+
+        {snapshot.inventoryItems.length ? (
+          <ul className="compact-list">
+            {[...snapshot.inventoryItems]
+              .sort((a, b) => a.current_stock - b.current_stock || a.item_name.localeCompare(b.item_name))
+              .map((item) => (
+                <li key={item.item_id}>
+                  <span>
+                    {item.current_stock} — {item.item_name}
+                  </span>
+                  <small>{titleCase(item.type)}</small>
+                </li>
+              ))}
+          </ul>
+        ) : (
+          <EmptyState
+            title="No supplies allocated to you yet"
+            text="The barangay office allocates stock to each health worker. Sync once you have a signal to check again."
+          />
+        )}
+      </Card>
+
       <Card className="list-section">
         <div className="panel-heading">
           <div>
