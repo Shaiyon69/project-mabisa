@@ -6,8 +6,10 @@ import {
   fetchAccounts,
   fetchActivePuroks,
   fetchBarangayScope,
+  filterAccounts,
   setProfileActive,
   type AccountRow,
+  type AdminFilters,
 } from '../../services/adminData';
 import type { Purok, UserRole } from '../../types/database';
 import { Button } from '../common/Button';
@@ -50,6 +52,12 @@ type AccountsTableProps = {
    * offering none.
    */
   canManage: boolean;
+  /**
+   * The page's filter drawer. Applied in memory rather than in the query: this
+   * screen reads every account the session may see in one go, and a role or a
+   * barangay is a narrowing of that list, not a different read.
+   */
+  filters: AdminFilters;
 };
 
 /**
@@ -69,7 +77,7 @@ type AccountsTableProps = {
  * cannot happen from a browser holding a publishable key; see the foundation
  * bootstrap procedure.
  */
-export function AccountsTable({ canManage }: AccountsTableProps) {
+export function AccountsTable({ canManage, filters }: AccountsTableProps) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [result, setResult] = useState<{
@@ -85,6 +93,10 @@ export function AccountsTable({ canManage }: AccountsTableProps) {
   // is what `react-hooks/set-state-in-effect` reports.
   const { rows, puroks, error } = result;
   const loading = result.settledFor !== reloadToken;
+  // What the drawer left. `rows` stays the whole set so the count below can say
+  // how much was filtered away, and so a mutation still refreshes against
+  // everything rather than against the current narrowing.
+  const visible = filterAccounts(rows, filters);
 
   useEffect(() => {
     let current = true;
@@ -176,8 +188,20 @@ export function AccountsTable({ canManage }: AccountsTableProps) {
     downloadCsv(
       reportFileName('Accounts'),
       buildReportCsv(
-        { title: 'Accounts', barangay: await fetchBarangayScope(), from: 'all dates', to: 'all dates' },
-        rows,
+        {
+          title: 'Accounts',
+          barangay: await fetchBarangayScope(),
+          from: 'all dates',
+          to: 'all dates',
+          // The drawer's filters, named on the file. The export is of what is
+          // on screen, so a file taken while one role was selected must not
+          // read later as the whole account list.
+          filters: [
+            ...(filters.accountRole ? [{ label: 'Role', value: titleCase(filters.accountRole) }] : []),
+            ...(filters.accountActive ? [{ label: 'Account state', value: titleCase(filters.accountActive) }] : []),
+          ],
+        },
+        visible,
         exportColumns,
       ),
     );
@@ -186,7 +210,7 @@ export function AccountsTable({ canManage }: AccountsTableProps) {
   return (
     <div className="ui-table-stack">
       <TableToolbar>
-        <Button variant="ghost" onClick={() => void exportAccounts()} disabled={loading || !rows.length}>
+        <Button variant="ghost" onClick={() => void exportAccounts()} disabled={loading || !visible.length}>
           Export CSV
         </Button>
       </TableToolbar>
@@ -195,17 +219,19 @@ export function AccountsTable({ canManage }: AccountsTableProps) {
 
       <Table
         columns={columns}
-        rows={rows}
+        rows={visible}
         getRowKey={(account) => account.profile.user_id}
         emptyTitle={loading ? 'Reading accounts' : 'No accounts found'}
         emptyText={
           loading
             ? 'One moment.'
-            : 'Accounts are created through the administrative RPCs; see the foundation bootstrap procedure.'
+            : rows.length
+              ? 'No account matches the filters. Widen them in the drawer above.'
+              : 'Accounts are created through the administrative RPCs; see the foundation bootstrap procedure.'
         }
       />
 
-      <TableMeta shown={rows.length} total={rows.length} label="account" />
+      <TableMeta shown={visible.length} total={rows.length} label="account" />
 
       {/* Keyed on the account and the action so the fields reset between
           openings: a reason typed for one account must never be carried into

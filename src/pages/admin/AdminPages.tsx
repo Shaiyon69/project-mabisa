@@ -13,6 +13,7 @@ import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ErrorState } from '../../components/common/StateMessage';
 import { useAdminData } from '../../hooks/useAdminData';
+import { filterInventory } from '../../services/adminData';
 
 /**
  * Every page here reads the central database through `useAdminData`, never
@@ -29,19 +30,16 @@ import { useAdminData } from '../../hooks/useAdminData';
  * only which controls are worth offering.
  */
 export function AdminDashboardPage() {
-  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
+  const { snapshot, filters, setFilters, loading, error } = useAdminData();
   const role = useAdminRole();
 
   return (
     <>
-      <PageHeader icon="home" title="Barangay Monitoring Dashboard" />
-      <AdminFilterBar
-        filters={filters}
-        onChange={setFilters}
-        onRefresh={refresh}
-        loading={loading}
-        snapshot={snapshot}
-        role={role}
+      <PageHeader
+        icon="home"
+        title="Dashboard"
+        description={role === 'admin' ? 'Every barangay in the RHU, at a glance.' : 'Your barangay, at a glance.'}
+        actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
       <AdminDashboard snapshot={snapshot} filters={filters} loading={loading} error={error} onScope={setFilters} />
     </>
@@ -49,7 +47,7 @@ export function AdminDashboardPage() {
 }
 
 export function ResidentsPage() {
-  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
+  const { snapshot, filters, setFilters, loading, error } = useAdminData();
   const role = useAdminRole();
 
   return (
@@ -58,28 +56,27 @@ export function ResidentsPage() {
         icon="users"
         title="Resident Registry"
         description="Every resident profile synced to the central database, by barangay."
-      />
-      {/* The registry ignores the date range — a resident is not an event — but
-          it does honour the barangay, and the bar is where that control lives.
-          Its own caveat line already says which half of it applies. */}
-      <AdminFilterBar
-        filters={filters}
-        onChange={setFilters}
-        onRefresh={refresh}
-        loading={loading}
-        snapshot={snapshot}
-        role={role}
+        actions={
+          <AdminFilterBar
+            filters={filters}
+            onChange={setFilters}
+            loading={loading}
+            snapshot={snapshot}
+            role={role}
+            fields={['sex', 'ageBand', 'membership']}
+          />
+        }
       />
       <Card className="admin-monitor">
         {error ? <ErrorState title="Could not read the central database" text={error} /> : null}
-        <IndividualsTable barangayId={filters.barangayId} barangays={snapshot.barangays} />
+        <IndividualsTable filters={filters} snapshot={snapshot} />
       </Card>
     </>
   );
 }
 
 export function InventoryPage() {
-  const { snapshot, loading, error, refresh } = useAdminData();
+  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
   const role = useAdminRole();
   const canMoveStock = role === 'barangay_admin';
   // Bumped after a movement so the carried-stock table re-reads its view along
@@ -98,7 +95,22 @@ export function InventoryPage() {
       <PageHeader
         icon="package"
         title="Supply Inventory"
-        description="Stock the barangay still holds unallocated, and what is left to hand out. Quantities already allocated to a health worker are counted against that worker, not here."
+        description="Stock the barangay still holds unallocated, and what is left to hand out."
+        actions={
+          <AdminFilterBar
+            filters={filters}
+            onChange={setFilters}
+            loading={loading}
+            snapshot={snapshot}
+            role={role}
+            fields={['itemType', 'stockLevel']}
+            // No purok control: stock is held at barangay level, and
+            // `fetchAdminSnapshot` deliberately leaves inventory out of the
+            // purok guard. A picker here would claim a narrowing that never
+            // happens.
+            puroks={false}
+          />
+        }
       />
       {/*
         Stock controls belong to the barangay administrator alone. An RHU account
@@ -117,7 +129,10 @@ export function InventoryPage() {
           Unallocated stock — what has not yet been handed to a health worker.
           {canMoveStock ? '' : ' Only a barangay administrator can move stock.'}
         </p>
-        <InventoryTable inventoryItems={snapshot.inventoryItems} loading={loading} />
+        {/* `filterInventory` rather than a filter of its own, so the type and
+            stock-level narrowing here decides "low" by the same rule as the
+            table's own badge and the dashboard's alert count. */}
+        <InventoryTable inventoryItems={filterInventory(snapshot.inventoryItems, filters)} loading={loading} />
       </Card>
       <Card className="admin-monitor">
         <div className="panel-heading">
@@ -131,6 +146,14 @@ export function InventoryPage() {
 }
 
 export function AccountsPage() {
+  // ponytail: `useAdminData` fires the full snapshot read — households,
+  // residents, assessments — on a screen that renders none of them, just to
+  // populate the drawer's barangay and purok lists. It is the smallest correct
+  // wiring and the portal is a wired workstation against tables of tens to
+  // hundreds of rows. If it ever costs anything, switch to `useAdminFilters()`
+  // and lift `AccountsTable`'s own `fetchAccounts()` + `fetchActivePuroks()`
+  // (AccountsTable.tsx:88) up to here, adding a barangays read beside them.
+  const { snapshot, filters, setFilters, loading } = useAdminData();
   const role = useAdminRole();
 
   return (
@@ -143,16 +166,26 @@ export function AccountsPage() {
             ? 'Roles and purok assignments as the database enforces them.'
             : 'Roles and purok assignments in your barangay. Changing them is an LGU administrator action.'
         }
+        actions={
+          <AdminFilterBar
+            filters={filters}
+            onChange={setFilters}
+            loading={loading}
+            snapshot={snapshot}
+            role={role}
+            fields={['accountRole', 'accountActive']}
+          />
+        }
       />
       <Card className="admin-monitor">
-        <AccountsTable canManage={role === 'admin'} />
+        <AccountsTable canManage={role === 'admin'} filters={filters} />
       </Card>
     </>
   );
 }
 
 export function AnalyticsPage() {
-  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
+  const { snapshot, filters, setFilters, loading, error } = useAdminData();
   const role = useAdminRole();
 
   return (
@@ -161,14 +194,7 @@ export function AnalyticsPage() {
         icon="chart"
         title="Analytics"
         description="Trend, barangay comparison, coverage and supply utilization."
-      />
-      <AdminFilterBar
-        filters={filters}
-        onChange={setFilters}
-        onRefresh={refresh}
-        loading={loading}
-        snapshot={snapshot}
-        role={role}
+        actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
       {error ? (
         <Card className="admin-monitor">
@@ -183,19 +209,18 @@ export function AnalyticsPage() {
 }
 
 export function ReportsPage() {
-  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
+  const { snapshot, filters, setFilters, loading, error } = useAdminData();
   const role = useAdminRole();
 
   return (
     <>
-      <PageHeader icon="clipboard" title="Reports" description="Period summaries, each exportable as CSV." />
-      <AdminFilterBar
-        filters={filters}
-        onChange={setFilters}
-        onRefresh={refresh}
-        loading={loading}
-        snapshot={snapshot}
-        role={role}
+      <PageHeader
+        icon="clipboard"
+        title="Reports"
+        description="Period summaries, each exportable as CSV."
+        actions={
+          <AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} sections />
+        }
       />
       <Card className="activity-panel">
         {error ? <ErrorState title="Could not read the central database" text={error} /> : null}
