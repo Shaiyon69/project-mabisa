@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import './App.css';
-import { MabisaDataProvider } from './app/MabisaDataContext';
 import { AppRoutes, SurfaceNotice } from './app/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
 import { supabase } from './lib/supabase';
 import { describeAuthError } from './lib/authErrors';
-import { countRows } from './services/localDatabase';
-import { claimDeviceFor, type Handover } from './services/deviceHandover';
+import type { Handover } from './services/deviceHandover';
 import { clearPin } from './lib/devicePin';
 import { buildsBhw } from './app/surface';
 import { logDev } from './lib/utils';
@@ -23,6 +21,17 @@ type LoginState = {
 // instead of waiting on a lookup that can't succeed. Keyed by auth id so a role
 // can never leak across accounts sharing a device.
 const ROLE_CACHE_KEY = 'mabisa.user_role';
+
+// The provider reaches localDatabase and syncService, and through them Capacitor
+// SQLite. A static import would put that whole subtree in the admin bundle, which
+// never renders this — `runsOfflineEngine` is false for a desk role, and the
+// portal reads Supabase directly. Lazy, so the portal's build drops it entirely.
+//
+// On the phone the chunk is on the filesystem, so the fallback below is a frame,
+// not a wait for a network.
+const MabisaDataProvider = lazy(() =>
+  import('./app/MabisaDataContext').then((module) => ({ default: module.MabisaDataProvider })),
+);
 
 type CachedRole = {
   userId: string;
@@ -142,7 +151,13 @@ export function App() {
 
     let cancelled = false;
 
-    countRows('sync_queue')
+    // Imported here rather than at module scope so the admin bundle does not
+    // carry it. This is the portal's only reachable path into localDatabase, and
+    // through it into Capacitor SQLite and jeep-sqlite — a whole offline engine
+    // the portal never runs, one accidental import away from being opened. A
+    // dynamic import behind the `buildsBhw` check above drops the entire subtree.
+    import('./services/localDatabase')
+      .then(({ countRows }) => countRows('sync_queue'))
       .then((count) => !cancelled && setPendingRecordCount(count))
       .catch((error: unknown) => {
         // No database yet on a device that's never saved anything — not worth surfacing here.
@@ -164,7 +179,11 @@ export function App() {
 
     let cancelled = false;
 
-    claimDeviceFor(bhwId)
+    // Dynamic for the same reason as the count above: deviceHandover imports both
+    // localDatabase and syncService, so a module-scope import here would put the
+    // offline engine back in the portal bundle from the other direction.
+    import('./services/deviceHandover')
+      .then(({ claimDeviceFor }) => claimDeviceFor(bhwId))
       .then((result) => !cancelled && setHandover({ userId: bhwId, result }))
       .catch((error: unknown) => {
         // The local database could not be read, so whose records these are is
@@ -276,7 +295,13 @@ export function App() {
 
   return (
     <BrowserRouter>
-      {runsOfflineEngine ? <MabisaDataProvider bhwId={bhwId}>{routes}</MabisaDataProvider> : routes}
+      {runsOfflineEngine ? (
+        <Suspense fallback={<SurfaceNotice title="Starting up" body="One moment." />}>
+          <MabisaDataProvider bhwId={bhwId}>{routes}</MabisaDataProvider>
+        </Suspense>
+      ) : (
+        routes
+      )}
     </BrowserRouter>
   );
 }

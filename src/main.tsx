@@ -7,15 +7,21 @@ import '@fontsource-variable/nunito/wght.css';
 import './index.css';
 import { Capacitor } from '@capacitor/core';
 import { App } from './App.tsx';
-import { defineCustomElements as jeepSqlite } from 'jeep-sqlite/loader';
 import { applyTheme, readTheme } from './lib/theme';
+import { buildsBhw } from './app/surface';
 
 // Before the first render, so the app never paints light and then correct.
 applyTheme(readTheme());
 
 // jeep-sqlite is the browser emulator for Capacitor SQLite — Android has the real
 // thing. Mirrors the isWebPlatform guard in localDatabase.ts; change one, change the other.
-if (Capacitor.getPlatform() === 'web') {
+//
+// Imported dynamically, and only on a build that carries the field client: a
+// static import lands the whole emulator in the admin bundle, which opens no
+// database at all. Awaited before the first render, because the custom element
+// has to be defined before anything calls initializeLocalDatabase().
+if (buildsBhw && Capacitor.getPlatform() === 'web') {
+  const { defineCustomElements: jeepSqlite } = await import('jeep-sqlite/loader');
   jeepSqlite(window);
 }
 
