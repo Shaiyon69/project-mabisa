@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminLayout } from '../components/admin/AdminLayout';
 import { BHWLayout } from '../components/bhw/BHWLayout';
-import { AccountsPage, AdminDashboardPage, InventoryPage, ReportsPage, ResidentsPage } from '../pages/admin/AdminPages';
+import { AccountsPage, AdminDashboardPage, AnalyticsPage, InventoryPage, ReportsPage, ResidentsPage } from '../pages/admin/AdminPages';
 import {
   BHWHomePage,
   HealthAssessmentPage,
@@ -100,6 +100,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
           <Route path="residents" element={<ResidentsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="accounts" element={<AccountsPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>
       ) : null}

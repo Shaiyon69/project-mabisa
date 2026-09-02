@@ -2,10 +2,16 @@ import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
 import { titleCase } from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
+  AGE_BANDS,
+  NUTRITION_ORDER,
+  ageBandOf,
   barangayStats,
   describeScope,
+  lowStockItems,
   monthlyTrend,
+  nutritionByBarangay,
   supplyUtilization,
+  tally,
   type AdminFilters,
   type AdminSnapshot,
   type BarangayStats,
@@ -13,6 +19,7 @@ import {
   type Tally,
   type TrendPoint,
 } from '../../services/adminData';
+import type { InventoryItemType } from '../../types/database';
 import { Button } from '../common/Button';
 import { BarChart, DonutChart, GaugeRing, LineChart } from './Charts';
 import { Card } from '../common/Card';
@@ -21,7 +28,7 @@ import { Table, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 /**
- * The four analyses that answer questions the period summaries cannot.
+ * The analyses that answer questions the period summaries cannot.
  *
  * `ReportCards` says how many, in this period, right now. These say how it is
  * moving (trend), how the barangays compare, how much of the register has
@@ -34,16 +41,23 @@ import { SummaryContext } from './AdminFilterBar';
  */
 export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
   const stats = barangayStats(snapshot);
-  const scope = describeScope(filters, snapshot.barangays);
+  const scope = describeScope(filters, snapshot);
 
   return (
     // The two half-width panels are adjacent so they share a row: a narrow panel
     // sitting next to a full-width one leaves the other half of its row empty,
     // which is what interleaving them used to do.
     <div className="activity-grid report-grid">
+      {/* Demographics and stock lead because they are the two panels drawn from
+          rows that exist the moment a barangay is profiled. Everything below
+          them counts assessments and releases, which only appear once field
+          devices start syncing — a screen that opens on four empty states reads
+          as broken rather than as new. */}
+      <DemographicsPanel snapshot={snapshot} filters={filters} scope={scope} />
+      <StockPanel snapshot={snapshot} filters={filters} scope={scope} />
       <TrendPanel snapshot={snapshot} filters={filters} scope={scope} />
       <CoveragePanel stats={stats} filters={filters} scope={scope} />
-      <ComparisonPanel stats={stats} filters={filters} scope={scope} />
+      <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={scope} />
       <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
     </div>
   );
@@ -97,7 +111,7 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
   return (
     <Card className="activity-card report-card" as="article">
       <PanelHead
-        title="Assessment Trend"
+        title="Assessment trend"
         onExport={() => exportReport(contextFor('Assessment Trend', { filters, scope }), points, trendColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />
@@ -146,9 +160,170 @@ function percent(value: number | null): string {
   return value === null ? '—' : `${Math.round(value * 100)}%`;
 }
 
+const distributionColumns: CsvColumn<Tally>[] = [
+  { header: 'Category', value: (row) => titleCase(row.label) },
+  { header: 'Residents', value: (row) => row.count },
+];
+
+/**
+ * Who is on the register: the sex split and the age profile.
+ *
+ * The one panel here that answers a question from the household profile alone,
+ * so it is readable in a barangay that has not weighed anybody yet. Both charts
+ * count residents, not assessments, and therefore ignore the period entirely —
+ * which the note says out loud, because every other panel on this screen is
+ * period-scoped and a reader moving down the page will assume this one is too.
+ *
+ * Sex as a ring and age as bars, not two of the same shape: two categories are a
+ * mix and read as a share; five ordered bands are a profile and read as a
+ * silhouette, which is what tells a young barangay from an ageing one.
+ */
+function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
+  const sexes = tally(snapshot.residents, (resident) => resident.sex, ['female', 'male']);
+  const ages = tally(snapshot.residents, (resident) => ageBandOf(resident.birthday), AGE_BANDS.map((band) => band.label));
+  const sexColors: Record<string, string> = { female: SERIES_COLORS[0], male: SERIES_COLORS[1] };
+
+  return (
+    <Card className="activity-card report-card report-card-wide" as="article">
+      <PanelHead
+        title="Resident profile"
+        onExport={() =>
+          exportReport(contextFor('Resident Profile', { filters, scope }), [...sexes, ...ages], distributionColumns)
+        }
+      />
+      <SummaryContext filters={filters} extra={scope} />
+      {snapshot.residents.length ? (
+        <>
+          <h4>By sex</h4>
+          <div className="chart-with-bars">
+            <DonutChart rows={sexes} colorFor={(row) => sexColors[row.label]} unit="residents" />
+            <ul className="chart-breakdown">
+              {sexes.map((row) => (
+                <li key={row.label}>
+                  <span className="chart-swatch" style={{ background: sexColors[row.label] }} aria-hidden="true" />
+                  <span>{titleCase(row.label)}</span>
+                  <strong>{row.count}</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <h4>By age band</h4>
+          <BarChart
+            rows={ages.map((row) => ({ label: row.label, values: [row.count] }))}
+            series={[{ label: 'Residents', color: SERIES_COLORS[0] }]}
+          />
+        </>
+      ) : (
+        <EmptyState
+          title="No residents in this scope"
+          text="Resident profiles appear here once a household has been recorded in the selected area."
+        />
+      )}
+      <p className="muted report-note">
+        Counts active residents on the register right now, so the selected period does not apply. A resident whose
+        birthday is missing or in the future falls into no band and is left out of the age chart.
+      </p>
+    </Card>
+  );
+}
+
+const stockColumns: CsvColumn<Tally>[] = [
+  { header: 'Item type', value: (row) => titleCase(row.label) },
+  { header: 'Units unallocated', value: (row) => row.count },
+];
+
+/**
+ * The stock position by type, and how much of it is running out.
+ *
+ * Units per type rather than items per type: five sacks of rice and five boxes
+ * of paracetamol are one item each and a very different holding, and the
+ * question this panel is asked is how much is on the shelf. `tally` counts rows,
+ * so the sum is done here.
+ *
+ * The low-stock ring reads the item's own reorder level through `lowStockItems`,
+ * the same call the inventory table's badge and the dashboard's alert tile make,
+ * so the three cannot disagree about what "low" is.
+ */
+function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
+  const types: InventoryItemType[] = ['medicine', 'food', 'equipment', 'hygiene', 'other'];
+  const byType: Tally[] = types
+    .map((type) => ({
+      label: type,
+      count: snapshot.inventoryItems
+        .filter((item) => item.type === type)
+        .reduce((sum, item) => sum + item.current_stock, 0),
+    }))
+    // A type the barangay stocks nothing of is not a category with a zero bar,
+    // it is a category that does not apply here.
+    .filter((row) => row.count > 0);
+  const low = lowStockItems(snapshot.inventoryItems);
+  const health: Tally[] = [
+    { label: 'at or below reorder level', count: low.length },
+    { label: 'sufficient', count: snapshot.inventoryItems.length - low.length },
+  ];
+  const healthColors: Record<string, string> = {
+    'at or below reorder level': 'var(--danger)',
+    sufficient: SERIES_COLORS[0],
+  };
+
+  return (
+    <Card className="activity-card report-card" as="article">
+      <PanelHead
+        title="Stock position"
+        onExport={() => exportReport(contextFor('Stock Position', { filters, scope }), byType, stockColumns)}
+      />
+      <SummaryContext filters={filters} extra={scope} />
+      {snapshot.inventoryItems.length ? (
+        <>
+          <h4>Items by reorder level</h4>
+          <div className="chart-with-bars">
+            <DonutChart rows={health} colorFor={(row) => healthColors[row.label]} unit="items" />
+            <ul className="chart-breakdown">
+              {health.map((row) => (
+                <li key={row.label}>
+                  <span className="chart-swatch" style={{ background: healthColors[row.label] }} aria-hidden="true" />
+                  <span>{titleCase(row.label)}</span>
+                  <strong>{row.count}</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {byType.length ? (
+            <>
+              <h4>Units on hand by type</h4>
+              <BarChart
+                rows={byType.map((row) => ({ label: titleCase(row.label), values: [row.count] }))}
+                series={[{ label: 'Units unallocated', color: SERIES_COLORS[1] }]}
+              />
+            </>
+          ) : null}
+        </>
+      ) : (
+        <EmptyState title="Nothing stocked yet" text="A barangay administrator adds supplies from the Inventory screen." />
+      )}
+      <p className="muted report-note">
+        Unallocated stock only — what the barangay still holds, not what health workers are carrying. Stock is a current
+        position, so the selected period does not apply. An item whose reorder level is 0 has its warning switched off
+        and never counts as low.
+      </p>
+    </Card>
+  );
+}
+
 /** Every barangay side by side, including the ones holding nothing. */
-function ComparisonPanel({ stats, filters, scope }: { stats: BarangayStats[] } & PanelProps) {
+function ComparisonPanel({
+  snapshot,
+  stats,
+  filters,
+  scope,
+}: { snapshot: AdminSnapshot; stats: BarangayStats[] } & PanelProps) {
   const plotted = stats.some((row) => row.residents || row.assessments || row.underweight);
+  // The whole nutrition mix per barangay, next to the single underweight share
+  // the bars and the table above already carry. Same panel rather than a
+  // seventh card: it is the same comparison asked at one more level of detail,
+  // and splitting them would put two charts of the same barangays on two cards
+  // that scroll apart.
+  const mix = nutritionByBarangay(snapshot);
   const columns: TableColumn<BarangayStats>[] = [
     { key: 'name', header: 'Barangay', render: (row) => row.name },
     { key: 'households', header: 'Households', render: (row) => row.households },
@@ -165,7 +340,7 @@ function ComparisonPanel({ stats, filters, scope }: { stats: BarangayStats[] } &
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead
-        title="Barangay Comparison"
+        title="Barangay comparison"
         onExport={() => exportReport(contextFor('Barangay Comparison', { filters, scope }), stats, comparisonColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />
@@ -196,6 +371,19 @@ function ComparisonPanel({ stats, filters, scope }: { stats: BarangayStats[] } &
           text="Barangay figures appear here once households and assessments have synced."
         />
       )}
+      {/* Four bands per barangay on one scale. Only drawn when something was
+          assessed: four empty tracks per barangay is the same false "chart
+          failed" reading the guard above avoids. Band colours are the BMI
+          rail's, so a band is one colour on the phone and here. */}
+      {mix.some((row) => row.values.some((value) => value)) ? (
+        <>
+          <h4>Nutrition mix by barangay</h4>
+          <BarChart
+            rows={mix}
+            series={NUTRITION_ORDER.map((status) => ({ label: titleCase(status), color: NUTRITION_COLORS[status] }))}
+          />
+        </>
+      ) : null}
       <Table
         columns={columns}
         rows={stats}
@@ -226,7 +414,7 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
   return (
     <Card className="activity-card report-card" as="article">
       <PanelHead
-        title="Assessment Coverage"
+        title="Assessment coverage"
         onExport={() => exportReport(contextFor('Assessment Coverage', { filters, scope }), stats, comparisonColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />
@@ -292,7 +480,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead
-        title="Supply Utilization"
+        title="Supply utilization"
         onExport={() => exportReport(contextFor('Supply Utilization', { filters, scope }), rows, utilizationColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />

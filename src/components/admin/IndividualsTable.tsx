@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Barangay, Individual, NutritionStatus } from '../../types/database';
+import type { Individual, NutritionStatus } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
 import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
-import { NUTRITION_ORDER, fetchBarangayScope, fetchResidentPage, readAllResidentPages, type ResidentStatusFilter } from '../../services/adminData';
+import {
+  FILTER_PARAMS,
+  NUTRITION_ORDER,
+  describeScope,
+  fetchBarangayScope,
+  fetchResidentPage,
+  readAllResidentPages,
+  type AdminFilters,
+  type AdminSnapshot,
+  type ResidentStatusFilter,
+} from '../../services/adminData';
 import { PULL_PAGE_SIZE } from '../../lib/supabase';
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
@@ -85,18 +95,20 @@ const exportColumns: CsvColumn<Individual>[] = [
  * own queue length and applied to every row alike, so on the portal it said
  * nothing about the record it sat beside.
  *
- * The barangay narrows the registry through the household, which is the only row
- * that records membership. It comes from the page's filter bar rather than a
- * control of its own, so the scope an officer chose on the dashboard is still in
- * force on the list they drilled into.
+ * The barangay and purok narrow the registry through the household, which is the
+ * only row that records either. Sex, age band and membership are columns on the
+ * resident itself. All five come from the page's filter bar rather than controls
+ * of their own, so the scope an officer chose on the dashboard is still in force
+ * on the list they drilled into — and every one of them is resolved server-side,
+ * alongside the search and the paging.
  */
 type IndividualsTableProps = {
-  barangayId: string | null;
-  /** Only to name the active scope in the chip and the export preamble. */
-  barangays: Barangay[];
+  filters: AdminFilters;
+  /** Only to name the active scope in the caption and the export preamble. */
+  snapshot: Pick<AdminSnapshot, 'barangays' | 'puroks'>;
 };
 
-export function IndividualsTable({ barangayId, barangays }: IndividualsTableProps) {
+export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -136,13 +148,34 @@ export function IndividualsTable({ barangayId, barangays }: IndividualsTableProp
     settledFor: '',
   });
 
+  // Back to page 1 when the drawer's filters change. They cannot go through a
+  // handler here — they arrive from the URL, changed by a control on another
+  // component — so this is the adjust-state-during-render pattern rather than
+  // an effect: React discards this render and restarts before anything is
+  // committed, so no request ever goes out at the stale offset. Narrowing to
+  // one purok while on page 4 of the whole registry would otherwise render an
+  // empty table reading "Page 4 of 1", which looks like a purok with no
+  // residents rather than a page that no longer exists.
+  const scopeKey = FILTER_PARAMS.map(([key]) => filters[key] ?? '').join('|');
+  const [pagedScope, setPagedScope] = useState(scopeKey);
+
+  if (pagedScope !== scopeKey) {
+    setPagedScope(scopeKey);
+    setPage(1);
+  }
+
   // What this render is asking for. `loading` is derived from it rather than
   // held in its own state, so a keystroke marks the table busy on the same
-  // render that changed the query.
-  const requestKey = `${query}|${page}|${barangayId ?? 'all'}|${statusFilter ? `${statusFilter.status}:${statusFilter.from}:${statusFilter.to}` : ''}`;
-  const barangayName = barangayId
-    ? barangays.find((barangay) => barangay.barangay_id === barangayId)?.name ?? 'Selected barangay'
-    : null;
+  // render that changed the query. Every narrow filter is read off
+  // `FILTER_PARAMS` rather than named here: a filter this key misses is one
+  // that changes the request without ever triggering a refetch.
+  const requestKey = [
+    query,
+    page,
+    ...FILTER_PARAMS.map(([key]) => filters[key] ?? 'all'),
+    statusFilter ? `${statusFilter.status}:${statusFilter.from}:${statusFilter.to}` : '',
+  ].join('|');
+  const scopeName = describeScope(filters, snapshot);
   const { rows, total, error } = result;
   const loading = result.settledFor !== requestKey;
 
@@ -157,7 +190,7 @@ export function IndividualsTable({ barangayId, barangays }: IndividualsTableProp
     let current = true;
 
     const timeoutId = setTimeout(() => {
-      fetchResidentPage(query, ITEMS_PER_PAGE, (page - 1) * ITEMS_PER_PAGE, statusFilter, barangayId)
+      fetchResidentPage(query, ITEMS_PER_PAGE, (page - 1) * ITEMS_PER_PAGE, filters, statusFilter)
         .then((next) => {
           if (current) {
             setResult({ rows: next.rows, total: next.total, error: null, settledFor: requestKey });
@@ -178,7 +211,7 @@ export function IndividualsTable({ barangayId, barangays }: IndividualsTableProp
       current = false;
       clearTimeout(timeoutId);
     };
-  }, [query, page, statusFilter, barangayId, requestKey]);
+  }, [query, page, statusFilter, filters, requestKey]);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
 
@@ -190,7 +223,7 @@ export function IndividualsTable({ barangayId, barangays }: IndividualsTableProp
    */
   async function exportResidents() {
     const [all, barangay] = await Promise.all([
-      readAllResidentPages((offset) => fetchResidentPage(query, PULL_PAGE_SIZE, offset, statusFilter, barangayId)),
+      readAllResidentPages((offset) => fetchResidentPage(query, PULL_PAGE_SIZE, offset, filters, statusFilter)),
       fetchBarangayScope(),
     ]);
 
@@ -203,10 +236,17 @@ export function IndividualsTable({ barangayId, barangays }: IndividualsTableProp
           // The band is assessed over a period; an unfiltered registry is not.
           from: statusFilter?.from ?? 'all dates',
           to: statusFilter?.to ?? 'all dates',
+          // Every filter that narrowed the rows, named on the file. A preamble
+          // that lists the barangay but not the age band describes a wider set
+          // than the file holds, which is the FR-09 failure in a subtler form
+          // than a truncated export.
           filters: [
             ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
             ...(statusFilter ? [{ label: 'Nutrition status', value: titleCase(statusFilter.status) }] : []),
-            { label: 'Barangay', value: barangayName ?? 'All barangays' },
+            { label: 'Area', value: scopeName },
+            ...(filters.sex ? [{ label: 'Sex', value: titleCase(filters.sex) }] : []),
+            ...(filters.ageBand ? [{ label: 'Age band', value: filters.ageBand }] : []),
+            ...(filters.membership ? [{ label: 'Membership', value: titleCase(filters.membership) }] : []),
           ],
         },
         all,
