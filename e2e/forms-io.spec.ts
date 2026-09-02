@@ -40,10 +40,13 @@ async function openBhw(page: Page, path: string) {
   await page.goto(path);
 
   const gate = page.getByRole('dialog');
-  if (await gate.count()) {
-    await gate.locator('input.pin-input').fill('2749');
-    await gate.getByRole('button').last().click();
-  }
+
+  // Waited for, not counted — see the same note in ui-audit.spec.ts. `goto`
+  // resolves before the gate has rendered, so asking whether it exists yet
+  // skipped the unlock and left every screen behind an unanswered dialog.
+  await gate.waitFor({ state: 'visible' });
+  await gate.locator('input.pin-input').fill('2749');
+  await gate.getByRole('button').last().click();
 
   await expect(page.getByRole('navigation', { name: /sections/i })).toBeVisible();
 }

@@ -167,10 +167,17 @@ async function unlockBhw(page: Page) {
 /** A reload re-locks the device, so every direct navigation meets the gate again. */
 async function passGate(page: Page) {
   const gate = page.getByRole('dialog');
-  if (await gate.count()) {
-    await gate.locator('input.pin-input').fill('2749');
-    await gate.getByRole('button').last().click();
-  }
+
+  // Waited for, not counted. `page.goto` resolves on load, and the gate is two
+  // renders further on — the session read, then the device-handover check, which
+  // is a dynamic import and so lands a tick later still. A bare `count()` here
+  // asked whether the gate had rendered *yet*, got 0, skipped the unlock and
+  // then spent five seconds waiting for a navigation that was never going to
+  // appear behind a dialog nobody had answered.
+  await gate.waitFor({ state: 'visible' });
+  await gate.locator('input.pin-input').fill('2749');
+  await gate.getByRole('button').last().click();
+
   await expect(page.getByRole('navigation', { name: /sections/i })).toBeVisible();
 }
 
