@@ -38,6 +38,9 @@ export function BHWDashboard({
   const [latestIndividuals, setLatestIndividuals] = useState<Individual[]>([]);
   const [readFailed, setReadFailed] = useState(false);
 
+  // Keyed on the whole snapshot, not its resident count: a correction to someone
+  // already on file leaves the count alone, and this list would keep showing the
+  // row as it read before the edit.
   useEffect(() => {
     let current = true;
 
@@ -59,7 +62,7 @@ export function BHWDashboard({
     return () => {
       current = false;
     };
-  }, [snapshot.individualCount]);
+  }, [snapshot]);
 
 
   return (
