@@ -2,6 +2,11 @@
 # without being asked. The suite prints its own count; nothing here repeats it. The
 # build is here too: it fails on things `tsc -b` alone does not, and it produces what
 # `cap sync` copies into the APK.
+#
+# The Playwright suite is the second job. It existed for four days without ever
+# running unasked, and by the time anyone did run it, sixteen of its specs were
+# failing on a race the specs themselves had — which is exactly the state a suite
+# nothing runs ends up in.
 name: CI
 
 on:
@@ -29,3 +34,37 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  # Separate job, not another step: it needs a browser download the other checks
+  # don't, and a red cross here means something different from a failing unit
+  # test. The suite uses no account and no network — every spec seeds its own
+  # session and stubs the one Supabase call the shell makes — so the placeholders
+  # below are enough, same as above.
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://example.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Chromium only: the one project in playwright.config.ts is a Pixel 7,
+      # which is chromium. Installing all three browsers triples the download for
+      # two nothing runs.
+      - run: npx playwright install --with-deps chromium
+      # playwright.config.ts starts the dev server itself and waits for the port.
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        # Traces are captured on first retry, so this has something in it exactly
+        # when someone needs it and is empty otherwise.
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
