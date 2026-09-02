@@ -6,8 +6,8 @@ describe('describeAuthError', () => {
     expect(describeAuthError('Invalid login credentials')).toContain('did not match');
   });
 
-  // The one that mattered most: "Failed to fetch" does not tell a field worker
-  // that the problem is the signal rather than their password.
+  // "Failed to fetch" does not tell a field worker the problem is the signal
+  // rather than their password.
   it('names the connection when the request never reached the server', () => {
     for (const raw of ['Failed to fetch', 'NetworkError when attempting to fetch resource', 'Load failed', 'TypeError: fetch failed']) {
       expect(describeAuthError(raw)).toContain('No connection');
@@ -27,8 +27,8 @@ describe('describeAuthError', () => {
     expect(describeAuthError('INVALID LOGIN CREDENTIALS')).toBe(describeAuthError('invalid login credentials'));
   });
 
-  // An unrecognised error must still leave the reader with something to do, and
-  // must never be the raw string — that is the behaviour being replaced.
+  // An unrecognised error must still leave the reader something to do, and must
+  // never be the raw string.
   it('falls back to an actionable sentence rather than the raw text', () => {
     const fallback = describeAuthError('AuthApiError: unexpected_failure (500)');
 

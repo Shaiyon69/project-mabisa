@@ -4,26 +4,14 @@ import { titleCase } from '../../lib/utils';
 import type { Tally } from '../../services/adminData';
 
 /**
- * The chart primitives the admin portal draws with: a donut for a distribution,
- * a line chart for a series over months, and grouped horizontal bars for a
- * comparison across barangays or items.
+ * The chart primitives the admin portal draws with: a donut for a distribution, a
+ * line chart for a series over months, and grouped horizontal bars for a
+ * comparison across barangays or items. Inline SVG, no charting library.
  *
- * Inline SVG and plain elements, no charting library. These three shapes are the
- * whole demand, a dependency would ship a second design system into a
- * hand-written CSS surface, and the admin bundle is served to an LGU workstation
- * that may be on a metered line.
- *
- * Colour follows the entity, never its rank: a caller passes a colour per series
- * or per category, so the same category keeps its colour when a filter removes
- * its neighbours. The four nutrition bands reuse the BMI rail's palette, so the
- * band a BHW saw on the phone is the band an officer sees in the portal. That
- * palette is muted by design (see DESIGN.md) and its adjacent pairs sit below
- * the separation a colour-alone encoding would need, so every chart here carries
- * a second encoding: each value is written beside its mark, and every chart with
- * more than one series has a legend.
- *
- * The colours, the row and series shapes and `niceMax` live in `lib/charts.ts`
- * so this file exports components only.
+ * Colour follows the entity, never its rank, so a category keeps its colour when
+ * a filter removes its neighbours. The palette is muted, so every chart carries a
+ * second encoding: values written beside their marks, and a legend on any chart
+ * with more than one series. Colours and shapes live in `lib/charts.ts`.
  */
 
 function Legend({ series }: { series: ChartSeries[] }) {
@@ -40,13 +28,9 @@ function Legend({ series }: { series: ChartSeries[] }) {
 }
 
 /**
- * A distribution as a ring, with the total in the middle.
- *
- * The ring answers "what is the mix" at a glance and the centre answers "out of
- * how many", which is the question a share is worthless without. Segments are
- * separated by a gap in the surface colour so two adjacent bands are told apart
- * by an edge as well as by hue; `children` is where the caller puts the written
- * breakdown, because the ring is the comparison and the list is the answer.
+ * A distribution as a ring, with the total in the middle. Segments are separated
+ * by a gap in the surface colour, so adjacent bands are told apart by an edge as
+ * well as by hue. `children` is where the caller puts the written breakdown.
  */
 export function DonutChart({
   rows,
@@ -79,8 +63,8 @@ export function DonutChart({
           const dash = Math.max(arcs[index] - gap, 0);
           const rotation = (starts[index] / circumference) * 360 - 90;
 
-          // A band nobody fell into is a category with no arc, not a zero-length
-          // one — an empty stroke still paints its round cap as a dot.
+          // A band nobody fell into gets no arc: a zero-length stroke still
+          // paints its round cap as a dot.
           return row.count ? (
             <circle
               key={row.label}
@@ -109,13 +93,9 @@ export function DonutChart({
 }
 
 /**
- * Counts per period, one line per series.
- *
- * Every series is a count of the same kind of thing, so they share one axis. A
- * rate would need a second scale, and a chart with two y-axes can be made to
- * show whatever relationship its author wants — the rate stays in the table and
- * the export. Empty periods are drawn at zero rather than skipped: the month
- * nobody was assessed is the finding.
+ * Counts per period, one line per series. Every series counts the same kind of
+ * thing, so they share one axis; a rate would need a second, and stays in the
+ * table. Empty periods are drawn at zero rather than skipped.
  */
 export function LineChart({ rows, series }: { rows: ChartRow[]; series: ChartSeries[] }) {
   const width = 720;
@@ -127,8 +107,7 @@ export function LineChart({ rows, series }: { rows: ChartRow[]; series: ChartSer
   const step = rows.length > 1 ? plotWidth / (rows.length - 1) : 0;
   const x = (index: number) => pad.left + (rows.length > 1 ? index * step : plotWidth / 2);
   const y = (value: number) => pad.top + plotHeight - (value / max) * plotHeight;
-  // Every label when they fit, otherwise every nth: fewer labels read better
-  // than twelve overlapping ones.
+  // Every label when they fit, otherwise every nth.
   const labelEvery = Math.ceil(rows.length / 12);
   const label = rows
     .map((row) => `${row.label}: ${series.map((entry, index) => `${entry.label} ${row.values[index]}`).join(', ')}`)
@@ -201,19 +180,12 @@ export function LineChart({ rows, series }: { rows: ChartRow[]; series: ChartSer
 }
 
 /**
- * Grouped horizontal bars on one shared scale.
+ * Grouped horizontal bars on one shared scale — horizontal because the labels are
+ * barangay and item names, and one scale so a bar twice as long is twice as many.
+ * Each bar carries its own value.
  *
- * Horizontal because the labels are barangay and item names, which do not fit
- * under a vertical column without being turned on their side. One scale across
- * every series and every row, so a bar twice as long is twice as many —
- * normalising each series to its own maximum would draw six residents and six
- * hundred at the same length. Each bar carries its value, so the chart is still
- * readable when two of the colours are not.
- *
- * The scale is drawn: gridlines behind the tracks and their numbers once
- * underneath, so a length can be read against something even before its own
- * value is looked at. `axisTicks` picks how many divisions the maximum splits
- * into evenly, and the gridlines are spaced from that same count.
+ * Gridlines sit behind the tracks with their numbers underneath; `axisTicks`
+ * picks how many divisions the maximum splits into evenly.
  */
 export function BarChart({ rows, series }: { rows: ChartRow[]; series: ChartSeries[] }) {
   const max = niceMax(Math.max(...rows.flatMap((row) => row.values), 0));
@@ -260,15 +232,10 @@ export function BarChart({ rows, series }: { rows: ChartRow[]; series: ChartSeri
 }
 
 /**
- * One share as a ring: a part of a whole where the whole is the same kind of
- * thing, e.g. residents assessed out of residents registered.
- *
- * A ring rather than a bar because a set of them tiles into a grid a reader
- * scans by fullness, which is how a coverage question is actually asked ("who is
- * behind"). One hue, never a colour per row — this encodes magnitude, not
- * identity, and a colour per barangay would claim a meaning the number does not
- * have. The percentage sits in the middle and the raw counts sit under the
- * label, because a share with no denominator is not a finding.
+ * One share as a ring: a part of a whole of the same kind, such as residents
+ * assessed out of residents registered. One hue for every row, since this encodes
+ * magnitude rather than identity. The raw counts sit under the label, because a
+ * share with no denominator is not a finding.
  */
 export function GaugeRing({
   value,

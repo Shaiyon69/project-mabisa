@@ -21,7 +21,7 @@ export type MabisaDataContextValue = {
   snapshot: LocalSnapshot;
   message: string | null;
   setMessage: (message: string | null) => void;
-  /** The engine status, kept as the union rather than flattened into a message string consumers would have to sniff. */
+  /** The engine status, kept as the union rather than a message string. */
   syncStatus: SyncStatus;
   /** Text for the failure banner, or null when the last pass was not a failure. */
   syncError: string | null;

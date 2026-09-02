@@ -37,11 +37,9 @@ import { filtersFromParams, paramsFromFilters } from '../hooks/useAdminData';
 import type { HealthAssessment, Individual, InventoryItem, NutritionStatus, SupplyDisbursement } from '../types/database';
 import { PULL_PAGE_SIZE } from '../lib/supabase';
 
-// `fetchAdminSnapshot` is the one export here that talks to Supabase rather
-// than computing on rows already in hand, so the purok-narrowing test below
-// needs a fake client. Only `.from()` and `.rpc()` are replaced — `readAllPages`
-// stays real, since it is the paging logic the read genuinely depends on, and
-// faking it too would test the fake instead of the code.
+// `fetchAdminSnapshot` is the one export here that talks to Supabase, so the
+// purok-narrowing test below needs a fake client. Only `.from()` and `.rpc()` are
+// replaced; `readAllPages` stays real.
 const fake = vi.hoisted(() => ({
   tables: {} as Record<string, Record<string, unknown>[]>,
 }));
@@ -75,9 +73,7 @@ vi.mock('../lib/supabase', async (importOriginal) => {
 
         return builder;
       },
-      // Every account this test cares about is an RHU read (`current_barangay_id`
-      // null); `fetchBarangayScope`'s own tests already cover the branches this
-      // wouldn't exercise.
+      // Every account here is an RHU read (`current_barangay_id` null).
       rpc: () => Promise.resolve({ data: null, error: null }),
     },
   };
@@ -111,8 +107,7 @@ describe('tally', () => {
   });
 
   it('keeps zero categories when an order is given', () => {
-    // A distribution that silently drops `obese` reads as a missing category
-    // rather than an empty one, which is the whole reason `order` exists.
+    // A dropped `obese` reads as a missing category rather than an empty one.
     expect(tally(rows, (row) => row.status, NUTRITION_ORDER)).toEqual([
       { label: 'underweight', count: 1 },
       { label: 'normal', count: 2 },
@@ -175,8 +170,7 @@ describe('reorderLevelOf', () => {
     expect(reorderLevelOf(item('a', 'Rice', 40, 5))).toBe(5);
   });
 
-  // Zero is the office switching the warning off, and `??` is what keeps it from
-  // collapsing into the shared fallback the way `||` would.
+  // Zero switches the warning off, and `??` keeps it out of the shared fallback.
   it('keeps a zero level rather than falling back', () => {
     expect(reorderLevelOf(item('a', 'Leaflets', 0, 0))).toBe(0);
     expect(lowStockItems([item('a', 'Leaflets', 0, 0)])).toEqual([]);
@@ -225,8 +219,7 @@ describe('disbursementsByItem', () => {
   });
 
   it('keeps a release whose item has not synced down instead of dropping it', () => {
-    // Losing the row would make the report total disagree with the source
-    // records, which is exactly the acceptance criterion FR-09 sets.
+    // Losing the row would make the report total disagree with the source records.
     expect(disbursementsByItem([release('1', 'missing', 5)], items)).toEqual([{ label: 'Unknown item', count: 5 }]);
   });
 
@@ -258,8 +251,8 @@ describe('period', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-22T05:00:00.000Z'));
 
-    // The chips are lit from this, so a range arriving in a shared link still
-    // highlights the preset it corresponds to instead of reading as custom.
+    // The chips are lit from this, so a range from a shared link still highlights
+    // the preset it matches.
     expect(presetRange('last30')).toEqual({ from: '2026-07-24', to: '2026-08-22' });
     expect(activePreset({ ...presetRange('last30'), barangayId: null })).toBe('last30');
     expect(activePreset({ ...presetRange('ytd'), barangayId: null })).toBe('ytd');
@@ -280,8 +273,7 @@ describe('barangay scope', () => {
   it('names the scope, and says so when there is none', () => {
     expect(describeScope({ from: 'a', to: 'b', barangayId: null }, { barangays, puroks })).toBe('All barangays');
     expect(describeScope({ from: 'a', to: 'b', barangayId: 'b1' }, { barangays, puroks })).toBe('Cabugao');
-    // A scope naming a barangay this session cannot read must not silently read
-    // as "everything" — that is the caption saying the opposite of the truth.
+    // A barangay this session cannot read must not read as "everything".
     expect(describeScope({ from: 'a', to: 'b', barangayId: 'gone' }, { barangays, puroks })).toBe('Unknown barangay');
   });
 
@@ -289,8 +281,7 @@ describe('barangay scope', () => {
     expect(describeScope({ from: 'a', to: 'b', barangayId: 'b1', purokId: 'p1' }, { barangays, puroks })).toBe(
       'Cabugao — Purok 1',
     );
-    // A purok id this session cannot name is a data problem, not a reason to
-    // drop back to the barangay name as though nothing had been asked for.
+    // A purok this session cannot name must not drop back to the barangay name.
     expect(describeScope({ from: 'a', to: 'b', barangayId: 'b1', purokId: 'gone' }, { barangays, puroks })).toBe(
       'Cabugao — Unknown purok',
     );
@@ -315,8 +306,7 @@ describe('describeBarangayScope', () => {
     expect(describeBarangayScope('b', barangays)).toBe('Barangay Poblacion');
   });
 
-  // The failure this guards: an RHU export spans every barangay, and captioning
-  // it with any single name puts a false heading on a true report.
+  // An RHU export spans every barangay, so no single name may caption it.
   it('does not name a single barangay on an unconfined RHU export', () => {
     expect(describeBarangayScope(null, barangays)).toBe('All barangays (2) — Rural Health Unit');
   });
@@ -356,8 +346,7 @@ describe('assessmentsBelowAdultBmiAge', () => {
     expect(assessmentsBelowAdultBmiAge([{ resident_id: 'adult' }], residents, on)).toBe(0);
   });
 
-  // A resident the portal did not read back is unknown, not young — counting them
-  // would put a caveat on a report that has no children in it.
+  // A resident the portal did not read back is unknown, not young.
   it('does not treat an unknown resident as a child', () => {
     expect(assessmentsBelowAdultBmiAge([{ resident_id: 'nobody' }], residents, on)).toBe(0);
   });
@@ -369,8 +358,8 @@ describe('readAllResidentPages', () => {
     Array.from({ length: PULL_PAGE_SIZE }, (_, index) => resident(`r${offset + index}`));
 
   it('follows every page, not just the first', async () => {
-    // The bug this guards: one oversized range is trimmed to the cap in silence,
-    // and the export prints its own row count as though the file were complete.
+    // One oversized range is trimmed to the cap in silence, and the export prints
+    // its own row count as though the file were complete.
     const pages = [
       { rows: full(0), total: PULL_PAGE_SIZE + 2 },
       { rows: [resident('last-1'), resident('last-2')], total: PULL_PAGE_SIZE + 2 },
@@ -417,9 +406,9 @@ describe('barangayStats', () => {
     created_by: null,
   });
 
-  // Two barangays of very different size, plus a household nobody stamped a
-  // barangay on. `big` is three times `small` and has the same proportion of
-  // underweight readings, which is the case a count-shaded map gets wrong.
+  // Two barangays of very different size, plus an unstamped household. `big` is
+  // three times `small` at the same underweight rate, which a count-shaded map
+  // gets wrong.
   const snapshot: AdminSnapshot = {
     ...emptyAdminSnapshot,
     barangays: [barangay('big', 'Cabugao'), barangay('small', 'Salay'), barangay('empty', 'Pag-asa')],
@@ -468,8 +457,7 @@ describe('barangayStats', () => {
   });
 
   it('keeps a barangay that holds nothing, with no rate rather than a zero', () => {
-    // A missing row reads as an omission; a 0% rate claims everyone was weighed
-    // and none was underweight, which is a different and false statement.
+    // A missing row reads as an omission; a 0% rate claims everyone was weighed.
     expect(at('empty').residents).toBe(0);
     expect(at('empty').underweightRate).toBeNull();
     expect(at('empty').coverageRate).toBeNull();
@@ -491,8 +479,7 @@ describe('monthlyTrend', () => {
       { from: '2026-01-01', to: '2026-03-31', barangayId: null },
     );
 
-    // A trend drawn only from the months that have data hides the month nobody
-    // was assessed, which is the gap the chart exists to show.
+    // A trend drawn only from the months with data hides the month nobody was assessed.
     expect(points.map((point) => point.month)).toEqual(['2026-01', '2026-02', '2026-03']);
     expect(points[1]).toMatchObject({ assessments: 0, underweight: 0, rate: null });
     expect(points[0]).toMatchObject({ assessments: 1, underweight: 1, rate: 1 });
@@ -561,8 +548,7 @@ describe('filterInventory', () => {
     ).toEqual(['b', 'c']);
   });
 
-  // `reorder_level: 0` is the office switching the warning off, so it must
-  // never surface under "low" even though its stock (0) is at its level (0).
+  // `reorder_level: 0` switches the warning off, even though stock 0 is at level 0.
   it('keeps a reorder_level of 0 out of "low", matching lowStockItems', () => {
     expect(filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'low' })).not.toContainEqual(
       expect.objectContaining({ item_id: 'c' }),
@@ -626,8 +612,7 @@ describe('filterAccounts', () => {
     expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, purokId: 'p2' }))).toEqual(['bhw-inactive']);
   });
 
-  // The reason `AccountRow.barangayId` exists at all: a BHW's barangay is only
-  // reachable through their purok assignment, never `profile.barangay_id`.
+  // A BHW's barangay is reachable only through their purok assignment.
   it('finds a BHW whose barangay is reached only through their purok', () => {
     expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: 'b2' }))).toEqual(['bhw-inactive']);
   });
@@ -636,8 +621,7 @@ describe('filterAccounts', () => {
 describe('birthdayRangeFor', () => {
   const on = new Date(2026, 7, 22); // 2026-08-22, local time, matching ageBandOf's own clock.
 
-  // "Under 5" has no lower age limit, so it needs no upper bound on the
-  // birthday (`to`) — only a lower one (`from`), for the age-4 ceiling.
+  // "Under 5" has no lower age limit, so it needs only a lower birthday bound.
   it('gives Under 5 no upper bound on the birthday, only a lower one', () => {
     expect(birthdayRangeFor('Under 5', on)).toEqual({ from: '2021-08-23', to: null });
   });
@@ -723,17 +707,14 @@ describe('fetchAdminSnapshot purok narrowing', () => {
     expect(snapshot.residents.map((row) => row.resident_id)).toEqual(['r1']);
     expect(snapshot.assessments.map((row) => row.assessment_id)).toEqual(['a1']);
     expect(snapshot.disbursements.map((row) => row.log_id)).toEqual(['d1']);
-    // Stock is held at the barangay, not the purok — the purok filter must
-    // leave it alone even though it narrows everything reached via a resident.
+    // Stock is held at the barangay, so the purok filter must leave it alone.
     expect(snapshot.inventoryItems.map((row) => row.item_id)).toEqual(['i1']);
   });
 });
 
 describe('useAdminData URL round trip', () => {
-  // `useSearchParams` needs a router mounted around it, which this project's
-  // test runner has no DOM to provide — so this exercises the same plain
-  // `URLSearchParams` logic the hook wraps in `useMemo`/`useCallback`, which is
-  // the only place a narrow filter can actually fail to round-trip.
+  // `useSearchParams` needs a router and a DOM, so this exercises the plain
+  // `URLSearchParams` logic the hook wraps.
   const sample: AdminFilters = {
     from: '2026-01-01',
     to: '2026-12-31',
@@ -783,9 +764,8 @@ describe('managesAccount', () => {
 
   it('lets a barangay admin manage health workers and nobody else', () => {
     expect(managesAccount('barangay_admin', 'bhw')).toBe(true);
-    // The two that matter: a barangay administrator must never get controls on
-    // another administrator's row, their own included. The RPC refuses it either
-    // way, but a button whose only outcome is an error is worth not drawing.
+    // A barangay administrator gets no controls on another administrator's row,
+    // their own included.
     expect(managesAccount('barangay_admin', 'barangay_admin')).toBe(false);
     expect(managesAccount('barangay_admin', 'admin')).toBe(false);
   });

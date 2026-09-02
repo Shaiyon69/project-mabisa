@@ -25,12 +25,10 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
   const [isLoading, setIsLoading] = useState(false);
   const [selected, setSelected] = useState<Individual | null>(null);
 
-  // Debounced SQLite query — loading is set inside the timeout, not the effect body, so typing doesn't force a re-render per keystroke.
-  //
-  // `current` guards the query as well as the timer: clearing the timeout does
-  // nothing to a read already in flight, so a slow result for "cru" could land
-  // after a fast one for "cruz" and overwrite it, and its `finally` would clear
-  // the loading flag on a search still running.
+  // Debounced SQLite query, with loading set inside the timeout so typing does not
+  // re-render per keystroke. `current` guards the read as well as the timer:
+  // clearing the timeout does nothing to a query already in flight, so a slow
+  // result for "cru" could otherwise land after a fast one for "cruz".
   useEffect(() => {
     let current = true;
 
@@ -56,8 +54,8 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
     };
   }, [query]);
 
-  // The chosen person stays in the list even once the search moves on, or the
-  // field would have an id it can't render a name for.
+  // The chosen person stays in the list once the search moves on, or the field
+  // holds an id it cannot render a name for.
   const options = searchResults.map(toOption);
   if (selected && selected.resident_id === selectedResidentId && !searchResults.some((person) => person.resident_id === selectedResidentId)) {
     options.unshift(toOption(selected));

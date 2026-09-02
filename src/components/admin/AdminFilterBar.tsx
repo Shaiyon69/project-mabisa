@@ -19,16 +19,9 @@ import { RESIDENT_STATUSES, USER_ROLES, type UserRole } from '../../types/databa
 
 /**
  * The narrow filters the drawer can offer, each paired with the values it may
- * take. One table rather than a control per tab: every one of these is a single
- * value chosen from a closed list, so they differ only in their label and their
- * options, and a per-tab component would be seven copies of one `<select>`.
- *
- * The option lists are read off the tuples that already define these unions
- * (`RESIDENT_STATUSES`, `USER_ROLES`, `AGE_BANDS`) wherever one exists, so a
- * membership state or a role added to the database cannot go missing from the
- * picker. `sex`, `itemType` and `stockLevel` have no exported tuple to read —
- * their unions are declared inline in `types/database.ts` — so they are listed
- * here and the `satisfies` below is what keeps them honest.
+ * take. Option lists are read off the tuples that define these unions wherever
+ * one exists; `sex`, `itemType` and `stockLevel` have none, so they are listed
+ * here and the `satisfies` below keeps them honest.
  */
 const FILTER_FIELDS = {
   sex: { label: 'Sex', options: ['female', 'male'] },
@@ -60,46 +53,21 @@ type AdminFilterBarProps = {
   snapshot: AdminSnapshot;
   /** Only an `admin` sees more than one barangay, so only an admin gets the picker. */
   role: UserRole | null;
-  /**
-   * The narrow filters this tab offers, in the order they should appear. Each
-   * tab passes its own: the Residents drawer has no business offering a stock
-   * level, and a drawer carrying every filter on every screen is the bar this
-   * one replaced.
-   */
+  /** The narrow filters this tab offers, in the order they should appear. */
   fields?: readonly FilterFieldId[];
-  /**
-   * Whether the purok picker is offered. Inventory passes `false`: stock is held
-   * at barangay level and `fetchAdminSnapshot` deliberately leaves it out of the
-   * purok guard, so a purok control there would claim a narrowing that never
-   * happens.
-   */
+  /** Whether the purok picker is offered. Inventory passes `false`, since stock is held at barangay level. */
   puroks?: boolean;
   /** Reports only: the card picker. */
   sections?: boolean;
 };
 
 /**
- * The scope control: which period, which area, which slice of the tab's own
- * data, and what that combination actually governs.
+ * The scope control: which period, which area, which slice of the tab's own data,
+ * and a line naming what the range does not touch — households, residents and
+ * stock are running positions rather than events inside the period.
  *
- * It used to be two bare `<input type="date">` fields labelled "Period from" and
- * "Period to", which was confusing for a reason that had nothing to do with the
- * inputs: half the numbers on the screen ignore the period entirely. Households,
- * residents and stock are running positions — a household does not stop existing
- * outside a date range — while assessments and releases are events inside it.
- * Two date fields with no statement of that read as a filter over everything.
- *
- * So the drawer says things in the order they are needed: the common ranges as
- * one click each, the area, the tab's own filters, the resolved range and scope
- * in words, and the one line naming what the range does not touch. Typing a
- * custom range is still possible and still uses the native picker — it is folded
- * away because it is the rarer act, not because it is secondary.
- *
- * On the page itself none of that is spent. A scope control is read far more
- * often than it is changed, so what stays on screen is one button in the page
- * header naming the active range, and the controls live behind it in a drawer
- * over the right edge. Opening them costs no page height at all, which a bar
- * spanning the content column could never manage.
+ * Lives in a drawer behind one header button, since a scope control is read far
+ * more often than it is changed.
  */
 export function AdminFilterBar({
   filters,
@@ -113,24 +81,21 @@ export function AdminFilterBar({
 }: AdminFilterBarProps) {
   const preset = activePreset(filters);
   const [open, setOpen] = useState(false);
-  // Shown by default when the range matches no preset, so a custom range
-  // arriving in a shared link shows the dates that produced it rather than
-  // hiding them behind a control the reader has to think to open.
+  // Shown by default when the range matches no preset, so a custom range from a
+  // shared link shows the dates that produced it.
   const [showCustom, setShowCustom] = useState(preset === null);
   const canPickBarangay = role === 'admin' && snapshot.barangays.length > 1;
   const activeLabel = PERIOD_PRESETS.find((option) => option.id === preset)?.label ?? 'Custom range';
   const scope = describeScope(filters, snapshot);
   const range = `${formatDate(filters.from)} – ${formatDate(filters.to)}`;
-  // A purok belongs to one barangay, so the list is the selected barangay's
-  // once there is one. Offering all six across three barangays would let an
-  // officer pick a purok that empties every panel on the screen.
+  // A purok belongs to one barangay, so the list is the selected barangay's once
+  // there is one.
   const purokOptions = filters.barangayId
     ? snapshot.puroks.filter((purok) => purok.barangay_id === filters.barangayId)
     : snapshot.puroks;
   // How many narrow filters are set, counted off the same table the URL round
-  // trip uses. A filtered screen that looks unfiltered is the worst way this
-  // control can fail, so the count rides on the closed trigger — the same
-  // reason `IndividualsTable` shows its drill-down as a removable chip.
+  // trip uses, and shown on the closed trigger so a filtered screen never looks
+  // unfiltered.
   const narrowCount =
     FILTER_PARAMS.filter(([key]) => key !== 'barangayId' && key !== 'purokId' && filters[key]).length +
     (filters.reportSections?.length ? 1 : 0);
@@ -168,8 +133,8 @@ export function AdminFilterBar({
               onClick={() => {
                 onChange({ ...filters, ...presetRange(option.id) });
                 setShowCustom(false);
-                // A preset is the whole choice, so the drawer has done its job.
-                // A custom range or a narrow filter is not: those leave it open.
+                // A preset is the whole choice; a custom range or a narrow
+                // filter is not, so those leave the drawer open.
                 setOpen(false);
               }}
             >
@@ -215,9 +180,8 @@ export function AdminFilterBar({
             <SelectField
               label="Barangay"
               value={filters.barangayId ?? ''}
-              // The purok goes with it. A purok from the barangay just left
-              // matches no household in the new one, so keeping it would empty
-              // every panel on the screen under a heading naming the barangay.
+              // The purok goes with it: one from the barangay just left matches
+              // no household in the new one.
               onChange={(event) => onChange({ ...filters, barangayId: event.target.value || null, purokId: null })}
             >
               <option value="">All barangays</option>
@@ -249,9 +213,8 @@ export function AdminFilterBar({
               key={field}
               label={FILTER_FIELDS[field].label}
               value={filters[field] ?? ''}
-              // An empty option is the absence of the filter, not the string
-              // "", which is what every consumer of `AdminFilters` treats as
-              // unset and what `paramsFromFilters` drops from the URL.
+              // An empty option is the absence of the filter, not the string "",
+              // which is what `AdminFilters` treats as unset.
               onChange={(event) => onChange({ ...filters, [field]: event.target.value || null })}
             >
               <option value="">All</option>
@@ -281,13 +244,8 @@ export function AdminFilterBar({
 }
 
 /**
- * Which report cards to print.
- *
- * Checkboxes rather than a multi-select: four options that are read at a glance
- * and toggled independently, which is the one shape a `<select multiple>` is
- * worse at than plain inputs. Clearing every box writes `null` rather than an
- * empty list — an unfiltered Reports page shows every card, and a URL that says
- * "no sections" would otherwise render a blank screen with no explanation.
+ * Which report cards to print. Clearing every box writes `null` rather than an
+ * empty list, so an unfiltered Reports page shows every card instead of none.
  */
 function SectionPicker({ filters, onChange }: { filters: AdminFilters; onChange: (filters: AdminFilters) => void }) {
   const selected = filters.reportSections ?? [];
@@ -296,8 +254,7 @@ function SectionPicker({ filters, onChange }: { filters: AdminFilters; onChange:
     <fieldset className="filter-sections">
       <legend>Report cards</legend>
       {REPORT_SECTIONS.map((section) => {
-        // Nothing selected means every card, so every box reads as checked —
-        // the alternative shows four empty boxes above four rendered cards.
+        // Nothing selected means every card, so every box reads as checked.
         const checked = !selected.length || selected.includes(section.id);
 
         return (
@@ -325,14 +282,11 @@ function DataFreshness({ snapshot, loading }: { snapshot: AdminSnapshot; loading
     return <small className="muted">Reading…</small>;
   }
 
-  // The epoch stamp is what `emptyAdminSnapshot` carries, so it means "no read
-  // has completed" rather than "read in 1970".
+  // The epoch stamp is what `emptyAdminSnapshot` carries: no read has completed.
   if (snapshot.fetchedAt === new Date(0).toISOString()) {
     return <small className="muted">Not read yet.</small>;
   }
 
-  // Two facts, not two sentences: when this screen last read the database, and
-  // how recent the newest record it found is.
   return (
     <small className="muted">
       {/*
@@ -352,12 +306,8 @@ function DataFreshness({ snapshot, loading }: { snapshot: AdminSnapshot; loading
 }
 
 /**
- * The caption under a summary, so no number on this portal is readable without
- * the period and filters that produced it (FR-06 acceptance).
- *
- * The filter clause is only printed when there is one. "Filters: none beyond the
- * period" appeared under every summary on the portal and said, at length, that
- * there is nothing more to say — the period alone is the whole filter context.
+ * The caption under a summary, naming the period and filters that produced it.
+ * The filter clause is printed only when there is one.
  */
 export function SummaryContext({
   filters,

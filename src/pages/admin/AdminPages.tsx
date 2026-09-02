@@ -17,17 +17,12 @@ import { filterInventory } from '../../services/adminData';
 
 /**
  * Every page here reads the central database through `useAdminData`, never
- * `useMabisaData().snapshot`. That snapshot is the local SQLite mirror the BHW
- * app writes to, so on an LGU workstation it is empty and on a shared machine it
- * is whatever the last field device left — FR-06 requires the central data, and
- * the portal is a wired desktop that can always reach it.
+ * `useMabisaData().snapshot` — that snapshot is the BHW app's local SQLite
+ * mirror, which on a workstation is empty.
  *
- * Two roles reach these screens. `admin` is the RHU or LGU account and reads
- * every barangay, which is what makes the map and the comparison meaningful;
- * `barangay_admin` runs one barangay and is the only role the stock RPCs accept.
- * Each page asks `useAdminRole()` for the difference rather than being duplicated
- * per role — the scoping is enforced by RLS either way, and what changes here is
- * only which controls are worth offering.
+ * Two roles reach these screens: `admin` reads every barangay, `barangay_admin`
+ * runs one and is the only role the stock RPCs accept. Pages ask `useAdminRole()`
+ * for which controls to offer; the scoping itself is enforced by RLS.
  */
 export function AdminDashboardPage() {
   const { snapshot, filters, setFilters, loading, error } = useAdminData();
@@ -79,10 +74,8 @@ export function InventoryPage() {
   const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
   const role = useAdminRole();
   const canMoveStock = role === 'barangay_admin';
-  // Bumped after a movement so the carried-stock table re-reads its view along
-  // with the snapshot. It reads a different source — the `bhw_item_stock` view
-  // rather than `inventory_items` — so one refresh has to reach both or the two
-  // tables disagree for as long as the page stays open.
+  // Bumped after a movement so the carried-stock table re-reads `bhw_item_stock`
+  // along with the snapshot, which reads `inventory_items`.
   const [movementToken, setMovementToken] = useState(0);
 
   function handleChanged() {
@@ -105,9 +98,7 @@ export function InventoryPage() {
             role={role}
             fields={['itemType', 'stockLevel']}
             // No purok control: stock is held at barangay level, and
-            // `fetchAdminSnapshot` deliberately leaves inventory out of the
-            // purok guard. A picker here would claim a narrowing that never
-            // happens.
+            // `fetchAdminSnapshot` leaves inventory out of the purok guard.
             puroks={false}
           />
         }

@@ -1,18 +1,13 @@
 /**
  * The non-component half of the admin charts: the colours a series may take, the
- * shapes the marks are fed, and the axis maximum they are scaled against.
- *
- * Separate from `components/admin/Charts.tsx` because a `.tsx` file that exports
- * anything but components costs every consumer React Fast Refresh — the same
- * split as `BhwLanguageContext.tsx` / `bhwLanguage.ts`. It also keeps `niceMax`
- * unit-testable without a DOM.
+ * shapes the marks are fed, and the axis maximum they are scaled against. Split
+ * out so `Charts.tsx` exports components only, and so `niceMax` tests without a DOM.
  */
 
 /**
- * The BMI rail's bands, so one nutrition status is one colour on the phone and
- * in the portal. Colour follows the entity, never its rank: this is a lookup by
- * status, not a list indexed by position, so a filter that leaves only two bands
- * does not repaint them.
+ * The BMI rail's bands, so one nutrition status is one colour on the phone and in
+ * the portal. A lookup by status, not a list indexed by position, so a filter
+ * that leaves two bands does not repaint them.
  */
 export const NUTRITION_COLORS: Record<string, string> = {
   underweight: 'var(--bmi-low)',
@@ -37,11 +32,7 @@ export type ChartRow = {
   key?: string;
 };
 
-/**
- * The smallest round number at or above the largest value, so the top gridline
- * reads as a number a person would say out loud (20, 250, 1000) rather than as
- * whatever the tallest mark happened to be.
- */
+/** The smallest round number at or above the largest value, so the top gridline reads as 20, 250 or 1000. */
 export function niceMax(value: number): number {
   if (value <= 0) {
     return 1;
@@ -54,12 +45,9 @@ export function niceMax(value: number): number {
 }
 
 /**
- * The gridline positions for an axis topped at `max`, as whole numbers.
- *
- * Four divisions when they come out even, then two, then one — a scale topped at
- * 25 is labelled 0 and 25 rather than at quarters that round to 6 and 13, and a
- * scale topped at 1 gets two ticks instead of five that read `0 0 1 1 1`. Every
- * number is divisible by 1, so the fallback always terminates.
+ * The gridline positions for an axis topped at `max`, as whole numbers. Four
+ * divisions when they come out even, then two, then one, so no scale is labelled
+ * at fractions that round to repeats. Divisibility by 1 terminates the fallback.
  */
 export function axisTicks(max: number): number[] {
   const divisions = [4, 2, 1].find((count) => Number.isInteger(max / count)) ?? 1;

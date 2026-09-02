@@ -2,19 +2,12 @@ import boundaries from '../data/barangay-boundaries.json';
 import { logDev } from './utils';
 
 /**
- * Barangay outlines, and the projection that turns them into SVG paths.
+ * Barangay outlines, and the projection that turns them into SVG paths. The
+ * boundary data is bundled rather than fetched, and projecting a handful of
+ * polygons into a viewBox is the code below, so there is no mapping library here.
  *
- * The boundary data is imported rather than fetched: an LGU portal is online,
- * but a bundled file has no host to be down, no CORS to configure and no tile
- * server to pay for. It is also the whole reason there is no mapping library
- * here — projecting a handful of barangay polygons into a viewBox is the twenty
- * lines below, and Leaflet or MapLibre would add hundreds of kilobytes plus a
- * basemap request to draw shapes we already have the coordinates for.
- *
- * `src/data/barangay-boundaries.json` ships empty. It is deployment data, like
- * VITE_BARANGAY_NAME: only the LGU knows which municipality this install covers,
- * and inventing plausible-looking outlines would put a map on an official screen
- * that is confidently in the wrong place.
+ * `src/data/barangay-boundaries.json` ships empty: it is deployment data, like
+ * VITE_BARANGAY_NAME, and only the LGU knows which municipality an install covers.
  */
 
 type Position = [number, number];
@@ -38,9 +31,8 @@ export type BarangayShape = {
 };
 
 /**
- * `Barangay Poblacion` and `POBLACION` are the same place. Both sides of the
- * match go through this, so a boundary file exported with the prefix still
- * lines up with a `barangays.code` recorded without it.
+ * Normalises a barangay name or code, so a boundary file exported as
+ * `Barangay Poblacion` still lines up with a `barangays.code` of `POBLACION`.
  */
 export function boundaryKey(value: string | null | undefined): string {
   return (value ?? '')
@@ -51,8 +43,8 @@ export function boundaryKey(value: string | null | undefined): string {
 }
 
 function ringsOf(geometry: NonNullable<GeoFeature['geometry']>): Ring[][] {
-  // A Polygon is one ring set; a MultiPolygon is a list of them. Normalising to
-  // the list shape here means the renderer has one case instead of two.
+  // A Polygon is one ring set, a MultiPolygon a list of them. Normalised here, so
+  // the renderer has one case.
   if (geometry.type === 'Polygon') {
     return [geometry.coordinates as Ring[]];
   }
@@ -88,12 +80,9 @@ export type Projection = {
 };
 
 /**
- * An equirectangular fit of the given shapes to a fixed-width viewBox.
- *
- * Longitude is scaled by cos(latitude) so a barangay is not stretched sideways —
- * at 8–18°N that is a 1–3% correction, small but the kind of thing that makes a
- * familiar outline look subtly wrong. Anything fancier (a real conic projection)
- * buys nothing across a single municipality, which spans a few kilometres.
+ * An equirectangular fit of the given shapes to a fixed-width viewBox. Longitude
+ * is scaled by cos(latitude) so a barangay is not stretched sideways; a real
+ * conic projection buys nothing across a single municipality.
  *
  * Returns null when there is nothing to fit, so the caller renders its
  * "boundaries not supplied" state rather than dividing by a zero-width extent.

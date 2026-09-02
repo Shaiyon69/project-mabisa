@@ -18,9 +18,8 @@ type ComboboxProps = {
 };
 
 /**
- * Type-ahead select — value handed back is always an option's id, never the
- * typed text. Not a native <datalist>: it can't carry an id separate from the
- * label, and Android WebView renders it inconsistently.
+ * Type-ahead select. The value handed back is always an option's id, never the
+ * typed text, which is why this is not a native <datalist>.
  */
 export function Combobox({
   label,
@@ -43,8 +42,8 @@ export function Combobox({
   const matches = term ? options.filter((option) => option.label.toLowerCase().includes(term)) : options;
   const selectedLabel = options.find((option) => option.value === value)?.label ?? '';
 
-  // Closes on a tap or Tab anywhere else. pointerdown covers tapping into another
-  // control; focusin covers keyboard-only moves that never produce a click.
+  // Closes on a tap or Tab anywhere else: pointerdown for another control,
+  // focusin for keyboard-only moves that never produce a click.
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -128,8 +127,8 @@ export function Combobox({
                     role="option"
                     aria-selected={option.value === value}
                     className={`combobox-option${index === activeIndex ? ' is-active' : ''}`}
-                    // FieldShell is a <label>: without preventDefault the click is
-                    // forwarded to the input, which refocuses and reopens the list.
+                    // FieldShell is a <label>, so without preventDefault the click
+                    // refocuses the input and reopens the list.
                     onClick={(event) => {
                       event.preventDefault();
                       select(option);

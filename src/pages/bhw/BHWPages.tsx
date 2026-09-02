@@ -62,16 +62,15 @@ export function ResidentsPage() {
   const [results, setResults] = useState<Individual[]>([]);
   const [searching, setSearching] = useState(false);
 
-  // Same 300ms debounce, same `current` guard against a slow read landing after a
-  // faster later one, and the same accessor the resident picker uses; this screen
-  // only differs in showing the whole list rather than one selection.
+  // The same debounce, `current` guard and accessor the resident picker uses; this
+  // screen only shows the whole list rather than one selection.
   useEffect(() => {
     let current = true;
 
     const timeoutId = setTimeout(() => {
       setSearching(true);
-      // The one list that keeps former members: a status set by mistake has to be
-      // reachable, and looking someone up by name is how a BHW would go find them.
+      // The one list that keeps former members, so a status set by mistake stays
+      // reachable by name.
       readLocalIndividuals({ searchQuery: query, limit: 50, includeFormer: true })
         .then((rows) => {
           if (current) {
@@ -182,8 +181,8 @@ export function ProfilePage() {
   const [email, setEmail] = useState<string | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
 
-  // getSession reads the cached session, so the account line still renders on a
-  // phone that has been offline all day; getUser would go to the network.
+  // getSession reads the cached session, so the account line renders on a phone
+  // that has been offline all day; getUser would go to the network.
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => setEmail(data.session?.user.email ?? null));
   }, []);

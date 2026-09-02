@@ -27,8 +27,8 @@ export type BhwOutletContext = {
   fullName: string | null;
 };
 
-// Record safety is a rail on every screen, not a badge on one — a BHW shouldn't
-// have to open a screen to check whether the last hour of encoding is still only on this phone.
+// A rail on every screen, so checking whether the last hour of encoding has left
+// the phone does not take a screen of its own.
 function recordRail(
   isOnline: boolean,
   syncStatus: SyncStatus,

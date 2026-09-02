@@ -41,8 +41,8 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     isInFuture(disbursementDate) && 'a disbursement date on or before today',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
-  // Minted once and held until the row lands, so a retry after a failed write
-  // updates the same release instead of decrementing stock a second time.
+  // Minted once and held until the row lands, so a retry updates the same release
+  // rather than decrementing stock twice.
   const pendingId = useRef<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -79,8 +79,8 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
       return;
     }
 
-    // The release is recorded and the stock already decremented. Nothing below
-    // may report it as unsaved — a retry would take the quantity twice.
+    // The release is recorded and the stock decremented, so nothing below may
+    // report it as unsaved.
     pendingId.current = null;
     setResidentId('');
     setQuantity('1');

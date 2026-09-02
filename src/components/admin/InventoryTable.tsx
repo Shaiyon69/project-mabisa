@@ -37,11 +37,9 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
     {
       key: 'indicator',
       header: 'Indicator',
-      // Reads the item's own level, the same call the dashboard tile and the
-      // inventory report make, so the badge and the alert count cannot disagree.
+      // The item's own level, the same call the dashboard tile makes.
       render: (item) => {
-        // Same rule as lowStockItems, including 0 meaning the warning is off, so the
-        // badge and the dashboard's alert count cannot disagree.
+        // Same rule as lowStockItems, including 0 meaning the warning is off.
         const level = reorderLevelOf(item);
         const isLow = level > 0 && item.current_stock <= level;
 

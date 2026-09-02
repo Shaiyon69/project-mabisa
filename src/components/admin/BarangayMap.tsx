@@ -22,24 +22,17 @@ function describeRate(row: BarangayStats): string {
 }
 
 /**
- * Underweight readings by barangay, drawn on the barangay outlines.
+ * Underweight readings by barangay, drawn on the barangay outlines. Shaded by
+ * rate rather than count, or the largest barangay reads as the worst every time.
+ * The count and its denominator are both on the label.
  *
- * Shaded by *rate* rather than count, deliberately: a barangay with three times
- * the population records three times the underweight readings while being no
- * worse off, and a map shaded by count says the largest barangay is the problem
- * every time. The count and its denominator are both on the label, so the
- * comparison the colour makes and the number a report would quote are the same
- * figure.
- *
- * It is captioned "underweight", never "malnutrition". A BMI band is a reading
- * placed on the scale that produced it, not a diagnosis — the scope boundary
- * this system is built against is explicit that the two are different claims,
- * and a map is exactly where the stronger word would be assumed.
+ * Captioned "underweight", never "malnutrition": a BMI band is a reading, not a
+ * diagnosis.
  */
 export function BarangayMap({ stats, barangays, selected, onSelect }: BarangayMapProps) {
   const shaped = useMemo(() => {
-    // Matched on the barangay's own code (or name), so a boundary file exported
-    // from any source lines up without a second mapping table to maintain.
+    // Matched on the barangay's own code or name, so a boundary file from any
+    // source lines up without a second mapping table.
     const codes = new Map(
       barangays.map((barangay) => [barangay.barangay_id, boundaryKey(barangay.code ?? barangay.name)]),
     );
@@ -55,9 +48,8 @@ export function BarangayMap({ stats, barangays, selected, onSelect }: BarangayMa
   const missing = stats.filter((row) => !shaped.some((entry) => entry.row.barangayId === row.barangayId));
 
   // The darkest shade is the worst rate on screen rather than a fixed 100%, so a
-  // barangay at 8% against neighbours at 1% is visible instead of uniformly
-  // pale. The legend prints both ends, because a relative scale that does not
-  // say what it tops out at is a picture with no units.
+  // barangay at 8% among neighbours at 1% is visible. The legend prints both ends,
+  // since a relative scale has to say where it tops out.
   const worst = Math.max(...stats.map((row) => row.underweightRate ?? 0), 0.01);
 
   if (!projection) {
@@ -87,7 +79,7 @@ export function BarangayMap({ stats, barangays, selected, onSelect }: BarangayMa
             d={projection.path(shape.polygons)}
             className={`barangay-shape${selected === row.barangayId ? ' is-selected' : ''}`}
             // Opacity rather than a computed colour, so the fill is one theme
-            // token and stays legible when the palette flips to dark.
+            // token and survives the dark palette.
             style={{ fillOpacity: 0.1 + 0.75 * ((row.underweightRate ?? 0) / worst) }}
             onClick={() => onSelect(selected === row.barangayId ? null : row.barangayId)}
             tabIndex={0}
@@ -123,12 +115,8 @@ export function BarangayMap({ stats, barangays, selected, onSelect }: BarangayMa
 }
 
 /**
- * The same numbers as a ranked list.
- *
- * Not a fallback for the map but a companion to it: a shape tells you where and
- * roughly how much, and a reader who needs to quote "12 of 48" into a report
- * needs the figure written down. It is also the whole panel when no boundary
- * file has been supplied, which is why it stands on its own.
+ * The same numbers as a ranked list, beside the map for a reader who needs to
+ * quote a figure. Stands alone as the whole panel when no boundary file is supplied.
  */
 function BarangayRateList({
   rows,
@@ -155,8 +143,7 @@ function BarangayRateList({
             type="button"
             className={`summary-bar-link${selected === row.barangayId ? ' is-selected' : ''}`}
             aria-pressed={selected === row.barangayId}
-            // The unassigned bucket is a data-quality row, not a place: there is
-            // nothing to scope the screen to.
+            // The unassigned bucket is a data-quality row, not a place to scope to.
             disabled={!row.barangayId}
             onClick={() => onSelect(selected === row.barangayId ? null : row.barangayId)}
           >

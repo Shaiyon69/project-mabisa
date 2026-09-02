@@ -1,25 +1,19 @@
 import { secureStorage } from './secureStorage';
 
 /**
- * The PIN that unlocks this device's copy of the app.
+ * The PIN that unlocks this device's copy of the app. Everything here runs
+ * offline, so a BHW with no signal can still reach their own records.
  *
- * Everything here runs offline: a BHW in a purok with no signal has to be able
- * to get into their own records, so nothing in the verify path talks to Supabase.
- *
- * What this protects, and what it does not: the local database is already
- * encrypted with a 32-byte device key held in the Android Keystore, so the PIN
- * is not what keeps a stolen phone's records unreadable — the Keystore is. The
- * PIN protects the signed-in session on a device that is out of its owner's
- * hands for a few minutes, which is the situation that actually happens in the
- * field. Both together, not either alone.
+ * The Keystore-held device key is what keeps a stolen phone's database
+ * unreadable; the PIN protects the signed-in session while the phone is out of
+ * its owner's hands. Both together, not either alone.
  */
 
 export const PIN_LENGTH = 4;
 
 /**
- * OWASP's current figure for PBKDF2-SHA256. A four-digit PIN is only 10,000
- * possibilities, so the cost of one guess is the entire defence against an
- * attacker who has the stored hash — a plain SHA-256 of it would fall instantly.
+ * OWASP's current figure for PBKDF2-SHA256. A four-digit PIN is 10,000
+ * possibilities, so the cost of one guess is the whole defence.
  */
 const PBKDF2_ITERATIONS = 310_000;
 
@@ -43,7 +37,7 @@ type StoredPin = {
 
 type AttemptState = {
   failed: number;
-  /** Epoch ms until which entry is refused, or null. Persisted, so force-quitting the app does not clear the wait. */
+  /** Epoch ms until which entry is refused, or null. Persisted, so a force-quit does not clear the wait. */
   lockedUntil: number | null;
 };
 
@@ -62,7 +56,7 @@ function fromHex(value: string): Uint8Array {
   return new Uint8Array((value.match(/../g) ?? []).map((pair) => parseInt(pair, 16)));
 }
 
-/** Compares without an early return, so the time taken says nothing about how much of the hash matched. */
+/** Compares without an early return, so timing says nothing about how much matched. */
 function equalInConstantTime(left: string, right: string): boolean {
   if (left.length !== right.length) {
     return false;
@@ -100,11 +94,7 @@ async function readJson<T>(key: string): Promise<T | null> {
   }
 }
 
-/**
- * Why a PIN is not acceptable, or null when it is. Four digits is 10,000
- * possibilities before this; the handful ruled out here are the ones a person
- * guessing by hand would actually try first.
- */
+/** Why a PIN is not acceptable, or null when it is. Rules out the few a person would guess first. */
 export function describeWeakPin(pin: string): string | null {
   if (!new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin)) {
     return `Enter ${PIN_LENGTH} digits.`;
@@ -148,9 +138,8 @@ export async function setPin(userId: string, pin: string): Promise<void> {
 }
 
 /**
- * Removes the PIN and its attempt count. Called on sign-out: the next person to
- * sign in on this device sets their own, and a forgotten PIN is recoverable by
- * signing in again — which needs the account password, and a connection.
+ * Removes the PIN and its attempt count, on sign-out. The next person sets their
+ * own, and signing in again is the recovery path for a forgotten one.
  */
 export async function clearPin(userId: string): Promise<void> {
   await secureStorage.removeItem(pinKey(userId));
@@ -165,10 +154,8 @@ export type PinAttempt =
 
 /**
  * The delay after `failed` wrong entries: nothing for the first few, then 30s
- * doubling to a quarter of an hour. It never becomes a permanent lockout and
- * never wipes anything — this device may be holding the only copy of a day's
- * work, and locking a health worker out of unsent records is a worse outcome
- * than the one this is defending against.
+ * doubling to a quarter of an hour. Never a permanent lockout and never a wipe,
+ * since the device may hold the only copy of a day's work.
  */
 export function delayAfter(failed: number): number {
   if (failed <= FREE_ATTEMPTS) {

@@ -1,12 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HealthAssessment, Household, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
 
-// This file is the offline store — the only copy of a household until a sync
-// lands — and none of it is reachable from a pure function. So the Capacitor
-// plugin is replaced with a real SQLite (sql.js, already a dependency) behind
-// the same connection interface: the statements under test are executed by an
-// actual engine, so a malformed clause or a misplaced LIMIT fails here rather
-// than on a phone.
+// The Capacitor plugin is replaced with a real SQLite (sql.js, already a
+// dependency) behind the same connection interface, so a malformed clause or a
+// misplaced LIMIT fails here rather than on a phone.
 
 type SqlJsDatabase = {
   run: (statement: string, values?: unknown[]) => void;
@@ -23,7 +20,7 @@ const harness = vi.hoisted(() => ({
   database: null as SqlJsDatabase | null,
   /** Every statement the module executed, so a test can assert on the SQL itself. */
   statements: [] as string[],
-  /** One entry per executeSet, holding that transaction's statements — the only way to see what committed together. */
+  /** One entry per executeSet, holding that transaction's statements. */
   sets: [] as string[][],
   savedToStore: 0,
 }));
@@ -114,8 +111,7 @@ vi.mock('@capacitor-community/sqlite', () => {
 });
 
 async function newSqlJsDatabase(): Promise<SqlJsDatabase> {
-  // sql.js ships no type declarations, and this file is the only place it is
-  // used — a @types dev dependency to describe two methods would cost more than it tells.
+  // sql.js ships no type declarations and is used only here.
   // @ts-expect-error untyped module; the shape relied on is SqlJsDatabase above.
   const { default: initSqlJs } = await import('sql.js');
   const engine = await initSqlJs();
@@ -419,10 +415,9 @@ describe('the local store', () => {
       expect(await store.readLocalHouseholds({ searchQuery: 'HH-002' })).toHaveLength(1);
     });
 
-    // This search is the prefilter behind the re-visit lookup: an unescaped `_`
-    // matched any character, so a household number carrying one could pull back
-    // the wrong record — or, matching everything, push the real one past the
-    // 50-row limit and let a second copy of the house be recorded.
+    // The prefilter behind the re-visit lookup: an unescaped `_` matches any
+    // character, which pulls back the wrong record or pushes the right one past
+    // the row limit.
     it('treats a typed % or _ as a character, not a wildcard', async () => {
       await seed();
 
@@ -432,10 +427,8 @@ describe('the local store', () => {
   });
 
   describe('finding a household by its number', () => {
-    // The re-visit lookup. It used to be the LIKE search above, capped at 50
-    // rows and ordered newest-first, so `HH-1` in a purok holding HH-10, HH-100
-    // and the rest returned the newer near-misses and cut the exact match — and
-    // the form, told there was no such household, recorded the house twice.
+    // The re-visit lookup. A capped LIKE search returns the newer near-misses
+    // (HH-10, HH-100) and cuts the exact match, so the house gets recorded twice.
     it('finds the exact number past a page of rows that merely contain it', async () => {
       await store.pullHouseholdsFromServer([
         household({ household_id: 'target', household_number: 'HH-1', created_at: AT, updated_at: AT }),
@@ -494,8 +487,7 @@ describe('the local store', () => {
         expect(await store.countRows(table)).toBe(0);
       }
 
-      // The queue is the only copy of an unsent visit — the caller refuses the
-      // handover while it holds anything, and this must not empty it regardless.
+      // The queue is the only copy of an unsent visit, so this must not empty it.
       expect(await store.countRows('sync_queue')).toBe(1);
     });
   });
@@ -623,10 +615,8 @@ describe('the local store', () => {
       expect(await store.countRows('households')).toBe(1);
     });
 
-    // Android kills a backgrounded app routinely. If the row write and its queue
-    // entry commit separately, a kill in between leaves the visit on the phone
-    // looking saved with nothing queued to send it, and nothing ever reconciles
-    // that. So each save path has to commit both in one transaction.
+    // Separate commits leave a kill in between with the visit saved on the phone
+    // and nothing queued to send it.
     it.each([
       ['household', 'households', async () => store.saveHouseholdLocally(household({ household_id: 'h9' }))],
       [
@@ -654,10 +644,8 @@ describe('the local store', () => {
       expect(harness.sets[0].some((statement) => statement.includes('into sync_queue'))).toBe(true);
     });
 
-    // A visit used to be one save per member, each ending in its own flush — on
-    // web that serializes the whole database, so a six-member household wrote it
-    // seven times. One transaction also means a kill cannot leave a household
-    // holding some of its members.
+    // One flush rather than one per member, and a kill cannot leave a household
+    // holding only some of them.
     it('writes a household and every member in one transaction', async () => {
       await store.saveHouseholdWithMembersLocally(
         { row: household({ household_id: 'h9' }), operationType: 'INSERT' },
@@ -752,8 +740,8 @@ describe('the local store', () => {
       expect(queued.map((entry) => entry.target_table)).toEqual(['supply_disbursements']);
     });
 
-    // Three statements on this path, so two ways to be left inconsistent: a
-    // release with nothing queued, or a release with the stock never moved.
+    // Three statements, so two ways to be left inconsistent: nothing queued, or
+    // the stock never moved.
     it('writes the release, the stock move and the queue entry in one transaction', async () => {
       await store.saveSupplyDisbursementLocally(disbursement({ log_id: 'd1', quantity: 5 }));
 
@@ -801,9 +789,8 @@ describe('a device installed before the current schema', () => {
     vi.resetModules();
     harness.database = await newSqlJsDatabase();
 
-    // The first-release shape: no middle_name or status on individuals, and the
-    // three household columns that were later removed — `not null` with no
-    // default, which is what makes leaving them behind a broken insert.
+    // The first-release shape: no middle_name or status, and the three household
+    // columns later removed, which are `not null` with no default.
     harness.database.run(`create table households (
       household_id text primary key,
       household_number text not null,
@@ -851,8 +838,7 @@ describe('a device installed before the current schema', () => {
     expect(columns('households')).not.toContain('electric_service');
     expect(columns('households')).not.toContain('fuel_used');
 
-    // The rows that were already there survive the upgrade, and the status the
-    // new column defaults to is the one every pre-existing member actually has.
+    // Existing rows survive the upgrade and take the new column's default.
     const person = await store.readLocalIndividual('r1');
     expect(person?.first_name).toBe('Juan');
     expect(person?.status).toBe('active');

@@ -1,10 +1,9 @@
 import type { Individual } from '../types/database';
 
 /**
- * Likely-duplicate detection for resident profiles. Never blocks a save — the BHW
- * standing in the household is the one who can tell. Deliberately not fuzzy
- * (edit distance): normalization already covers the variation that actually
- * occurs — casing, a missed accent, a stray hyphen, doubled spaces.
+ * Likely-duplicate detection for resident profiles. Never blocks a save: the BHW
+ * standing in the household is the one who can tell. Not fuzzy — normalization
+ * covers the variation that occurs: casing, accents, hyphens, doubled spaces.
  */
 
 export type DuplicateConfidence = 'exact' | 'likely';
@@ -19,8 +18,7 @@ export type DuplicateMatch = {
 export function normalizeName(value: string | null | undefined): string {
   return (value ?? '')
     .normalize('NFD')
-    // Combining marks, so "Muñoz" and "Munoz" are one name and "Peña" is not a
-    // different person from "Pena".
+    // Combining marks, so "Muñoz" and "Munoz" are one name.
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     // Hyphens, apostrophes and periods are written inconsistently on paper forms.
@@ -35,7 +33,7 @@ type NameAndBirthday = {
   birthday: string;
 };
 
-/** Records among `existing` that look like `candidate`, most convincing first. Middle name isn't compared — it's optional, so a blank one would skew the result either way. */
+/** Records among `existing` that look like `candidate`, most convincing first. Middle name is optional, so it is not compared. */
 export function findLikelyDuplicates(candidate: NameAndBirthday, existing: Individual[]): DuplicateMatch[] {
   const first = normalizeName(candidate.first_name);
   const last = normalizeName(candidate.last_name);

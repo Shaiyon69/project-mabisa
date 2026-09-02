@@ -7,13 +7,9 @@ import { Table, TableMeta, type TableColumn } from '../common/Table';
 
 
 /**
- * What each health worker is still carrying.
- *
- * Read from the `bhw_item_stock` view rather than subtracted here: allocations
- * minus releases is the database's arithmetic, so the portal cannot disagree
- * with the phone about how much a health worker has left. `inventory_items.
- * current_stock` is a different number — the barangay's *unallocated* remainder
- * — and the two are labelled apart on purpose.
+ * What each health worker is still carrying, read from the `bhw_item_stock` view
+ * so the arithmetic is the database's. `inventory_items.current_stock` is a
+ * different number, the barangay's unallocated remainder, and is labelled apart.
  */
 export function BhwStockTable({ reloadToken }: { reloadToken: number }) {
   const [rows, setRows] = useState<BhwItemStock[]>([]);
@@ -46,8 +42,7 @@ export function BhwStockTable({ reloadToken }: { reloadToken: number }) {
     {
       key: 'bhw',
       header: 'Health worker',
-      // An id is shown when the name is not readable rather than nothing at all:
-      // a blank cell reads as an empty allocation.
+      // An id when the name is not readable: a blank cell reads as no allocation.
       render: (row) => names.get(row.bhw_id) ?? row.bhw_id,
     },
     { key: 'item', header: 'Item', render: (row) => row.item_name },

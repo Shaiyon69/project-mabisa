@@ -122,9 +122,8 @@ describe('newestUpdatedAt', () => {
     expect(newestUpdatedAt([{}, { updated_at: '2026-08-24T00:00:00.000Z' }], watermark)).toBe('2026-08-24T00:00:00.000Z');
   });
 
-  // The regression this helper exists for: inventory is pulled unfiltered, so its
-  // timestamps must not reach here. Passing them in advances the watermark past
-  // households the device has not read, and they are then skipped forever.
+  // Inventory is pulled unfiltered, so its timestamps must not reach here: they
+  // would advance the watermark past households the device has not read.
   it('would skip unread households if unfiltered rows were included', () => {
     const householdRows = [{ updated_at: '2026-08-21T00:00:00.000Z' }];
     const unfilteredStockRow = { updated_at: '2026-08-30T00:00:00.000Z' };
@@ -135,10 +134,8 @@ describe('newestUpdatedAt', () => {
 });
 
 describe('derivedEntityKeys', () => {
-  // The double-spend this guards. A release is subtracted from the device's stock
-  // the moment it is logged, but a quarantined one never reaches the server, so
-  // `bhw_item_stock` still counts the quantity as held. Pulling that figure hands
-  // the BHW back medicine they already gave away.
+  // A release is subtracted from the device's stock when logged, but a quarantined
+  // one never reaches the server, so `bhw_item_stock` still counts it as held.
   it('holds back the stock figure a quarantined release has already spent', () => {
     expect(derivedEntityKeys(entry('supply_disbursements', { log_id: 'l1', item_id: 'i1', resident_id: 'r1' }))).toEqual([
       { table: 'inventory_items', key: 'i1' },
@@ -185,9 +182,8 @@ describe('readAllPages', () => {
     expect(ranges).toEqual([[0, PULL_PAGE_SIZE - 1]]);
   });
 
-  // The data loss this exists for: a single capped read returns PULL_PAGE_SIZE rows
-  // and says nothing about the rest, the watermark advances past the newest of them,
-  // and every row the cap cut is below it — so the filtered pull never offers them again.
+  // A capped read returns PULL_PAGE_SIZE rows and says nothing about the rest, and
+  // the watermark then advances past every row the cap cut.
   it('keeps asking past the row cap instead of stopping at the first full page', async () => {
     const { page, ranges } = server(PULL_PAGE_SIZE * 2 + 3);
 
@@ -229,8 +225,7 @@ describe('withKnownParents', () => {
     expect(withKnownParents(rows, 'resident_id', residents)).toEqual(rows);
   });
 
-  // The failure this prevents: local foreign keys are on, so one unknown parent
-  // fails the whole insert set and the pull brings back nothing at all.
+  // Local foreign keys are on, so one unknown parent fails the whole insert set.
   it('drops a row naming a parent this device never received', () => {
     const rows = [{ resident_id: 'r1' }, { resident_id: 'somebody-elses' }];
 
@@ -243,8 +238,7 @@ describe('withKnownParents', () => {
 });
 
 describe('idleResult', () => {
-  // The shape the hook reports a failure with, so a caller cannot report a
-  // failed pass that still claims to have processed something.
+  // The shape the hook reports a failure with.
   it('carries the status and nothing else', () => {
     expect(idleResult('failed')).toEqual({
       status: 'failed',

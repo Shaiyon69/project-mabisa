@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { PIN_LENGTH, clearPin, delayAfter, describeWait, describeWeakPin, isPinSet, setPin, verifyPin } from './devicePin';
 import { secureStorage } from './secureStorage';
 
-// Each test uses its own account id: the store is shared for the file, and a
-// PIN is keyed per account precisely so two workers on one phone can't collide.
+// Each test uses its own account id: the store is shared for the file, and a PIN
+// is keyed per account.
 let nextUser = 0;
 const someone = () => `user-${(nextUser += 1)}`;
 
@@ -19,8 +19,7 @@ describe('describeWeakPin', () => {
     expect(describeWeakPin('27a9')).not.toBeNull();
   });
 
-  // Four digits is only 10,000 possibilities; these are the ones someone
-  // standing over the phone would actually try first.
+  // The few a person standing over the phone would try first.
   it('turns down the handful a person would guess by hand', () => {
     expect(describeWeakPin('1111')).toContain('same digit');
     expect(describeWeakPin('0000')).toContain('same digit');
@@ -95,8 +94,8 @@ describe('the wait after wrong entries', () => {
     expect(delayAfter(5)).toBe(30_000);
     expect(delayAfter(6)).toBe(60_000);
     expect(delayAfter(7)).toBe(120_000);
-    // Capped, and never a permanent lockout — this phone may hold the only copy
-    // of a day's records, and a health worker shut out of them is the worse outcome.
+    // Capped, and never a permanent lockout: this phone may hold the only copy of
+    // a day's records.
     expect(delayAfter(99)).toBe(15 * 60_000);
     expect(delayAfter(99)).toBeLessThan(Infinity);
   });
@@ -127,8 +126,7 @@ describe('the wait after wrong entries', () => {
 
     expect(await verifyPin(user, '2749')).toEqual({ ok: true });
 
-    // The next wrong entry starts from zero rather than being the fifth in a
-    // row, so it costs nothing. Without the reset this would already be a wait.
+    // The next wrong entry starts from zero, so it costs no wait.
     expect(await verifyPin(user, '0000')).toEqual({ ok: false, reason: 'wrong', waitMs: 0 });
   });
 });

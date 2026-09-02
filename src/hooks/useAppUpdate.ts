@@ -10,9 +10,8 @@ export type AppUpdateState = {
 };
 
 /**
- * Checks once per launch. No polling and no resume listener: a field shift is hours
- * long, and an update that lands mid-shift can wait for the next open rather than
- * interrupt a household visit.
+ * Checks once per launch. No polling and no resume listener, so an update landing
+ * mid-shift waits for the next open rather than interrupting a visit.
  */
 export function useAppUpdate(): AppUpdateState {
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);

@@ -24,12 +24,9 @@ type DuplicateWarningModalProps = {
 };
 
 /**
- * The duplicate warning, and the only thing standing between it and a save.
- *
- * It warns; it does not decide. The system performs no physical identity check, so
- * the person who can tell whether these are two people is the BHW in the room.
- * What the app owes in return is a record of the call they made — which is why
- * the override is disabled until a reason is typed.
+ * The duplicate warning. It warns and does not decide: only the BHW in the room
+ * can tell whether these are two people. The override stays disabled until a
+ * reason is typed, so the call they made is on record.
  */
 export function DuplicateWarningModal({
   open,

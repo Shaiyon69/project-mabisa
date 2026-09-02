@@ -8,7 +8,7 @@ type LoginPageProps = {
   password: string;
   authMessage: string | null;
   authLoading: boolean;
-  /** Records saved on this device that haven't reached the server, or null if unreadable — reassures a BHW dropped back here that nothing is lost. */
+  /** Records saved on this device that have not reached the server, or null if unreadable. */
   pendingRecordCount: number | null;
   onEmailChange: (email: string) => void;
   onPasswordChange: (password: string) => void;

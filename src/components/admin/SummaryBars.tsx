@@ -12,11 +12,9 @@ type SummaryBarsProps = {
 };
 
 /**
- * A distribution as labelled bars: the count is the answer and the bar is the
- * comparison, so both are on the row rather than one being inferred from the
- * other. Percentages are of the rows in the summary, which is why the total is
- * derived here instead of being passed in — a caption saying 40% of a set the
- * caller measured differently is the way this kind of panel goes wrong.
+ * A distribution as labelled bars, each row carrying both its count and its bar.
+ * Percentages are of the rows in the summary, so the total is derived here rather
+ * than passed in.
  */
 export function SummaryBars({ rows, emptyTitle, emptyText, hrefFor }: SummaryBarsProps) {
   const total = rows.reduce((sum, row) => sum + row.count, 0);
@@ -47,8 +45,8 @@ export function SummaryBars({ rows, emptyTitle, emptyText, hrefFor }: SummaryBar
           </>
         );
 
-        // A category with nobody in it goes nowhere: the link would open a list
-        // that is empty by arithmetic, which reads as a broken screen.
+        // A category with nobody in it goes nowhere: the list would be empty by
+        // arithmetic and read as a broken screen.
         const href = row.count && hrefFor ? hrefFor(row) : null;
 
         return (

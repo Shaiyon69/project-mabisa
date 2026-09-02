@@ -23,8 +23,8 @@ describe('escapeCsvCell', () => {
     expect(escapeCsvCell('=1+1')).toBe("'=1+1");
     expect(escapeCsvCell('+SUM(A1)')).toBe("'+SUM(A1)");
     expect(escapeCsvCell('@import')).toBe("'@import");
-    // A negative measurement is still data, but the guard has to win over
-    // readability here: the spreadsheet cannot tell the two apart either.
+    // A negative measurement is still data, but the spreadsheet cannot tell it
+    // from a formula either, so the guard wins.
     expect(escapeCsvCell('-5')).toBe("'-5");
   });
 });

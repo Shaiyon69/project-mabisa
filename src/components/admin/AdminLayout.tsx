@@ -13,14 +13,10 @@ type AdminLayoutProps = {
 };
 
 /**
- * Connectivity for the portal, read from the browser rather than from
- * `useMabisaData()`.
- *
- * The provider's flag comes from `@capacitor/network` and rides along with the
- * BHW sync engine, which the portal does not mount: an LGU workstation has no
- * local SQLite mirror and no queue to drain. `navigator.onLine` is the same
- * answer without any of that, and it is the one that matters here — every admin
- * screen reads Supabase live, so offline means the next read fails.
+ * Connectivity for the portal, read from `navigator.onLine` rather than
+ * `useMabisaData()`, whose flag rides along with the BHW sync engine the portal
+ * never mounts. Every admin screen reads Supabase live, so offline means the
+ * next read fails.
  */
 function useBrowserOnline(): boolean {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);

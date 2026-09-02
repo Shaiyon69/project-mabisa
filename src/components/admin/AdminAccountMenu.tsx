@@ -12,23 +12,20 @@ type AdminAccountMenuProps = {
 };
 
 /**
- * Who is signed in, and the two controls that belong to that account —
- * appearance and sign-out. On a shared LGU workstation the name is what someone
- * needs to check before they start encoding, which is why it is the button
- * itself; the role and the address are the same on every visit and sit behind
- * the click.
+ * Who is signed in, plus appearance and sign-out. The name is the button itself,
+ * since a shared workstation is checked before encoding starts; the role and
+ * address sit behind the click.
  *
- * Rendered twice, in the same way `adminNavItems` is: at the foot of the rail on
- * a wide window, and in `AdminTopbar` below 860px where the rail is hidden. CSS
- * keeps exactly one of the two on screen.
+ * Rendered at the foot of the rail and again in `AdminTopbar` below 860px, with
+ * CSS keeping exactly one on screen.
  */
 export function AdminAccountMenu({ fullName, logout }: AdminAccountMenuProps) {
   const [email, setEmail] = useState<string | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const menu = useRef<HTMLDetailsElement>(null);
 
-  // getSession reads the cached session rather than going to the network, so the
-  // account line renders immediately and still renders if Supabase is unreachable.
+  // getSession reads the cached session, so the account line renders immediately
+  // and survives Supabase being unreachable.
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => setEmail(data.session?.user.email ?? null));
   }, []);
@@ -74,8 +71,7 @@ export function AdminAccountMenu({ fullName, logout }: AdminAccountMenuProps) {
             variant="danger"
             className="profile-logout"
             onClick={() => {
-              // The menu is a plain <details>, so it stays open under the dialog
-              // unless it is closed here.
+              // A plain <details> stays open under the dialog unless closed here.
               menu.current?.removeAttribute('open');
               setConfirmingLogout(true);
             }}
@@ -106,7 +102,7 @@ export function AdminAccountMenu({ fullName, logout }: AdminAccountMenuProps) {
   );
 }
 
-/** First letters of the first two words, so an email address falls back to one letter rather than a slice of the domain. */
+/** First letters of the first two words, so an email address gives one letter rather than a slice of the domain. */
 function initialsOf(name: string): string {
   return name
     .split(/\s+/)

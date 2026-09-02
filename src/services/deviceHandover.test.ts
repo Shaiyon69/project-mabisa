@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The two things a handover actually does are a row count and a wipe; both live
-// in localDatabase, which needs a SQLite engine to say anything. The decision
-// under test is which of them runs, so they are stubbed and asserted on.
+// A handover is a row count and a wipe, both in localDatabase. The decision under
+// test is which of them runs, so they are stubbed and asserted on.
 const counts = vi.hoisted(() => ({ sync_queue: 0, sync_dead_letter: 0 }) as Record<string, number>);
 const cleared = vi.hoisted(() => ({ records: 0 }));
 
@@ -15,7 +14,7 @@ vi.mock('./localDatabase', () => ({
 }));
 
 // Vitest runs this in plain Node, which has no `localStorage`. Own properties as
-// well as a Map, because the draft sweep enumerates the keys.
+// well as a Map, since the draft sweep enumerates the keys.
 const stub = {
   getItem: (key: string): string | null => (key in values ? values[key] : null),
   setItem: (key: string, value: string) => {
@@ -61,8 +60,8 @@ describe('claiming a device for an account', () => {
     expect(cleared.records).toBe(0);
   });
 
-  // Signing in again after an expired token is this path, and it is why the
-  // check is here rather than on sign-out: those unsent records must survive it.
+  // Signing in again after an expired token takes this path, and its unsent
+  // records must survive it.
   it('lets the same account back in with records still waiting', async () => {
     localStorage.setItem(OWNER_KEY, ANA);
     counts.sync_queue = 7;
@@ -86,7 +85,7 @@ describe('claiming a device for an account', () => {
   });
 
   // A saved draft is an unfinished visit that never reached the queue, and the
-  // handover deletes every draft on the phone. Counting it is what stops the wipe.
+  // handover deletes every draft on the phone.
   it('refuses while the previous account has an unfinished household draft', async () => {
     localStorage.setItem(OWNER_KEY, ANA);
     localStorage.setItem(`mabisa.household_draft.${ANA}`, '{"members":[{}]}');
@@ -109,8 +108,7 @@ describe('claiming a device for an account', () => {
     expect(localStorage.getItem(OWNER_KEY)).toBe(ANA);
   });
 
-  // A quarantined record has not reached the server either. Wiping it is the one
-  // way this app loses a household for good.
+  // A quarantined record has not reached the server either.
   it('counts the dead letter as waiting', async () => {
     localStorage.setItem(OWNER_KEY, ANA);
     counts.sync_dead_letter = 2;

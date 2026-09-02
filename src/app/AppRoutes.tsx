@@ -8,7 +8,7 @@ import {
   ProfilePage,
   RegisterResidentPage,
   ResidentDetailPage,
-  // The admin tree exports a ResidentsPage too — different screen, this device's SQLite vs. the portal's registry.
+  // The admin tree exports a ResidentsPage too: this one reads the device's SQLite.
   ResidentsPage as BhwResidentsPage,
   SupplyDisbursementPage,
 } from '../pages/bhw/BHWPages';
@@ -27,16 +27,14 @@ type AppRoutesProps = {
 };
 
 export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProps) {
-  // One flag for both surfaces — a per-role predicate would leave a null (not-yet-known)
-  // role rejected by both and bouncing between them. The portal itself doesn't branch
-  // on admin vs. barangay_admin; RLS draws that line, not this flag.
+  // One flag for both surfaces: a per-role predicate would leave a not-yet-known
+  // role rejected by both and bouncing between them. RLS draws the finer line.
   const isAdmin = isDeskRole(role);
   const belongsHere = isAdmin ? buildsAdmin : buildsBhw;
 
-  // What a non-admin sees at the admin portal — never a silent bounce to /bhw,
-  // since on the admin deployment the field app is a different machine entirely.
-  // Held until roleChecked, since an in-flight lookup and a genuinely role-less
-  // account both resolve to null.
+  // What a non-admin sees at the admin portal, rather than a silent bounce to
+  // /bhw, which on that deployment is a different machine. Held until
+  // `roleChecked`, since an in-flight lookup also resolves to null.
   const adminRejection = roleChecked ? (
     <SurfaceNotice
       title="This is the BRHP-MSAM admin portal"
@@ -47,7 +45,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
     <SurfaceNotice title="Checking your account" body="One moment." />
   );
 
-  // A single-surface BHW build has nowhere to send an admin — the portal is another deployment, not another path here.
+  // A single-surface BHW build has nowhere to send an admin: the portal is another deployment.
   if (isSingleSurface && !belongsHere) {
     return buildsAdmin ? (
       adminRejection
@@ -87,9 +85,8 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
             isAdmin ? (
               <AdminLayout logout={logout} role={role} fullName={fullName} />
             ) : roleChecked && buildsBhw ? (
-              // A health worker who lands here has their own screens to go to, so
-              // send them rather than explain. The notice below is for the build
-              // that has no field app to send anyone to.
+              // A health worker who lands here has their own screens to go to. The
+              // notice below is for the build with no field app to send them to.
               <Navigate to="/bhw" replace />
             ) : (
               adminRejection
@@ -110,7 +107,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
   );
 }
 
-/** The whole screen when a session cannot be let through — the wrong deployment, or a device that is not free. */
+/** The whole screen when a session cannot be let through: the wrong deployment, or a device that is not free. */
 export function SurfaceNotice({ title, body, logout }: { title: string; body: string; logout?: () => Promise<void> }) {
   return (
     <main className="mobile-shell auth-shell">

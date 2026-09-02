@@ -12,8 +12,7 @@ export type BackgroundSyncState = {
 
 /**
  * How long to wait before re-running a pass that left entries deferred. Matches
- * the sync engine's first backoff step, so an entry waits at most one extra
- * interval past the moment it becomes due.
+ * the engine's first backoff step, so an entry waits at most one extra interval.
  */
 const RETRY_POLL_MS = 30_000;
 
@@ -29,11 +28,9 @@ export function useBackgroundSync(): BackgroundSyncState {
       const result = await syncPendingQueue();
       setStatus(result.status);
 
-      // `syncing` means a pass was already running and this call did nothing —
-      // its counters describe no pass at all. Storing it would overwrite the real
-      // last result with `deferred: 0`, and the retry effect below reads that as
-      // "nothing waiting" and stops re-arming its timer: entries left deferred by
-      // the running pass would then sit until a network flap or a manual tap.
+      // `syncing` means a pass was already running and this call did nothing, so
+      // its counters describe no pass. Storing it would overwrite the real result
+      // with `deferred: 0`, and the retry effect below would stop re-arming.
       if (result.status !== 'syncing') {
         setLastResult(result);
       }
@@ -97,11 +94,10 @@ export function useBackgroundSync(): BackgroundSyncState {
     };
   }, [runSync]);
 
-  // Wakes deferred entries — without a timer here, a device sitting online with a
-  // failed entry would never retry until the BHW tapped the button or the
-  // connection flapped. Each pass's fresh `lastResult` re-arms the next timer, so
-  // this walks itself forward and stops once a pass comes back clean. Gated on
-  // `deferred` so an idle device doesn't re-pull every table on a timer.
+  // Wakes deferred entries: without this, a device sitting online with a failed
+  // entry retries only on a tap or a network flap. Each pass's `lastResult`
+  // re-arms the next timer, and a clean pass stops it. Gated on `deferred`, so an
+  // idle device does not re-pull every table on a timer.
   //
   // ponytail: fixed interval, not aligned to the earliest next_attempt_at. Costs
   // a few no-op local reads during a long backoff — no network traffic, since a

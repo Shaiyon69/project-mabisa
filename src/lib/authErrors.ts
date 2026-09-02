@@ -1,12 +1,12 @@
 /**
- * Turns a Supabase auth error into a sentence naming what to try next, rather
- * than raw GoTrue text like "Invalid login credentials". Raw text still reaches `logDev`.
+ * Turns a Supabase auth error into a sentence naming what to try next. The raw
+ * text still reaches `logDev`.
  */
 export function describeAuthError(rawMessage: string): string {
   const message = rawMessage.toLowerCase();
 
-  // Ordered by how often a BHW will actually hit it, and matched on fragments
-  // because GoTrue's exact wording has changed across versions.
+  // Ordered by how often a BHW hits it, and matched on fragments, since GoTrue's
+  // exact wording changes across versions.
   if (message.includes('invalid login credentials') || message.includes('invalid email or password')) {
     return 'That email or password did not match. Check for a capital letter at the start, or a space at the end.';
   }

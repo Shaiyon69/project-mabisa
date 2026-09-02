@@ -12,13 +12,9 @@ type StatCardProps = {
 };
 
 /**
- * A tile is an icon, a label and a number. The per-tile caption is gone: four of
- * the five repeated one of two phrases, which is a caption for the grid.
- *
- * A tile with a `to` is a link, and looks like one — hover lift, a chevron, a
- * pointer. Without it, it is a plain `div`: the portal has no household screen,
- * and a tile that looks clickable and is not is worse than one that never
- * offered.
+ * A tile is an icon, a label and a number. One with a `to` is a link and looks
+ * like one; without it, a plain `div`, since a tile that looks clickable and is
+ * not is worse than one that never offered.
  */
 export function StatCard({ label, value, tone, icon, to }: StatCardProps) {
   const body = (
