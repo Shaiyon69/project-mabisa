@@ -1,9 +1,8 @@
 import { Link } from 'react-router-dom';
 import {
-  NUTRITION_ORDER,
   barangayStats,
   lowStockItems,
-  tally,
+  nutritionTally,
   type AdminFilters,
   type AdminSnapshot,
 } from '../../services/adminData';
@@ -40,7 +39,7 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
     snapshot.householdCount + snapshot.residentCount + snapshot.assessments.length + snapshot.disbursements.length;
   const stats = barangayStats(snapshot);
   // One tally feeding both the ring and the bars, so the two cannot disagree.
-  const nutrition = tally(snapshot.assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER);
+  const nutrition = nutritionTally(snapshot.assessments);
 
   // Every link carries the period and the barangay, so the screen it opens answers
   // the question the tile asked.
