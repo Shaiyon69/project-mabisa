@@ -34,6 +34,8 @@ export type PaginatedQuery = {
   householdId?: string;
   /** Individuals only: includes members who moved out, died or transferred. Off by default. */
   includeFormer?: boolean;
+  /** Individuals only: 'name' (default) for browsing, 'recent' for newest-first. */
+  orderBy?: 'name' | 'recent';
 };
 
 // Defines the exact tables that exist in our local SQLite database.
@@ -990,7 +992,7 @@ export async function readLocalIndividuals(options?: PaginatedQuery): Promise<In
   `;
   const params: SqlValue[] = [...filter.params];
 
-  query += ' ORDER BY i.last_name ASC, i.first_name ASC';
+  query += options?.orderBy === 'recent' ? ' ORDER BY i.created_at DESC' : ' ORDER BY i.last_name ASC, i.first_name ASC';
 
   const page = pageBounds(options);
   const result = await db.query(query + page.clause, [...params, ...page.params]);
