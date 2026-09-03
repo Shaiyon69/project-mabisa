@@ -5,6 +5,7 @@ import {
   defaultAdminFilters,
   emptyAdminSnapshot,
   fetchAdminSnapshot,
+  invalidateAdminSnapshot,
   type AdminFilters,
   type AdminSnapshot,
 } from '../services/adminData';
@@ -159,7 +160,14 @@ export function useAdminData(): AdminData {
     filters.reportSections?.join(',') ?? 'none',
   ].join('|');
   const requestKey = `${filterKey}|${reloadToken}`;
-  const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
+  // Drops the cached read before bumping the token: `fetchAdminSnapshot` serves
+  // one period from memory for a minute, and a refresh is precisely the request
+  // to go past that. Everything else — a tab change, a barangay picked, an age
+  // band — leaves the cache alone and re-narrows rows already in hand.
+  const refresh = useCallback(() => {
+    invalidateAdminSnapshot();
+    setReloadToken((token) => token + 1);
+  }, []);
 
   // The portal is a monitor of a database the BHWs are writing to all day, so it
   // re-reads on its own rather than waiting to be asked. Only while the tab is
@@ -204,7 +212,12 @@ export function useAdminData(): AdminData {
     return () => {
       current = false;
     };
-  }, [filters, requestKey]);
+    // `requestKey` alone: it is built from every filter field plus the reload
+    // token, so it already covers everything `filters` could change. `filters`
+    // is a fresh object on every `useSearchParams` update, so listing it only
+    // added a trigger that fires without anything having actually changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]);
 
   return {
     snapshot: result.snapshot,
