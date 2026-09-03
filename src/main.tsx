@@ -1,9 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 // Self-hosted, not a CDN — a BHW is offline for most of this app's working life,
-// and a CDN would simply never resolve. Fraunces ships its SOFT axis here.
-import '@fontsource-variable/fraunces/soft.css';
-import '@fontsource-variable/nunito/wght.css';
+// and a CDN would simply never resolve. The `@font-face` rules live at the top of
+// index.css rather than coming from the package's own stylesheet, so the build
+// emits the latin subsets only; see the comment there.
 import './index.css';
 import { Capacitor } from '@capacitor/core';
 import { App } from './App.tsx';
