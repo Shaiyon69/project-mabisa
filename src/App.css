@@ -2777,53 +2777,8 @@ tbody tr:hover {
   margin: 0;
 }
 
-/* Barangay choropleth ------------------------------------------------------
-   Inline SVG over bundled GeoJSON — see src/lib/geo.ts for why there is no
-   mapping library. The fill is one theme token at varying opacity rather than a
-   computed colour ramp, so the scale stays legible when the palette flips. */
-.barangay-map svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: var(--radius-sm);
-  background: var(--field-soft);
-}
-
-.barangay-shape {
-  fill: var(--danger);
-  stroke: var(--panel);
-  stroke-width: 1.5;
-  cursor: pointer;
-  transition: stroke 160ms ease;
-}
-
-.barangay-shape:hover,
-.barangay-shape.is-selected {
-  stroke: var(--text-h);
-  stroke-width: 2.5;
-}
-
-.barangay-shape:focus-visible {
-  outline: var(--ring);
-}
-
-.map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin: 10px 0;
-  font-size: 12px;
-}
-
-.legend-ramp {
-  flex: 0 0 120px;
-  height: 8px;
-  border-radius: 999px;
-  /* The same two stops the shapes interpolate between, so the key and the map
-     cannot describe different scales. */
-  background: linear-gradient(to right, color-mix(in srgb, var(--danger) 10%, transparent), var(--danger));
-}
+/* Barangay rate list ------------------------------------------------------
+   The ranked underweight bars on the admin dashboard. */
 
 .barangay-rate-list {
   margin-top: 12px;
@@ -2851,11 +2806,6 @@ tbody tr:hover {
 
 .summary-bar-fill.is-alert {
   background: var(--danger);
-}
-
-.barangay-map-fallback {
-  display: grid;
-  gap: 12px;
 }
 
 /* Charts -------------------------------------------------------------------

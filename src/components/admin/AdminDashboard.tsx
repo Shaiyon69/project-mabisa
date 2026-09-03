@@ -11,7 +11,7 @@ import { NUTRITION_COLORS } from '../../lib/charts';
 import { titleCase } from '../../lib/utils';
 import { Card } from '../common/Card';
 import { ErrorState } from '../common/StateMessage';
-import { BarangayMap } from './BarangayMap';
+import { BarangayRates } from './BarangayRates';
 import { DonutChart } from './Charts';
 import { StatCard } from './StatCard';
 import { SummaryBars } from './SummaryBars';
@@ -22,7 +22,7 @@ type AdminDashboardProps = {
   filters: AdminFilters;
   loading: boolean;
   error: string | null;
-  /** Clicking a barangay on the map scopes the whole screen to it. */
+  /** Clicking a barangay scopes the whole screen to it. */
   onScope: (filters: AdminFilters) => void;
 };
 
@@ -120,19 +120,18 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
           </Link>
         </div>
         <SummaryContext filters={filters} snapshot={snapshot} />
-        <BarangayMap
+        <BarangayRates
           stats={stats}
-          barangays={snapshot.barangays}
           selected={filters.barangayId}
           onSelect={(barangayId) => onScope({ ...filters, barangayId })}
         />
       </Card>
 
       {/* Nutrition and restocking are two short panels, not one tall one, and
-          on a wide screen they sit beside the map rather than under it — the
-          wrapper is what lets the grid put them in the right column while the
-          map spans the left one. Below the two-column breakpoint this is a
-          plain block and the pair stacks exactly as it did before. */}
+          on a wide screen they sit beside the barangay panel rather than under
+          it — the wrapper is what lets the grid put them in the right column
+          while that panel spans the left one. Below the two-column breakpoint
+          this is a plain block and the pair stacks exactly as it did before. */}
       <div className="dashboard-side">
         <Card className="admin-monitor">
           <div className="panel-heading">
