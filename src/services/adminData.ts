@@ -201,8 +201,8 @@ export const emptyAdminSnapshot: AdminSnapshot = {
  * saying so, and a truncated count in an LGU report does not read as wrong. The
  * secondary sort is the primary key, so pages are a stable sequence.
  */
-export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSnapshot> {
-  const [barangays, puroks, households, residents, residentHouseholds, assessments, disbursements, inventory, allocations, barangayLabel] = await Promise.all([
+function readSnapshotRows(filters: AdminFilters) {
+  return Promise.all([
     readAllPages<Barangay>('Barangay', (from, to) =>
       supabase.from('barangays').select('*').order('name').order('barangay_id').range(from, to),
     ),
@@ -264,6 +264,94 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     ),
     fetchBarangayScope(),
   ]);
+}
+
+/**
+ * Barangay id → name, for the registry page's rows.
+ *
+ * Cached because `fetchResidentPage` runs on every page step and every debounced
+ * keystroke, and this table is a handful of rows that change roughly never —
+ * re-reading it per keystroke was a whole round trip for an answer that was
+ * already known. Cleared by `invalidateAdminSnapshot` alongside the snapshot, so
+ * a barangay added mid-session shows up on the portal's next refresh rather than
+ * needing a reload.
+ */
+let barangayNames: Promise<Map<string, string>> | null = null;
+
+function fetchBarangayNames(): Promise<Map<string, string>> {
+  barangayNames ??= readBarangayNames();
+
+  return barangayNames;
+}
+
+async function readBarangayNames(): Promise<Map<string, string>> {
+  const { data } = await supabase.from('barangays').select('barangay_id, name');
+
+  return new Map((data ?? []).map((barangay) => [barangay.barangay_id, barangay.name]));
+}
+
+/**
+ * How long a read stands before the next caller goes back to the network. The
+ * same 60 seconds the portal already re-reads on (`useAdminData`), so a cached
+ * screen is never showing anything older than the timer would have allowed.
+ */
+const SNAPSHOT_TTL_MS = 60_000;
+
+/**
+ * One entry, not a `Map`: the portal looks at one period at a time, and coming
+ * back to an earlier one should re-read rather than serve whatever it saw
+ * before — this is a monitor of a database the BHWs are writing to all day.
+ *
+ * The *promise* is held rather than the rows, so six screens mounting at once
+ * (or a tab switch landing mid-flight) share one round trip instead of racing
+ * nine reads each.
+ */
+let snapshotCache: { key: string; at: number; rows: Promise<Awaited<ReturnType<typeof readSnapshotRows>>> } | null = null;
+
+/**
+ * Drops the cached read so the next caller reaches Supabase. `refresh()` in
+ * `useAdminData` calls this, which is what keeps the 60s poll, the
+ * return-to-tab re-read and the post-stock-movement refresh honest.
+ */
+export function invalidateAdminSnapshot(): void {
+  snapshotCache = null;
+  barangayNames = null;
+}
+
+/**
+ * The portal's numbers for one screen, over one period, at one scope.
+ *
+ * Only `from`/`to` reach the network — every other filter (barangay, purok, and
+ * through them everything below) is applied here on rows already in hand. So the
+ * read is cached on the period alone and changing scope costs nothing: a filter
+ * that used to re-download nine tables to throw most of the rows away now just
+ * re-runs the narrowing below.
+ */
+export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSnapshot> {
+  const key = `${filters.from}|${filters.to}`;
+
+  if (!snapshotCache || snapshotCache.key !== key || Date.now() - snapshotCache.at >= SNAPSHOT_TTL_MS) {
+    snapshotCache = { key, at: Date.now(), rows: readSnapshotRows(filters) };
+  }
+
+  // Held across the await: a rejected read must not stay cached, or every later
+  // caller re-throws the same failure until the TTL runs out. Cleared only if it
+  // is still the entry this call installed, so a refresh that already replaced
+  // it is left alone.
+  const entry = snapshotCache;
+  let rows: Awaited<typeof entry.rows>;
+
+  try {
+    rows = await entry.rows;
+  } catch (cause) {
+    if (snapshotCache === entry) {
+      snapshotCache = null;
+    }
+
+    throw cause;
+  }
+
+  const [barangays, puroks, households, residents, residentHouseholds, assessments, disbursements, inventory, allocations, barangayLabel] = rows;
 
   // Narrow to the selected barangay and purok. Both reach everything below
   // through the household, the only table carrying `barangay_id`.
@@ -731,15 +819,15 @@ export async function fetchResidentPage(
 
   const rows = data ?? [];
   const householdIds = [...new Set(rows.map((row) => row.household_id))];
-  // One page of households, so the barangay names come along in the same round trip.
-  const [households, barangays] = await Promise.all([
+  // One page of households, so the household numbers come along in the same
+  // round trip rather than costing a query of their own.
+  const [households, names] = await Promise.all([
     householdIds.length
       ? supabase.from('households').select('household_id, household_number, barangay_id').in('household_id', householdIds)
       : Promise.resolve({ data: [] as { household_id: string; household_number: string; barangay_id: string | null }[] }),
-    supabase.from('barangays').select('barangay_id, name'),
+    fetchBarangayNames(),
   ]);
 
-  const barangayNames = new Map((barangays.data ?? []).map((barangay) => [barangay.barangay_id, barangay.name]));
   const parents = new Map((households.data ?? []).map((household) => [household.household_id, household]));
 
   return {
@@ -749,7 +837,7 @@ export async function fetchResidentPage(
       return {
         ...row,
         household_number: parent?.household_number,
-        barangay_name: parent?.barangay_id ? barangayNames.get(parent.barangay_id) : undefined,
+        barangay_name: parent?.barangay_id ? names.get(parent.barangay_id) : undefined,
       };
     }),
     total: count ?? 0,

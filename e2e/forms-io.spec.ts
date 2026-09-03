@@ -337,10 +337,11 @@ test.describe('what comes back out', () => {
 
     await page.goto('/bhw/residents');
     const gate = page.getByRole('dialog');
-    if (await gate.count()) {
-      await gate.locator('input.pin-input').fill('2749');
-      await gate.getByRole('button').last().click();
-    }
+
+    // Waited for, not counted — the same reason as `openBhw` above.
+    await gate.waitFor({ state: 'visible' });
+    await gate.locator('input.pin-input').fill('2749');
+    await gate.getByRole('button').last().click();
     await page.waitForTimeout(1200);
 
     const listed = await page.getByText(/cruz/i).count();

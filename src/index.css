@@ -1,36 +1,84 @@
+/*
+ * Declared here rather than imported from @fontsource-variable, which ships one
+ * stylesheet covering every subset it has: cyrillic, cyrillic-ext, latin,
+ * latin-ext and vietnamese. `unicode-range` keeps a browser from *downloading*
+ * the four this app will never render, but the build still emits all of them,
+ * and the APK carries every file it emits — about 63 KB of Cyrillic and
+ * Vietnamese on a phone that shows Tagalog and English. The variable packages
+ * publish no per-subset entry point, so the two faces we do want are written
+ * out. Ranges copied verbatim from the package.
+ *
+ * Fraunces ships its SOFT axis here; that's the one the display face uses.
+ */
+
+@font-face {
+  font-family: 'Nunito Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  src: url('@fontsource-variable/nunito/files/nunito-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Nunito Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  src: url('@fontsource-variable/nunito/files/nunito-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Fraunces Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/fraunces/files/fraunces-latin-soft-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Fraunces Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/fraunces/files/fraunces-latin-ext-soft-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
 :root {
   --bg: #fdfcf8;
   --text-h: #2c2c24;
   --text: #3f3f35;
-  --primary: #5d7052;
-  --primary-strong: #4d6044;
-  --primary-foreground: #f3f4f1;
-  --secondary: #c18c5d;
-  --secondary-strong: #aa764b;
+  --primary: #203a70;
+  --primary-strong: #16274d;
+  --primary-foreground: #f2f5fb;
+  --secondary: #ffcf35;
+  --secondary-strong: #e8b81f;
+  --secondary-ink: #7a5600;
   --accent: #e6dccd;
   --muted-surface: #f0ebe5;
-  --muted: #78786c;
+  --muted: #6b6b5f;
   --panel: #fffefa;
   --field: #fffdf7;
   --field-soft: #f7f2ea;
-  --border: #ded8cf;
-  --danger: #a85448;
-  --success: #5d7052;
-  --warning: #c18c5d;
+  --border: #c7bfb0;
+  --danger: #b5182a;
   /* Alert tones as three tokens each rather than a hex per rule: dark mode has to
      restate them all, and App.css was repeating the same nine values by hand. */
-  --danger-ink: #7c352d;
-  --danger-surface: #f7e7e2;
-  --danger-line: #e1c2bb;
-  --warning-ink: #75512f;
-  --warning-surface: #f7eadc;
-  --warning-line: #e9caa9;
-  --success-ink: #40533a;
-  --success-surface: #edf2e9;
-  --success-line: #cfdbc8;
-  --danger-strong: #963e36;
+  --danger-ink: #8c1120;
+  --danger-surface: #fbe7e9;
+  --danger-line: #eec2c7;
+  --warning-ink: #6b4a05;
+  --warning-surface: #fdf3d5;
+  --warning-line: #f0dda0;
+  --success-ink: #0b6b34;
+  --success-surface: #e6f4ec;
+  --success-line: #bcdfca;
+  --danger-strong: #8c1120;
   --danger-foreground: #ffffff;
-  --secondary-foreground: #3b2d21;
+  --secondary-foreground: #24221e;
   /* Underweight is drawn in slate, not in a warning colour — see .bmi-band rules. */
   --bmi-low: #7d8c96;
   --bmi-low-ink: #63737d;
@@ -38,7 +86,7 @@
      the modal scrim and the tonal fill on a selected choice. CSS cannot take an alpha
      off a hex token without relative colour syntax, which the older Android WebViews
      in the field do not all have. Everything else is a flat token. */
-  --primary-rgb: 93 112 82;
+  --primary-rgb: 32 58 112;
   --ink-rgb: 44 44 36;
   /* Elevation is neutral and tight, the way Material draws it. The old tokens were
      wide, tinted washes (moss under resting cards, clay under floating ones) and a
@@ -74,11 +122,12 @@
   --bg: #17181a;
   --text-h: #f0ece4;
   --text: #d6d2c8;
-  --primary: #8fa682;
-  --primary-strong: #a3b895;
-  --primary-foreground: #1a1c19;
-  --secondary: #d3a273;
-  --secondary-strong: #e0b489;
+  --primary: #8ba8dd;
+  --primary-strong: #a8bfe8;
+  --primary-foreground: #101a30;
+  --secondary: #e6c257;
+  --secondary-strong: #f0d070;
+  --secondary-ink: #e8c86a;
   --accent: #2e3033;
   --muted-surface: #26282b;
   --muted: #9a978e;
@@ -86,24 +135,22 @@
   --field: #24262a;
   --field-soft: #202225;
   --border: #383b3f;
-  --danger: #e0806f;
-  --success: #8fa682;
-  --warning: #d3a273;
-  --danger-ink: #f0b3a5;
-  --danger-surface: #3a2320;
-  --danger-line: #5c352f;
-  --warning-ink: #e8c39a;
-  --warning-surface: #34281c;
-  --warning-line: #55412c;
-  --success-ink: #b3c9a5;
-  --success-surface: #212c1e;
-  --success-line: #3a4a33;
-  --danger-strong: #eb9483;
+  --danger: #ef7a5f;
+  --danger-ink: #f5a8ae;
+  --danger-surface: #3a1a1f;
+  --danger-line: #5c2a31;
+  --warning-ink: #f0d68c;
+  --warning-surface: #33290f;
+  --warning-line: #55471f;
+  --success-ink: #7fc99a;
+  --success-surface: #16291d;
+  --success-line: #2c4a37;
+  --danger-strong: #ff937c;
   --danger-foreground: #22110d;
-  --secondary-foreground: #241a12;
+  --secondary-foreground: #2a2205;
   --bmi-low: #8a99a3;
   --bmi-low-ink: #a3b2bd;
-  --primary-rgb: 143 166 130;
+  --primary-rgb: 139 168 221;
   --ink-rgb: 8 9 10;
   --shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --shadow-clay: 0 3px 8px rgb(0 0 0 / 0.55);

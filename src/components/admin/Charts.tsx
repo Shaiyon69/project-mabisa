@@ -152,7 +152,15 @@ export function LineChart({ rows, series }: { rows: ChartRow[]; series: ChartSer
         {rows.map((row, position) => (
           <g key={row.key ?? row.label}>
             {position % labelEvery === 0 ? (
-              <text className="chart-tick" x={x(position)} y={height - 10} textAnchor="middle">
+              // The first and last labels are anchored to their own end rather
+              // than centred: a month centred on the last point hangs half its
+              // width outside the viewBox and is drawn clipped.
+              <text
+                className="chart-tick"
+                x={x(position)}
+                y={height - 10}
+                textAnchor={position === 0 ? 'start' : position === rows.length - 1 ? 'end' : 'middle'}
+              >
                 {row.label}
               </text>
             ) : null}

@@ -38,7 +38,9 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
   const scope = describeScope(filters, snapshot);
 
   return (
-    // The two half-width panels are adjacent so they share a row.
+    // The half-width panels are adjacent so they share a row, and there are two
+    // rather than three: an odd one leaves the last row half empty. The trend took
+    // the full width instead, its line chart being the worst squeezed by half.
     <div className="activity-grid report-grid">
       {/* Demographics and stock lead because they are the two panels drawn from
           rows that exist the moment a barangay is profiled. Everything below
@@ -47,8 +49,8 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
           as broken rather than as new. */}
       <DemographicsPanel snapshot={snapshot} filters={filters} scope={scope} />
       <StockPanel snapshot={snapshot} filters={filters} scope={scope} />
-      <TrendPanel snapshot={snapshot} filters={filters} scope={scope} />
       <CoveragePanel stats={stats} filters={filters} scope={scope} />
+      <TrendPanel snapshot={snapshot} filters={filters} scope={scope} />
       <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={scope} />
       <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
     </div>
@@ -95,7 +97,7 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
   const recorded = points.reduce((sum, point) => sum + point.assessments, 0);
 
   return (
-    <Card className="activity-card report-card" as="article">
+    <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead
         title="Assessment trend"
         onExport={() => exportReport(contextFor('Assessment Trend', { filters, scope }), points, trendColumns)}
@@ -171,26 +173,29 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
       />
       <SummaryContext filters={filters} extra={scope} />
       {snapshot.residents.length ? (
-        <>
-          <h4>By sex</h4>
-          <div className="chart-with-bars">
-            <DonutChart rows={sexes} colorFor={(row) => sexColors[row.label]} unit="residents" />
-            <ul className="chart-breakdown">
-              {sexes.map((row) => (
-                <li key={row.label}>
-                  <span className="chart-swatch" style={{ background: sexColors[row.label] }} aria-hidden="true" />
-                  <span>{titleCase(row.label)}</span>
-                  <strong>{row.count}</strong>
-                </li>
-              ))}
-            </ul>
+        <div className="chart-split">
+          <div>
+            <h4>By sex</h4>
+            <DonutChart rows={sexes} colorFor={(row) => sexColors[row.label]} unit="residents">
+              <ul className="chart-breakdown">
+                {sexes.map((row) => (
+                  <li key={row.label}>
+                    <span className="chart-swatch" style={{ background: sexColors[row.label] }} aria-hidden="true" />
+                    <span>{titleCase(row.label)}</span>
+                    <strong>{row.count}</strong>
+                  </li>
+                ))}
+              </ul>
+            </DonutChart>
           </div>
-          <h4>By age band</h4>
-          <BarChart
-            rows={ages.map((row) => ({ label: row.label, values: [row.count] }))}
-            series={[{ label: 'Residents', color: SERIES_COLORS[0] }]}
-          />
-        </>
+          <div>
+            <h4>By age band</h4>
+            <BarChart
+              rows={ages.map((row) => ({ label: row.label, values: [row.count] }))}
+              series={[{ label: 'Residents', color: SERIES_COLORS[0] }]}
+            />
+          </div>
+        </div>
       ) : (
         <EmptyState
           title="No residents in this scope"
@@ -244,30 +249,31 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
       />
       <SummaryContext filters={filters} extra={scope} />
       {snapshot.inventoryItems.length ? (
-        <>
-          <h4>Items by reorder level</h4>
-          <div className="chart-with-bars">
-            <DonutChart rows={health} colorFor={(row) => healthColors[row.label]} unit="items" />
-            <ul className="chart-breakdown">
-              {health.map((row) => (
-                <li key={row.label}>
-                  <span className="chart-swatch" style={{ background: healthColors[row.label] }} aria-hidden="true" />
-                  <span>{titleCase(row.label)}</span>
-                  <strong>{row.count}</strong>
-                </li>
-              ))}
-            </ul>
+        <div className="chart-split">
+          <div>
+            <h4>Items by reorder level</h4>
+            <DonutChart rows={health} colorFor={(row) => healthColors[row.label]} unit="items">
+              <ul className="chart-breakdown">
+                {health.map((row) => (
+                  <li key={row.label}>
+                    <span className="chart-swatch" style={{ background: healthColors[row.label] }} aria-hidden="true" />
+                    <span>{titleCase(row.label)}</span>
+                    <strong>{row.count}</strong>
+                  </li>
+                ))}
+              </ul>
+            </DonutChart>
           </div>
           {byType.length ? (
-            <>
+            <div>
               <h4>Units on hand by type</h4>
               <BarChart
                 rows={byType.map((row) => ({ label: titleCase(row.label), values: [row.count] }))}
                 series={[{ label: 'Units unallocated', color: SERIES_COLORS[1] }]}
               />
-            </>
+            </div>
           ) : null}
-        </>
+        </div>
       ) : (
         <EmptyState title="Nothing stocked yet" text="A barangay administrator adds supplies from the Inventory screen." />
       )}
@@ -444,32 +450,37 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
         onExport={() => exportReport(contextFor('Supply Utilization', { filters, scope }), rows, utilizationColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />
-      {position.some((row) => row.count) ? (
-        <>
-          <h4>Where the stock sits</h4>
-          <div className="chart-with-bars">
-            <DonutChart rows={position} colorFor={(row) => positionColors[row.label]} unit="units" />
-            <ul className="chart-breakdown">
-              {position.map((row) => (
-                <li key={row.label}>
-                  <span className="chart-swatch" style={{ background: positionColors[row.label] }} aria-hidden="true" />
-                  <span>{titleCase(row.label)}</span>
-                  <strong>{row.count}</strong>
-                </li>
-              ))}
-            </ul>
+      {/* Ring left, bars right, on one row. The ring is where the stock stands
+          and the bars are what moved, and stacking them left the ring's row half
+          empty. Each half keeps its own guard, and a lone survivor takes the
+          whole row rather than sitting in the narrow column. */}
+      <div className="chart-split">
+        {position.some((row) => row.count) ? (
+          <div>
+            <h4>Where the stock sits</h4>
+            <DonutChart rows={position} colorFor={(row) => positionColors[row.label]} unit="units">
+              <ul className="chart-breakdown">
+                {position.map((row) => (
+                  <li key={row.label}>
+                    <span className="chart-swatch" style={{ background: positionColors[row.label] }} aria-hidden="true" />
+                    <span>{titleCase(row.label)}</span>
+                    <strong>{row.count}</strong>
+                  </li>
+                ))}
+              </ul>
+            </DonutChart>
           </div>
-        </>
-      ) : null}
-      {moved.length ? (
-        <>
-          <h4>Released in period</h4>
-          <BarChart
-            rows={moved.map((row) => ({ key: row.itemId, label: row.itemName, values: [row.releasedInPeriod] }))}
-            series={[{ label: 'Units released', color: SERIES_COLORS[1] }]}
-          />
-        </>
-      ) : null}
+        ) : null}
+        {moved.length ? (
+          <div>
+            <h4>Released in period</h4>
+            <BarChart
+              rows={moved.map((row) => ({ key: row.itemId, label: row.itemName, values: [row.releasedInPeriod] }))}
+              series={[{ label: 'Units released', color: SERIES_COLORS[1] }]}
+            />
+          </div>
+        ) : null}
+      </div>
       <Table
         columns={columns}
         rows={rows}

@@ -13,7 +13,6 @@ import {
   tally,
   type AdminFilters,
   type AdminSnapshot,
-  type ReportSectionId,
 } from '../../services/adminData';
 import type { HealthAssessment, InventoryItem, SupplyDisbursement } from '../../types/database';
 import { Button } from '../common/Button';
@@ -40,102 +39,113 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
 
   return (
     <div className="activity-grid report-grid">
-      <ReportPanel
-        section="demographics"
-        title="Resident demographics"
-        note={`${snapshot.residentCount} resident(s) profiled centrally.`}
-        filters={filters}
-        scope={snapshot}
-        filterNote="all residents, period ignored"
-        onExport={() =>
-          exportReport('Resident Demographics', scopeLabel, filters, buildDemographicRows(snapshot), [
-            { header: 'Grouping', value: (row) => row.grouping },
-            { header: 'Category', value: (row) => row.category },
-            { header: 'Residents', value: (row) => row.count },
-          ])
-        }
-      >
-        <h4>By sex</h4>
-        <SummaryBars
-          rows={tally(snapshot.residents, (resident) => resident.sex, ['female', 'male'])}
-          emptyTitle="No residents"
-          emptyText="Resident profiles appear here once a BHW device has synced."
-        />
-        <h4>By age band</h4>
-        <SummaryBars
-          rows={tally(snapshot.residents, (resident) => ageBandOf(resident.birthday), AGE_BANDS.map((band) => band.label))}
-          emptyTitle="No residents"
-          emptyText="Age bands are computed from recorded birthdays."
-        />
-      </ReportPanel>
+      {showsSection(filters, 'demographics') ? (
+        <ReportPanel
+          title="Resident demographics"
+          note={`${snapshot.residentCount} resident(s) profiled centrally.`}
+          filters={filters}
+          scope={snapshot}
+          filterNote="all residents, period ignored"
+          onExport={() =>
+            exportReport('Resident Demographics', scopeLabel, filters, buildDemographicRows(snapshot), [
+              { header: 'Grouping', value: (row) => row.grouping },
+              { header: 'Category', value: (row) => row.category },
+              { header: 'Residents', value: (row) => row.count },
+            ])
+          }
+        >
+          {/* Sex is two rows and age is five, so stacked they left the right of a
+            half-width card empty for both. Peer groups, so neither takes the
+            narrow column the ring panels use. */}
+          <div className="chart-split chart-split-even">
+            <div>
+              <h4>By sex</h4>
+              <SummaryBars
+                rows={tally(snapshot.residents, (resident) => resident.sex, ['female', 'male'])}
+                emptyTitle="No residents"
+                emptyText="Resident profiles appear here once a BHW device has synced."
+              />
+            </div>
+            <div>
+              <h4>By age band</h4>
+              <SummaryBars
+                rows={tally(snapshot.residents, (resident) => ageBandOf(resident.birthday), AGE_BANDS.map((band) => band.label))}
+                emptyTitle="No residents"
+                emptyText="Age bands are computed from recorded birthdays."
+              />
+            </div>
+          </div>
+        </ReportPanel>
+      ) : null}
 
-      <ReportPanel
-        section="nutrition"
-        title="Nutrition status summary"
-        note={nutritionNote(snapshot)}
-        filters={filters}
-        scope={snapshot}
-        onExport={() =>
-          exportReport('Nutrition Status Summary', scopeLabel, filters, snapshot.assessments, assessmentColumns)
-        }
-      >
-        <SummaryBars
-          rows={tally(snapshot.assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER)}
-          emptyTitle="No assessments in this period"
-          emptyText="Widen the date range, or wait for a field device to sync."
-        />
-      </ReportPanel>
+      {showsSection(filters, 'nutrition') ? (
+        <ReportPanel
+          title="Nutrition status summary"
+          note={nutritionNote(snapshot)}
+          filters={filters}
+          scope={snapshot}
+          onExport={() =>
+            exportReport('Nutrition Status Summary', scopeLabel, filters, snapshot.assessments, assessmentColumns)
+          }
+        >
+          <SummaryBars
+            rows={tally(snapshot.assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER)}
+            emptyTitle="No assessments in this period"
+            emptyText="Widen the date range, or wait for a field device to sync."
+          />
+        </ReportPanel>
+      ) : null}
 
-      <ReportPanel
-        section="stock"
-        title="Unallocated barangay stock"
-        note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. This is what the barangay still holds to hand out — quantities already allocated to a health worker are counted against that worker, not here. Stock is a current position and ignores the period.`}
-        filters={filters}
-        scope={snapshot}
-        filterNote="none beyond the period (stock is current, not historical)"
-        onExport={() =>
-          exportReport('Unallocated Barangay Stock', scopeLabel, filters, snapshot.inventoryItems, inventoryColumns)
-        }
-      >
-        {lowStock.length ? (
-          <ul className="compact-list">
-            {lowStock.map((item) => (
-              <li key={item.item_id}>
-                <span>{item.item_name}</span>
-                <small>
-                  {item.current_stock} unallocated • {titleCase(item.type)}
-                </small>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">No item is at or below the low-stock threshold.</p>
-        )}
-      </ReportPanel>
+      {showsSection(filters, 'stock') ? (
+        <ReportPanel
+          title="Unallocated barangay stock"
+          note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. This is what the barangay still holds to hand out — quantities already allocated to a health worker are counted against that worker, not here. Stock is a current position and ignores the period.`}
+          filters={filters}
+          scope={snapshot}
+          filterNote="none beyond the period (stock is current, not historical)"
+          onExport={() =>
+            exportReport('Unallocated Barangay Stock', scopeLabel, filters, snapshot.inventoryItems, inventoryColumns)
+          }
+        >
+          {lowStock.length ? (
+            <ul className="compact-list">
+              {lowStock.map((item) => (
+                <li key={item.item_id}>
+                  <span>{item.item_name}</span>
+                  <small>
+                    {item.current_stock} unallocated • {titleCase(item.type)}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">No item is at or below the low-stock threshold.</p>
+          )}
+        </ReportPanel>
+      ) : null}
 
-      <ReportPanel
-        section="supply"
-        title="Supply allocation"
-        note={`${releasedTotal} unit(s) across ${snapshot.disbursements.length} release(s).`}
-        filters={filters}
-        scope={snapshot}
-        onExport={() =>
-          exportReport('Supply Allocation', scopeLabel, filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
-        }
-      >
-        <SummaryBars
-          rows={disbursementsByItem(snapshot.disbursements, snapshot.inventoryItems)}
-          emptyTitle="No releases in this period"
-          emptyText="Supply disbursements logged by a BHW appear here after sync."
-        />
-      </ReportPanel>
+      {showsSection(filters, 'supply') ? (
+        <ReportPanel
+          title="Supply allocation"
+          note={`${releasedTotal} unit(s) across ${snapshot.disbursements.length} release(s).`}
+          filters={filters}
+          scope={snapshot}
+          onExport={() =>
+            exportReport('Supply Allocation', scopeLabel, filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
+          }
+        >
+          <SummaryBars
+            rows={disbursementsByItem(snapshot.disbursements, snapshot.inventoryItems)}
+            emptyTitle="No releases in this period"
+            emptyText="Supply disbursements logged by a BHW appear here after sync."
+          />
+        </ReportPanel>
+      ) : null}
     </div>
   );
 }
 
 type ReportPanelProps = {
-  /** Which card this is, for the drawer's picker. An unrendered card computes and exports nothing. */
-  section: ReportSectionId;
   title: string;
   note: string;
   filters: AdminFilters;
@@ -145,11 +155,7 @@ type ReportPanelProps = {
   children: ReactNode;
 };
 
-function ReportPanel({ section, title, note, filters, scope, filterNote, onExport, children }: ReportPanelProps) {
-  if (!showsSection(filters, section)) {
-    return null;
-  }
-
+function ReportPanel({ title, note, filters, scope, filterNote, onExport, children }: ReportPanelProps) {
   return (
     <Card className="activity-card report-card" as="article">
       <div className="report-card-head">
