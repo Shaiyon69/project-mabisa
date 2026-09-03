@@ -186,6 +186,28 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Scrollbars carry the theme's own border ink instead of the platform's grey
+   default, which reads as chrome bolted onto the page. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Android WebViews older than Chrome 121 predate `scrollbar-color`. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* The paper grain layer (fixed full-viewport, mix-blend-mode over an SVG
    turbulence filter) was dropped: it forced the whole page into a composited
    blend group and repainted on every scroll on low-end Android WebViews. */
