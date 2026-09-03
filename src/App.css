@@ -308,9 +308,8 @@ button,
   position: relative;
 }
 
-/* Same clay panel as .stock-card and friends — the list is a card that floats,
-   not a browser menu: card radius, the panel fill, and the float shadow the
-   other lifted surfaces use. */
+/* The list is a card that floats, not a browser menu: card radius, the panel
+   fill, and the float shadow the other lifted surfaces use. */
 .combobox-list {
   position: absolute;
   z-index: 30;
@@ -619,25 +618,6 @@ button:active,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.checkbox-group {
-  min-width: 0;
-  margin: 0;
-  border: 0;
-  padding: 0;
-}
-
-.checkbox-group .field-label {
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.checkbox-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 8px;
-}
-
 .check-option {
   display: flex;
   min-width: 0;
@@ -686,31 +666,8 @@ button:active,
   min-width: 0;
 }
 
-.household-member-card {
-  display: grid;
-  gap: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  background: var(--field-soft);
-}
-
-.household-member-card h4 {
-  margin: 0;
-}
-
-.household-head-option {
-  margin-top: 2px;
-}
-
-.add-member-button {
-  width: fit-content;
-  align-self: flex-start;
-}
-
 .status-card,
 .metric,
-.stock-card,
 .activity-card {
   display: flex;
   min-width: 0;
@@ -722,8 +679,7 @@ button:active,
 }
 
 .status-card,
-.metric,
-.stock-card {
+.metric {
   min-height: 78px;
   justify-content: center;
   padding: 14px;
@@ -735,16 +691,13 @@ button:active,
 
 .status-card span,
 .metric span,
-.stock-card span,
-.metric small,
-.stock-card small {
+.metric small {
   color: var(--muted);
   font-size: 12px;
 }
 
 .status-card strong,
-.metric strong,
-.stock-card strong {
+.metric strong {
   color: var(--text-h);
   font-family: var(--display);
   font-size: 28px;
@@ -851,8 +804,7 @@ button:active,
   flex: 0 0 auto;
 }
 
-.form-alert,
-.form-review {
+.form-alert {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -868,28 +820,6 @@ button:active,
 .form-alert {
   margin: 0;
   font-weight: 800;
-}
-
-.form-review div {
-  display: grid;
-  gap: 2px;
-}
-
-.form-review strong,
-.form-review span {
-  display: block;
-}
-
-.form-review.has-warning {
-  color: var(--warning-ink);
-  border-color: var(--warning-line);
-  background: var(--warning-surface);
-}
-
-.form-review.is-ready {
-  color: var(--success-ink);
-  border-color: var(--success-line);
-  background: var(--success-surface);
 }
 
 .tone-success {
@@ -932,30 +862,10 @@ button:active,
   color: var(--text-h);
 }
 
-.ui-state-loading {
-  flex-direction: row;
-  align-items: center;
-}
-
-.ui-state-loading span {
-  width: 18px;
-  height: 18px;
-  border: 3px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 900ms linear infinite;
-}
-
 .ui-state-error {
   color: var(--danger-ink);
   background: var(--danger-surface);
   border-color: var(--danger-line);
-}
-
-.ui-state-offline {
-  color: var(--warning-ink);
-  background: var(--warning-surface);
-  border-color: var(--warning-line);
 }
 
 .ui-table-wrap {
@@ -1020,16 +930,6 @@ tbody tr:hover {
   background: var(--muted-surface);
 }
 
-.stock-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-}
-
-.stock-card small {
-  grid-column: 1 / -1;
-}
-
 /* Flows with the form, no bar chrome: the panel already frames it, and a second
    framed strip inside read as a nested box on a phone. */
 .sticky-actions {
@@ -1040,24 +940,6 @@ tbody tr:hover {
 
 .sticky-actions .primary-button {
   width: 100%;
-}
-
-.login-footnote {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-}
-
-.login-footnote {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.login-footnote span {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 7px 10px;
-  background: var(--field-soft);
 }
 
 /* Admin web */
@@ -1093,9 +975,7 @@ tbody tr:hover {
 }
 
 .admin-layout .metric span,
-.admin-layout .metric small,
-.admin-layout .stock-card span,
-.admin-layout .stock-card small {
+.admin-layout .metric small {
   font-size: 13px;
 }
 
@@ -1598,7 +1478,6 @@ tbody tr:hover {
 .bhw-mobile-shell .screen-panel:hover,
 .bhw-mobile-shell .metric:hover,
 .bhw-mobile-shell .status-card:hover,
-.bhw-mobile-shell .stock-card:hover,
 .bhw-mobile-shell .activity-card:hover {
   transform: none;
 }
@@ -1690,8 +1569,7 @@ tbody tr:hover {
   width: 100%;
 }
 
-.bhw-mobile-shell .sticky-actions .primary-button,
-.bhw-mobile-shell .add-member-button {
+.bhw-mobile-shell .sticky-actions .primary-button {
   width: 100%;
   min-height: 58px;
 }
@@ -1704,18 +1582,6 @@ tbody tr:hover {
 
 .bhw-mobile-shell .form-panel > .panel-heading {
   align-items: flex-start;
-}
-
-.bhw-mobile-shell .checkbox-grid {
-  grid-template-columns: 1fr;
-}
-
-.bhw-mobile-shell .household-member-card .field-row {
-  gap: 14px;
-}
-
-.bhw-mobile-shell .add-member-button {
-  width: 100%;
 }
 
 /* Docked to the bottom edge, not floating above it. A floated pill leaves a live
@@ -1863,8 +1729,7 @@ tbody tr:hover {
   }
 
   .bhw-mobile-shell .status-card strong,
-  .bhw-mobile-shell .metric strong,
-  .bhw-mobile-shell .stock-card strong {
+.bhw-mobile-shell .metric strong {
     font-size: 28px;
   }
 }
@@ -2069,9 +1934,7 @@ tbody tr:hover {
 
 .bhw-mobile-shell .status-card span,
 .bhw-mobile-shell .metric span,
-.bhw-mobile-shell .stock-card span,
 .bhw-mobile-shell .metric small,
-.bhw-mobile-shell .stock-card small,
 .bhw-mobile-shell .compact-list small {
   font-size: 14px;
 }
@@ -2361,10 +2224,7 @@ tbody tr:hover {
 
   /* The spinner is exempt: it is the only signal that work is still running, and
      a frozen one reads as a hung screen. Slowed, not stopped. */
-  .ui-state-loading span {
-    animation-duration: 2400ms !important;
-    animation-iteration-count: infinite !important;
-  }
+
 }
 
 /* -----------------------------------------------------------------------------
