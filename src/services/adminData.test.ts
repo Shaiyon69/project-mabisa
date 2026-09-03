@@ -15,6 +15,7 @@ import {
   disbursementsByItem,
   emptyAdminSnapshot,
   fetchAdminSnapshot,
+  invalidateAdminSnapshot,
   filterAccounts,
   filterInventory,
   LOW_STOCK_THRESHOLD,
@@ -43,6 +44,9 @@ import { PULL_PAGE_SIZE } from '../lib/supabase';
 // faking it too would test the fake instead of the code.
 const fake = vi.hoisted(() => ({
   tables: {} as Record<string, Record<string, unknown>[]>,
+  // Every `.from()` the snapshot read issues, so the cache below can be tested
+  // for what it exists to do: not going back to the network.
+  reads: 0,
 }));
 
 vi.mock('../lib/supabase', async (importOriginal) => {
@@ -52,6 +56,8 @@ vi.mock('../lib/supabase', async (importOriginal) => {
     ...actual,
     supabase: {
       from: (table: string) => {
+        fake.reads += 1;
+
         let rows = [...(fake.tables[table] ?? [])];
 
         const builder = {
@@ -694,6 +700,10 @@ describe('nutritionByBarangay', () => {
 
 describe('fetchAdminSnapshot purok narrowing', () => {
   beforeEach(() => {
+    // The snapshot read is cached at module scope, so it outlives a test. Every
+    // case here has to start from the network or it inherits the last one's rows.
+    invalidateAdminSnapshot();
+    fake.reads = 0;
     fake.tables = {
       barangays: [{ barangay_id: 'b1', name: 'Cabugao', code: null, is_active: true, created_at: '', updated_at: '', created_by: null }],
       puroks: [{ purok_id: 'p1', barangay_id: 'b1', name: 'Purok 1', code: null, is_active: true, created_at: '', updated_at: '', created_by: '' }],
@@ -725,6 +735,42 @@ describe('fetchAdminSnapshot purok narrowing', () => {
     // Stock is held at the barangay, not the purok — the purok filter must
     // leave it alone even though it narrows everything reached via a resident.
     expect(snapshot.inventoryItems.map((row) => row.item_id)).toEqual(['i1']);
+  });
+
+  // The whole point of the cache: a scope change re-narrows rows already in
+  // hand instead of re-reading eight tables to throw most of them away.
+  it('serves a second scope over the same period without reading again', async () => {
+    const period = { from: '2026-01-01', to: '2026-12-31' };
+
+    const all = await fetchAdminSnapshot({ ...period, barangayId: null, purokId: null });
+    const reads = fake.reads;
+
+    expect(reads).toBeGreaterThan(0);
+
+    const narrowed = await fetchAdminSnapshot({ ...period, barangayId: null, purokId: 'p1' });
+
+    expect(fake.reads).toBe(reads);
+    // Cached rows, but not a cached answer — the narrowing still ran.
+    expect(all.residents.map((row) => row.resident_id)).toEqual(['r1', 'r2']);
+    expect(narrowed.residents.map((row) => row.resident_id)).toEqual(['r1']);
+  });
+
+  it('reads again for another period, and after an invalidation', async () => {
+    await fetchAdminSnapshot({ from: '2026-01-01', to: '2026-12-31', barangayId: null, purokId: null });
+    const reads = fake.reads;
+
+    // A different period is a different question, so the cache cannot answer it.
+    await fetchAdminSnapshot({ from: '2026-01-01', to: '2026-06-30', barangayId: null, purokId: null });
+    expect(fake.reads).toBeGreaterThan(reads);
+
+    // And `refresh()` — the 60s poll, the return-to-tab re-read, a stock
+    // movement — must always reach the network, period unchanged or not.
+    const before = fake.reads;
+
+    invalidateAdminSnapshot();
+    await fetchAdminSnapshot({ from: '2026-01-01', to: '2026-06-30', barangayId: null, purokId: null });
+
+    expect(fake.reads).toBeGreaterThan(before);
   });
 });
 
