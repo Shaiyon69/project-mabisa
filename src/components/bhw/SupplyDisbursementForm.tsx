@@ -18,10 +18,13 @@ type SupplyDisbursementFormProps = {
 
 export function SupplyDisbursementForm({ individualCount, inventoryItems, onSaved }: SupplyDisbursementFormProps) {
   const [residentId, setResidentId] = useState('');
-  const [itemId, setItemId] = useState(inventoryItems[0]?.item_id || '');
+  // Falls back to the first item each render, not just at mount, since
+  // `inventoryItems` loads asynchronously and is typically still empty then.
+  const [selectedItemId, setSelectedItemId] = useState('');
+  const itemId = selectedItemId || inventoryItems[0]?.item_id || '';
   const [quantity, setQuantity] = useState('1');
   const [disbursementDate, setDisbursementDate] = useState(today());
-  
+
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
@@ -119,7 +122,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
             value: item.item_id,
             label: `${item.item_name} (${item.current_stock} in stock)`,
           }))}
-          onChange={setItemId}
+          onChange={setSelectedItemId}
           placeholder="Search item..."
           disabled={!hasInventory}
           error={showValidation && !itemId ? 'Select an inventory item.' : undefined}
