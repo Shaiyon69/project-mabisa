@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatDate, titleCase } from '../../lib/utils';
-import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
+import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   assignBhwToPurok,
   fetchAccounts,
@@ -177,24 +177,21 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
   // The scope is read at export time rather than held in state, so the file cannot
   // name a barangay the session has since moved off.
   async function exportAccounts() {
-    downloadCsv(
-      reportFileName('Accounts'),
-      buildReportCsv(
-        {
-          title: 'Accounts',
-          barangay: await fetchBarangayScope(),
-          from: 'all dates',
-          to: 'all dates',
-          // The drawer's filters, named on the file, so an export of a narrowed
-          // list does not read later as the whole account list.
-          filters: [
-            ...(filters.accountRole ? [{ label: 'Role', value: titleCase(filters.accountRole) }] : []),
-            ...(filters.accountActive ? [{ label: 'Account state', value: titleCase(filters.accountActive) }] : []),
-          ],
-        },
-        visible,
-        exportColumns,
-      ),
+    exportReport(
+      {
+        title: 'Accounts',
+        barangay: await fetchBarangayScope(),
+        from: 'all dates',
+        to: 'all dates',
+        // The drawer's filters, named on the file, so an export of a narrowed
+        // list does not read later as the whole account list.
+        filters: [
+          ...(filters.accountRole ? [{ label: 'Role', value: titleCase(filters.accountRole) }] : []),
+          ...(filters.accountActive ? [{ label: 'Account state', value: titleCase(filters.accountActive) }] : []),
+        ],
+      },
+      visible,
+      exportColumns,
     );
   }
 

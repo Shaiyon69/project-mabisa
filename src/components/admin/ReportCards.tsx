@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ADULT_BMI_MIN_AGE, formatDate, titleCase } from '../../lib/utils';
-import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
+import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   AGE_BANDS,
   NUTRITION_ORDER,
@@ -36,6 +36,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
   // The barangay a CSV should name: the one that was picked, or the account's own
   // scope when none was.
   const scopeLabel = filters.barangayId ? describeScope(filters, snapshot) : snapshot.barangayLabel;
+  const reportContext = (title: string) => ({ title, barangay: scopeLabel, from: filters.from, to: filters.to });
 
   return (
     <div className="activity-grid report-grid">
@@ -47,7 +48,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           scope={snapshot}
           filterNote="all residents, period ignored"
           onExport={() =>
-            exportReport('Resident Demographics', scopeLabel, filters, buildDemographicRows(snapshot), [
+            exportReport(reportContext('Resident Demographics'), buildDemographicRows(snapshot), [
               { header: 'Grouping', value: (row) => row.grouping },
               { header: 'Category', value: (row) => row.category },
               { header: 'Residents', value: (row) => row.count },
@@ -85,7 +86,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           filters={filters}
           scope={snapshot}
           onExport={() =>
-            exportReport('Nutrition Status Summary', scopeLabel, filters, snapshot.assessments, assessmentColumns)
+            exportReport(reportContext('Nutrition Status Summary'), snapshot.assessments, assessmentColumns)
           }
         >
           <SummaryBars
@@ -104,7 +105,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           scope={snapshot}
           filterNote="none beyond the period (stock is current, not historical)"
           onExport={() =>
-            exportReport('Unallocated Barangay Stock', scopeLabel, filters, snapshot.inventoryItems, inventoryColumns)
+            exportReport(reportContext('Unallocated Barangay Stock'), snapshot.inventoryItems, inventoryColumns)
           }
         >
           {lowStock.length ? (
@@ -131,7 +132,11 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           filters={filters}
           scope={snapshot}
           onExport={() =>
-            exportReport('Supply Allocation', scopeLabel, filters, snapshot.disbursements, disbursementColumns(snapshot.inventoryItems))
+            exportReport(
+              reportContext('Supply Allocation'),
+              snapshot.disbursements,
+              disbursementColumns(snapshot.inventoryItems),
+            )
           }
         >
           <SummaryBars
@@ -183,19 +188,6 @@ function nutritionNote(snapshot: AdminSnapshot): string {
     : '';
 
   return `${snapshot.assessments.length} assessment(s) recorded in this period. A status is the reading the measurements produced, not a diagnosis.${caveat}`;
-}
-
-function exportReport<Row>(
-  title: string,
-  barangay: string,
-  filters: AdminFilters,
-  rows: Row[],
-  columns: CsvColumn<Row>[],
-): void {
-  downloadCsv(
-    reportFileName(title),
-    buildReportCsv({ title, barangay, from: filters.from, to: filters.to }, rows, columns),
-  );
 }
 
 type DemographicRow = { grouping: string; category: string; count: number };

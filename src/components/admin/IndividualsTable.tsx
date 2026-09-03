@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Individual, NutritionStatus } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
-import { buildReportCsv, downloadCsv, reportFileName, type CsvColumn } from '../../lib/csv';
+import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   FILTER_PARAMS,
   NUTRITION_ORDER,
@@ -203,29 +203,26 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
       fetchBarangayScope(),
     ]);
 
-    downloadCsv(
-      reportFileName('Resident Registry'),
-      buildReportCsv(
-        {
-          title: 'Resident Registry',
-          barangay,
-          // The band is assessed over a period; an unfiltered registry is not.
-          from: statusFilter?.from ?? 'all dates',
-          to: statusFilter?.to ?? 'all dates',
-          // Every filter that narrowed the rows, named on the file, so the
-          // preamble never describes a wider set than the file holds.
-          filters: [
-            ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
-            ...(statusFilter ? [{ label: 'Nutrition status', value: titleCase(statusFilter.status) }] : []),
-            { label: 'Area', value: scopeName },
-            ...(filters.sex ? [{ label: 'Sex', value: titleCase(filters.sex) }] : []),
-            ...(filters.ageBand ? [{ label: 'Age band', value: filters.ageBand }] : []),
-            ...(filters.membership ? [{ label: 'Membership', value: titleCase(filters.membership) }] : []),
-          ],
-        },
-        all,
-        exportColumns,
-      ),
+    exportReport(
+      {
+        title: 'Resident Registry',
+        barangay,
+        // The band is assessed over a period; an unfiltered registry is not.
+        from: statusFilter?.from ?? 'all dates',
+        to: statusFilter?.to ?? 'all dates',
+        // Every filter that narrowed the rows, named on the file, so the
+        // preamble never describes a wider set than the file holds.
+        filters: [
+          ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
+          ...(statusFilter ? [{ label: 'Nutrition status', value: titleCase(statusFilter.status) }] : []),
+          { label: 'Area', value: scopeName },
+          ...(filters.sex ? [{ label: 'Sex', value: titleCase(filters.sex) }] : []),
+          ...(filters.ageBand ? [{ label: 'Age band', value: filters.ageBand }] : []),
+          ...(filters.membership ? [{ label: 'Membership', value: titleCase(filters.membership) }] : []),
+        ],
+      },
+      all,
+      exportColumns,
     );
   }
 
