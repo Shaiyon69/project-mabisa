@@ -44,7 +44,7 @@ export function BHWDashboard({
   useEffect(() => {
     let current = true;
 
-    readLocalIndividuals({ limit: 5 })
+    readLocalIndividuals({ limit: 5, orderBy: 'recent' })
       .then((rows) => {
         if (current) {
           setLatestIndividuals(rows);
