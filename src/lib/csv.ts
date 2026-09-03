@@ -31,7 +31,7 @@ export function toCsv<Row>(rows: Row[], columns: CsvColumn<Row>[]): string {
  * What an export says about itself before its first data row: title, barangay,
  * date range, generation timestamp and active filters.
  */
-export type ReportContext = {
+type ReportContext = {
   title: string;
   /** The area covered — derived from the same query that produced the numbers, not the build. */
   barangay: string;
@@ -73,7 +73,7 @@ export function reportFileName(title: string): string {
 }
 
 /** Hands the finished CSV to the browser's download flow. The BOM makes Excel read it as UTF-8. */
-export function downloadCsv(fileName: string, content: string): void {
+function downloadCsv(fileName: string, content: string): void {
   const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

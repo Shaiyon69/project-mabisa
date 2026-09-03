@@ -33,7 +33,7 @@ const FILTER_FIELDS = {
   accountActive: { label: 'Account state', options: ['active', 'inactive'] },
 } satisfies Record<string, { label: string; options: readonly string[] }>;
 
-export type FilterFieldId = keyof typeof FILTER_FIELDS;
+type FilterFieldId = keyof typeof FILTER_FIELDS;
 
 /** How a role reads on screen: `barangay_admin` is not a title an officer would recognise. */
 const ROLE_LABELS: Record<UserRole, string> = {

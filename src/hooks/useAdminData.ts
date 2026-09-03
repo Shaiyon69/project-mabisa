@@ -14,7 +14,7 @@ import { isCalendarDate } from '../lib/utils';
 /** How often an open portal re-reads. Slow enough to stay a monitor, not a poller. */
 const AUTO_REFRESH_MS = 60_000;
 
-export type AdminData = {
+type AdminData = {
   snapshot: AdminSnapshot;
   filters: AdminFilters;
   setFilters: (filters: AdminFilters) => void;
@@ -82,7 +82,7 @@ export function paramsFromFilters(current: URLSearchParams, next: AdminFilters):
   return updated;
 }
 
-export type AdminFiltersState = {
+type AdminFiltersState = {
   filters: AdminFilters;
   setFilters: (filters: AdminFilters) => void;
 };

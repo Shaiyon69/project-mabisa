@@ -24,7 +24,7 @@ import type {
 // Type Definitions for the Sync Code
 // -----------------------------------------------------------------------------
 
-export type PaginatedQuery = {
+type PaginatedQuery = {
   limit?: number;
   offset?: number;
   searchQuery?: string;
@@ -47,14 +47,14 @@ export type LocalTableName =
   | 'supply_disbursements';
 
 // Mirror no Supabase table and are never pushed.
-export type LocalBookkeepingTableName = 'sync_queue' | 'sync_dead_letter';
+type LocalBookkeepingTableName = 'sync_queue' | 'sync_dead_letter';
 
 type MigratableTableName = LocalTableName | LocalBookkeepingTableName;
 
 export type SyncOperationType = 'INSERT' | 'UPDATE';
 
 /** Insert payload shape per table, for type-safe sync_queue writes. */
-export type LocalInsertPayloadByTable = {
+type LocalInsertPayloadByTable = {
   households: HouseholdInsert;
   individuals: IndividualInsert;
   health_assessments: HealthAssessmentInsert;
@@ -63,7 +63,7 @@ export type LocalInsertPayloadByTable = {
 };
 
 /** Update payload per table; Pick<> forces the primary key to be present. */
-export type LocalUpdatePayloadByTable = {
+type LocalUpdatePayloadByTable = {
   households: HouseholdUpdate & Pick<Household, 'household_id'>;
   individuals: IndividualUpdate & Pick<Individual, 'resident_id'>;
   health_assessments: HealthAssessmentUpdate & Pick<HealthAssessment, 'assessment_id'>;
@@ -71,7 +71,7 @@ export type LocalUpdatePayloadByTable = {
   supply_disbursements: SupplyDisbursementUpdate & Pick<SupplyDisbursement, 'log_id'>;
 };
 
-export type SyncPayload<TTable extends LocalTableName, TOperation extends SyncOperationType> =
+type SyncPayload<TTable extends LocalTableName, TOperation extends SyncOperationType> =
   TOperation extends 'INSERT' ? LocalInsertPayloadByTable[TTable] : LocalUpdatePayloadByTable[TTable];
 
 /** One row of the local sync_queue — the staging area for pushes to Supabase. */
@@ -816,7 +816,7 @@ export async function saveHealthAssessmentLocally(
 }
 
 /** One inventory item, or null. The disbursement path needs the current row, not a stale UI snapshot. */
-export async function readLocalInventoryItem(itemId: string): Promise<InventoryItem | null> {
+async function readLocalInventoryItem(itemId: string): Promise<InventoryItem | null> {
   const database = await initializeLocalDatabase();
   const result = await database.query('select * from inventory_items where item_id = ?', [itemId]);
   const row = result.values?.[0];

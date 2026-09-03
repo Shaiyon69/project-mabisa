@@ -4,7 +4,7 @@ import { checkForAppUpdate, type AvailableUpdate } from '../services/appUpdate';
 /** Which version the health worker said "later" to. Dismissing 1.2.0 still lets 1.3.0 through. */
 const DISMISSED_KEY = 'mabisa.update_dismissed';
 
-export type AppUpdateState = {
+type AppUpdateState = {
   update: AvailableUpdate | null;
   dismiss: () => void;
 };
