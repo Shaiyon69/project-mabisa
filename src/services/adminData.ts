@@ -734,32 +734,20 @@ export async function fetchResidentPage(
   statusFilter?: ResidentStatusFilter,
 ): Promise<ResidentPage> {
   const search = sanitizeSearch(query);
-  let request = supabase.from('individuals').select('*', { count: 'exact' });
+  // `!inner` joins rather than nests: only the households column is needed, and
+  // an inner join is what drops residents outside the scope. Filtering here
+  // instead of sending household ids keeps the URL a fixed length — the id list
+  // this replaced grew with the barangay and was refused past a few hundred.
+  let request = supabase
+    .from('individuals')
+    .select('*, households!inner(household_number, barangay_id, purok_id)', { count: 'exact' });
 
-  if (filters.barangayId || filters.purokId) {
-    const scoped = await readAllPages<{ household_id: string }>('Barangay household', (from, to) => {
-      let householdQuery = supabase.from('households').select('household_id').order('household_id');
+  if (filters.barangayId) {
+    request = request.eq('households.barangay_id', filters.barangayId);
+  }
 
-      if (filters.barangayId) {
-        householdQuery = householdQuery.eq('barangay_id', filters.barangayId);
-      }
-
-      if (filters.purokId) {
-        householdQuery = householdQuery.eq('purok_id', filters.purokId);
-      }
-
-      return householdQuery.range(from, to);
-    });
-
-    const scopedIds = scoped.map((household) => household.household_id);
-
-    // An empty barangay or purok is an empty registry, not an unfiltered one:
-    // `.in()` rejects an empty list, and dropping the filter widens the scope.
-    if (!scopedIds.length) {
-      return { rows: [], total: 0 };
-    }
-
-    request = request.in('household_id', scopedIds);
+  if (filters.purokId) {
+    request = request.eq('households.purok_id', filters.purokId);
   }
 
   if (filters.sex) {
@@ -823,28 +811,16 @@ export async function fetchResidentPage(
   }
 
   const rows = data ?? [];
-  const householdIds = [...new Set(rows.map((row) => row.household_id))];
-  // One page of households, so the household numbers come along in the same
-  // round trip rather than costing a query of their own.
-  const [households, names] = await Promise.all([
-    householdIds.length
-      ? supabase.from('households').select('household_id, household_number, barangay_id').in('household_id', householdIds)
-      : Promise.resolve({ data: [] as { household_id: string; household_number: string; barangay_id: string | null }[] }),
-    fetchBarangayNames(),
-  ]);
-
-  const parents = new Map((households.data ?? []).map((household) => [household.household_id, household]));
+  const names = await fetchBarangayNames();
 
   return {
-    rows: rows.map((row) => {
-      const parent = parents.get(row.household_id);
-
-      return {
-        ...row,
-        household_number: parent?.household_number,
-        barangay_name: parent?.barangay_id ? names.get(parent.barangay_id) : undefined,
-      };
-    }),
+    // `households` is the join above rather than a column of the row, so it is
+    // lifted into the two fields the registry shows and dropped.
+    rows: rows.map(({ households, ...row }) => ({
+      ...row,
+      household_number: households?.household_number,
+      barangay_name: households?.barangay_id ? names.get(households.barangay_id) : undefined,
+    })),
     total: count ?? 0,
   };
 }
