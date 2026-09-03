@@ -1,12 +1,10 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { AccountsTable } from '../../components/admin/AccountsTable';
 import { AdminDashboard } from '../../components/admin/AdminDashboard';
 import { useAdminRole } from '../../components/admin/adminRole';
 import { InventoryControls } from '../../components/admin/InventoryControls';
 import { AdminFilterBar } from '../../components/admin/AdminFilterBar';
-import { AnalyticsPanels } from '../../components/admin/AnalyticsPanels';
 import { InventoryTable } from '../../components/admin/InventoryTable';
-import { ReportCards } from '../../components/admin/ReportCards';
 import { IndividualsTable } from '../../components/admin/IndividualsTable';
 import { BhwStockTable } from '../../components/admin/BhwStockTable';
 import { Card } from '../../components/common/Card';
@@ -14,6 +12,14 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { ErrorState } from '../../components/common/StateMessage';
 import { useAdminData } from '../../hooks/useAdminData';
 import { filterInventory } from '../../services/adminData';
+
+// The two biggest screens in the portal, and the two the officer opening the
+// dashboard has not asked for. Each has exactly one consumer below, so splitting
+// them here costs a chunk boundary and nothing else — and it takes their four
+// chart components off the path to first paint. `DonutChart` stays eager;
+// `AdminDashboard` needs it.
+const AnalyticsPanels = lazy(() => import('../../components/admin/AnalyticsPanels').then((module) => ({ default: module.AnalyticsPanels })));
+const ReportCards = lazy(() => import('../../components/admin/ReportCards').then((module) => ({ default: module.ReportCards })));
 
 /**
  * Every page here reads the central database through `useAdminData`, never
@@ -202,7 +208,9 @@ export function AnalyticsPage() {
         </Card>
       ) : null}
       <div aria-busy={loading}>
-        <AnalyticsPanels snapshot={snapshot} filters={filters} />
+        <Suspense fallback={null}>
+          <AnalyticsPanels snapshot={snapshot} filters={filters} />
+        </Suspense>
       </div>
     </>
   );
@@ -224,7 +232,9 @@ export function ReportsPage() {
       />
       <Card className="activity-panel">
         {error ? <ErrorState title="Could not read the central database" text={error} /> : null}
-        <ReportCards snapshot={snapshot} filters={filters} />
+        <Suspense fallback={null}>
+          <ReportCards snapshot={snapshot} filters={filters} />
+        </Suspense>
       </Card>
     </>
   );
