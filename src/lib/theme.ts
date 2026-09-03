@@ -3,11 +3,11 @@ export type Theme = 'light' | 'dark' | 'oled';
 const STORAGE_KEY = 'mabisa.theme';
 
 /**
- * The stored choice, or the one the phone is already set to.
+ * The stored choice, or light for anyone who has not picked one.
  *
  * Called from `main.tsx` before the first render as well as from the toggle, so
- * the attribute is on the document before React paints — a light flash on a dark
- * phone is the kind of thing a BHW notices every single launch.
+ * the attribute is on the document before React paints — a theme flash on launch
+ * is the kind of thing a BHW notices every single time.
  */
 export function readTheme(): Theme {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -16,7 +16,7 @@ export function readTheme(): Theme {
     return stored;
   }
 
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 export function storeTheme(theme: Theme): void {
