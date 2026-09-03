@@ -111,7 +111,7 @@
 }
 
 .eyebrow {
-  color: var(--secondary-strong);
+  color: var(--secondary-ink);
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -1415,7 +1415,7 @@ tbody tr:hover {
 
 .header-title-icon .ui-icon {
   flex: 0 0 auto;
-  color: var(--secondary-strong);
+  color: var(--secondary-ink);
 }
 
 /* Admin density — the phone-sized chrome above (28px card radii, 20px panel
