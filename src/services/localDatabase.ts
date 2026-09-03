@@ -824,6 +824,13 @@ export async function readLocalInventoryItem(itemId: string): Promise<InventoryI
   return row ? ({ ...row, current_stock: Number(row.current_stock) } as InventoryItem) : null;
 }
 
+/** Whether a disbursement with this id has already landed locally, for retry idempotency below. */
+async function disbursementExistsLocally(logId: string): Promise<boolean> {
+  const database = await initializeLocalDatabase();
+  const result = await database.query('select 1 from supply_disbursements where log_id = ? limit 1', [logId]);
+  return Boolean(result.values?.length);
+}
+
 /**
  * Records a supply release and decrements the device's local stock in one call.
  *
@@ -835,10 +842,14 @@ export async function saveSupplyDisbursementLocally(
   disbursement: SupplyDisbursement,
   operationType: SyncOperationType = 'INSERT',
 ): Promise<void> {
-  // Only a new release moves stock — editing an existing log has no reversal path yet.
-  const item = operationType === 'INSERT' ? await readLocalInventoryItem(disbursement.item_id) : null;
+  // A retry (same log_id, e.g. after the write landed but the IndexedDB flush
+  // failed) must not move stock a second time for the one release.
+  const alreadyRecorded = operationType === 'INSERT' && (await disbursementExistsLocally(disbursement.log_id));
 
-  if (operationType === 'INSERT') {
+  // Only a new release moves stock — editing an existing log has no reversal path yet.
+  const item = operationType === 'INSERT' && !alreadyRecorded ? await readLocalInventoryItem(disbursement.item_id) : null;
+
+  if (operationType === 'INSERT' && !alreadyRecorded) {
     if (!item) {
       throw new Error('That supply item is not on this device yet. Sync before releasing it.');
     }
