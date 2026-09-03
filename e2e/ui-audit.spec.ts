@@ -167,11 +167,19 @@ async function unlockBhw(page: Page) {
 /** A reload re-locks the device, so every direct navigation meets the gate again. */
 async function passGate(page: Page) {
   const gate = page.getByRole('dialog');
+  const nav = page.getByRole('navigation', { name: /sections/i });
+
+  // Whichever settles first. The screen's chunk is fetched on demand, so right
+  // after a navigation neither is mounted yet — and `count()` does not wait, so
+  // asking it straight away reads "no gate" and then times out on a nav the gate
+  // is in fact still covering.
+  await expect(gate.or(nav).first()).toBeVisible();
+
   if (await gate.count()) {
     await gate.locator('input.pin-input').fill('2749');
     await gate.getByRole('button').last().click();
   }
-  await expect(page.getByRole('navigation', { name: /sections/i })).toBeVisible();
+  await expect(nav).toBeVisible();
 }
 
 test.describe('BHW phone screens', () => {
