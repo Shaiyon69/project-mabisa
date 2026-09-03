@@ -39,7 +39,9 @@ export function Combobox({
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const term = query.trim().toLowerCase();
-  const matches = term ? options.filter((option) => option.label.toLowerCase().includes(term)) : options;
+  // A caller with onQueryChange already filtered `options` server-side (and may
+  // match on fields `label` does not carry) — re-filtering here would drop them.
+  const matches = !onQueryChange && term ? options.filter((option) => option.label.toLowerCase().includes(term)) : options;
   const selectedLabel = options.find((option) => option.value === value)?.label ?? '';
 
   // Closes on a tap or Tab anywhere else: pointerdown for another control,
