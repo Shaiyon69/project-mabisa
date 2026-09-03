@@ -1,5 +1,0 @@
-{
-  "type": "FeatureCollection",
-  "note": "Replace this file with a GeoJSON export of the barangay boundaries for your municipality. Every feature needs a `code` (preferred) or `name` in its properties that matches public.barangays.code / public.barangays.name; matching is case-insensitive and ignores a leading 'Barangay '. Coordinates must be [longitude, latitude] in WGS84 (EPSG:4326), which is what PhilGIS, PSA and OpenStreetMap exports already use. Polygon and MultiPolygon are both understood. Until this file has features, the map panel shows the ranked list instead and says the boundaries are missing.",
-  "features": []
-}
