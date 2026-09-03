@@ -480,6 +480,11 @@ export function tally<Row>(rows: Row[], key: (row: Row) => string | null, order?
 
 export const NUTRITION_ORDER: readonly NutritionStatus[] = ['underweight', 'normal', 'overweight', 'obese'];
 
+/** The nutrition distribution for a scope, so no two screens can band it differently. */
+export function nutritionTally(assessments: HealthAssessment[]): Tally[] {
+  return tally(assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER);
+}
+
 /** Demographic age bands, matching the ones Philippine barangay health reporting uses. */
 export const AGE_BANDS = [
   { label: 'Under 5', min: 0, max: 4 },

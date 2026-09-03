@@ -3,12 +3,12 @@ import { ADULT_BMI_MIN_AGE, formatDate, titleCase } from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   AGE_BANDS,
-  NUTRITION_ORDER,
   ageBandOf,
   assessmentsBelowAdultBmiAge,
   describeScope,
   disbursementsByItem,
   lowStockItems,
+  nutritionTally,
   showsSection,
   tally,
   type AdminFilters,
@@ -90,7 +90,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           }
         >
           <SummaryBars
-            rows={tally(snapshot.assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER)}
+            rows={nutritionTally(snapshot.assessments)}
             emptyTitle="No assessments in this period"
             emptyText="Widen the date range, or wait for a field device to sync."
           />
