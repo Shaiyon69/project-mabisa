@@ -111,7 +111,7 @@
 }
 
 .eyebrow {
-  color: var(--secondary-strong);
+  color: var(--secondary-ink);
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -1415,7 +1415,7 @@ tbody tr:hover {
 
 .header-title-icon .ui-icon {
   flex: 0 0 auto;
-  color: var(--secondary-strong);
+  color: var(--secondary-ink);
 }
 
 /* Admin density — the phone-sized chrome above (28px card radii, 20px panel
@@ -2922,18 +2922,58 @@ tbody tr:hover {
   text-anchor: middle;
 }
 
-/* The ring and the written breakdown, side by side once there is room for both.
-   Stacked below that, because a 110px ring beside a squeezed list is neither. */
+/* The ring and what sits beside it — the written breakdown in `.chart-with-bars`,
+   the bar chart that used to be dumped on a full-width row underneath in
+   `.chart-split`. A two-row breakdown holding a 1fr of its own left the rest of
+   the card blank, which is the whole complaint.
+
+   Queried against the card, not the window: a half-width panel is ~440px wide on
+   a 1440px screen, and a viewport query split it as if it had the whole desk —
+   200px of bar track beside the ring. Where @container is unsupported these stay
+   the single column they already are below the breakpoint. */
+.chart-split,
 .chart-with-bars {
   display: grid;
-  gap: 16px;
+  gap: 14px 22px;
 }
 
-@media (min-width: 720px) {
+@container (min-width: 380px) {
+  .chart-split,
+  .chart-with-bars {
+    grid-template-columns: minmax(170px, 230px) minmax(0, 1fr);
+  }
+
+  /* Top-aligned, so the heading over the ring and the heading over the bars sit
+     on one line — centring each column against the other floated them apart. */
+  .chart-split {
+    align-items: start;
+  }
+
+  /* The dashboard's pairing has no headings, and there the ring reads better
+     level with the middle of the list beside it. */
   .chart-with-bars {
     align-items: center;
-    grid-template-columns: 220px 1fr;
   }
+
+  /* Two peer groups of bars, neither of them a ring, so neither gets the narrow
+     column. */
+  .chart-split-even {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* One half guarded away leaves the other alone: it takes the row rather than
+     the 170px column meant for a ring. */
+  .chart-split > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The ring stacked over its own breakdown, so the list rides in the ring's
+   column instead of claiming a second one. */
+.donut-chart {
+  display: grid;
+  gap: 10px;
+  align-content: center;
 }
 
 /* Line chart ---------------------------------------------------------------
@@ -3142,6 +3182,15 @@ tbody tr:hover {
    rather than the grid holding a gap in source order. */
 .report-grid {
   grid-auto-flow: dense;
+}
+
+/* The size container the ring/bars split above is measured against. Declared on
+   the chart cards alone — the dashboard's right rail and the report panels — and
+   deliberately not on bare `.admin-monitor`, which also wraps the full-page
+   registry, inventory and accounts tables. */
+.report-card,
+.dashboard-side .admin-monitor {
+  container-type: inline-size;
 }
 
 .report-grid .report-card {

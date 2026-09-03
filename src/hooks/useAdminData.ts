@@ -5,6 +5,7 @@ import {
   defaultAdminFilters,
   emptyAdminSnapshot,
   fetchAdminSnapshot,
+  invalidateAdminSnapshot,
   type AdminFilters,
   type AdminSnapshot,
 } from '../services/adminData';
@@ -136,7 +137,14 @@ export function useAdminData(): AdminData {
     filters.reportSections?.join(',') ?? 'none',
   ].join('|');
   const requestKey = `${filterKey}|${reloadToken}`;
-  const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
+  // Drops the cached read before bumping the token: `fetchAdminSnapshot` serves
+  // one period from memory for a minute, and a refresh is precisely the request
+  // to go past that. Everything else — a tab change, a barangay picked, an age
+  // band — leaves the cache alone and re-narrows rows already in hand.
+  const refresh = useCallback(() => {
+    invalidateAdminSnapshot();
+    setReloadToken((token) => token + 1);
+  }, []);
 
   // Re-reads on its own, since BHWs write to the database all day. Only while the
   // tab is in front, with the visibility listener catching the return.

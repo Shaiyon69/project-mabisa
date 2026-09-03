@@ -1,21 +1,32 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { AdminLayout } from '../components/admin/AdminLayout';
-import { BHWLayout } from '../components/bhw/BHWLayout';
-import { AccountsPage, AdminDashboardPage, AnalyticsPage, InventoryPage, ReportsPage, ResidentsPage } from '../pages/admin/AdminPages';
-import {
-  BHWHomePage,
-  HealthAssessmentPage,
-  ProfilePage,
-  RegisterResidentPage,
-  ResidentDetailPage,
-  // The admin tree exports a ResidentsPage too: this one reads the device's SQLite.
-  ResidentsPage as BhwResidentsPage,
-  SupplyDisbursementPage,
-} from '../pages/bhw/BHWPages';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { buildsAdmin, buildsBhw, isSingleSurface } from './surface';
 import { isDeskRole, type UserRole } from '../types/database';
+
+// Every screen behind a `lazy()`, so the two surfaces land in two chunks. The
+// `buildsAdmin`/`buildsBhw` guards below fold to a literal at build time but did
+// not shake the other surface out: the field build still carried the portal's
+// registry, charts and map. Both trees are barrel modules, so this is two chunks
+// and not fifteen, which is the split that matters.
+const AdminLayout = lazy(() => import('../components/admin/AdminLayout').then((module) => ({ default: module.AdminLayout })));
+const AdminDashboardPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.AdminDashboardPage })));
+const ResidentsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.ResidentsPage })));
+const InventoryPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.InventoryPage })));
+const AccountsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.AccountsPage })));
+const AnalyticsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.AnalyticsPage })));
+const ReportsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.ReportsPage })));
+
+const BHWLayout = lazy(() => import('../components/bhw/BHWLayout').then((module) => ({ default: module.BHWLayout })));
+const BHWHomePage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.BHWHomePage })));
+const RegisterResidentPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.RegisterResidentPage })));
+// The admin tree exports a ResidentsPage too: this one reads the device's SQLite.
+const BhwResidentsPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ResidentsPage })));
+const ResidentDetailPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ResidentDetailPage })));
+const HealthAssessmentPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.HealthAssessmentPage })));
+const SupplyDisbursementPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.SupplyDisbursementPage })));
+const ProfilePage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ProfilePage })));
 
 type AppRoutesProps = {
   logout: () => Promise<void>;
@@ -63,47 +74,52 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
   const home = isAdmin && buildsAdmin ? '/admin' : '/bhw';
 
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to={home} replace />} />
+    // On the phone the chunk is already on the filesystem, so this fallback is a
+    // frame rather than a wait — the same trade `App.tsx` makes for the offline
+    // engine. On the portal it is one request against a wired workstation.
+    <Suspense fallback={<SurfaceNotice title="Loading" body="One moment." />}>
+      <Routes>
+        <Route path="/" element={<Navigate to={home} replace />} />
 
-      {buildsBhw ? (
-        <Route path="/bhw" element={isAdmin && buildsAdmin ? <Navigate to="/admin" replace /> : <BHWLayout logout={logout} fullName={fullName} />}>
-          <Route index element={<BHWHomePage />} />
-          <Route path="register-resident" element={<RegisterResidentPage />} />
-          <Route path="residents" element={<BhwResidentsPage />} />
-          <Route path="residents/:residentId" element={<ResidentDetailPage />} />
-          <Route path="health-assessment" element={<HealthAssessmentPage />} />
-          <Route path="supply-disbursement" element={<SupplyDisbursementPage />} />
-          <Route path="profile" element={<ProfilePage />} />
-        </Route>
-      ) : null}
+        {buildsBhw ? (
+          <Route path="/bhw" element={isAdmin && buildsAdmin ? <Navigate to="/admin" replace /> : <BHWLayout logout={logout} fullName={fullName} />}>
+            <Route index element={<BHWHomePage />} />
+            <Route path="register-resident" element={<RegisterResidentPage />} />
+            <Route path="residents" element={<BhwResidentsPage />} />
+            <Route path="residents/:residentId" element={<ResidentDetailPage />} />
+            <Route path="health-assessment" element={<HealthAssessmentPage />} />
+            <Route path="supply-disbursement" element={<SupplyDisbursementPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+          </Route>
+        ) : null}
 
-      {buildsAdmin ? (
-        <Route
-          path="/admin"
-          element={
-            isAdmin ? (
-              <AdminLayout logout={logout} role={role} fullName={fullName} />
-            ) : roleChecked && buildsBhw ? (
-              // A health worker who lands here has their own screens to go to. The
-              // notice below is for the build with no field app to send them to.
-              <Navigate to="/bhw" replace />
-            ) : (
-              adminRejection
-            )
-          }
-        >
-          <Route index element={<AdminDashboardPage />} />
-          <Route path="residents" element={<ResidentsPage />} />
-          <Route path="inventory" element={<InventoryPage />} />
-          <Route path="accounts" element={<AccountsPage />} />
-          <Route path="analytics" element={<AnalyticsPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-        </Route>
-      ) : null}
+        {buildsAdmin ? (
+          <Route
+            path="/admin"
+            element={
+              isAdmin ? (
+                <AdminLayout logout={logout} role={role} fullName={fullName} />
+              ) : roleChecked && buildsBhw ? (
+                // A health worker who lands here has their own screens to go to. The
+                // notice below is for the build with no field app to send them to.
+                <Navigate to="/bhw" replace />
+              ) : (
+                adminRejection
+              )
+            }
+          >
+            <Route index element={<AdminDashboardPage />} />
+            <Route path="residents" element={<ResidentsPage />} />
+            <Route path="inventory" element={<InventoryPage />} />
+            <Route path="accounts" element={<AccountsPage />} />
+            <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="reports" element={<ReportsPage />} />
+          </Route>
+        ) : null}
 
-      <Route path="*" element={<Navigate to={home} replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to={home} replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 
