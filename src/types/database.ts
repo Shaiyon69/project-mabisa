@@ -256,12 +256,27 @@ export type SupplyDisbursementInsert = Omit<SupplyDisbursement, 'log_id' | 'disb
 };
 export type SupplyDisbursementUpdate = Partial<Omit<SupplyDisbursement, 'log_id'>>;
 
-type RowDefinition<Row, Insert, Update> = {
+type RowDefinition<Row, Insert, Update, Relationships extends unknown[] = never[]> = {
   Row: Row;
   Insert: Insert;
   Update: Update;
-  Relationships: never[];
+  Relationships: Relationships;
 };
+
+/**
+ * The one foreign key a query embeds. `fetchResidentPage` filters residents by
+ * barangay through `households!inner`, and PostgREST only resolves that embed if
+ * the relationship is declared here.
+ */
+type IndividualRelationships = [
+  {
+    foreignKeyName: 'individuals_household_id_fkey';
+    columns: ['household_id'];
+    isOneToOne: false;
+    referencedRelation: 'households';
+    referencedColumns: ['household_id'];
+  },
+];
 
 export type Database = {
   public: {
@@ -271,7 +286,7 @@ export type Database = {
       puroks: RowDefinition<Purok, never, never>;
       bhw_purok_assignments: RowDefinition<BhwPurokAssignment, never, never>;
       households: RowDefinition<Household, HouseholdInsert, HouseholdUpdate>;
-      individuals: RowDefinition<Individual, IndividualInsert, IndividualUpdate>;
+      individuals: RowDefinition<Individual, IndividualInsert, IndividualUpdate, IndividualRelationships>;
       health_assessments: RowDefinition<HealthAssessment, HealthAssessmentInsert, HealthAssessmentUpdate>;
       inventory_items: RowDefinition<InventoryItem, InventoryItemInsert, InventoryItemUpdate>;
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
