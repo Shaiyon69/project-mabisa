@@ -202,7 +202,7 @@ export const emptyAdminSnapshot: AdminSnapshot = {
  * secondary sort is the primary key, so pages are a stable sequence.
  */
 export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSnapshot> {
-  const [barangays, puroks, households, residents, assessments, disbursements, inventory, allocations, barangayLabel] = await Promise.all([
+  const [barangays, puroks, households, residents, residentHouseholds, assessments, disbursements, inventory, allocations, barangayLabel] = await Promise.all([
     readAllPages<Barangay>('Barangay', (from, to) =>
       supabase.from('barangays').select('*').order('name').order('barangay_id').range(from, to),
     ),
@@ -216,7 +216,8 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
         .order('household_id')
         .range(from, to),
     ),
-    // Active members only: someone who moved out or died is still on file.
+    // Active members only: someone who moved out or died is still on file, but
+    // is not counted in the resident-facing demographics.
     readAllPages<AdminResident>('Resident', (from, to) =>
       supabase
         .from('individuals')
@@ -224,6 +225,11 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
         .eq('status', 'active')
         .order('resident_id')
         .range(from, to),
+    ),
+    // Every status, id columns only: scopes assessments/disbursements below, which
+    // must not drop a record just because the resident later changed status.
+    readAllPages<Pick<AdminResident, 'resident_id' | 'household_id'>>('Resident (all statuses)', (from, to) =>
+      supabase.from('individuals').select('resident_id, household_id').order('resident_id').range(from, to),
     ),
     readAllPages<HealthAssessment>('Health assessment', (from, to) =>
       supabase
@@ -268,10 +274,15 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
   const inScope = new Set(householdRows.map((household) => household.household_id));
 
   const residentRows = residents.filter((resident) => inScope.has(resident.household_id));
-  const residentIds = new Set(residentRows.map((resident) => resident.resident_id));
 
-  const assessmentRows = assessments.filter((row) => residentIds.has(row.resident_id));
-  const disbursementRows = disbursements.filter((row) => residentIds.has(row.resident_id));
+  // All statuses, not just active: a record made before a resident moved out or
+  // died must still count in the period it happened.
+  const scopedResidentIds = new Set(
+    residentHouseholds.filter((resident) => inScope.has(resident.household_id)).map((resident) => resident.resident_id),
+  );
+
+  const assessmentRows = assessments.filter((row) => scopedResidentIds.has(row.resident_id));
+  const disbursementRows = disbursements.filter((row) => scopedResidentIds.has(row.resident_id));
   // Barangay-scoped only: stock is held at the barangay, not per purok.
   const inventoryRows = inventory.filter((item) => !scope || item.barangay_id === scope);
   const itemIds = new Set(inventoryRows.map((item) => item.item_id));
