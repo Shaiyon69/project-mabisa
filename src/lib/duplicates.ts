@@ -6,7 +6,7 @@ import type { Individual } from '../types/database';
  * covers the variation that occurs: casing, accents, hyphens, doubled spaces.
  */
 
-export type DuplicateConfidence = 'exact' | 'likely';
+type DuplicateConfidence = 'exact' | 'likely';
 
 export type DuplicateMatch = {
   person: Individual;

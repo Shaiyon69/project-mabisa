@@ -71,7 +71,7 @@ export const REPORT_SECTIONS = [
   { id: 'supply', label: 'Supply allocation' },
 ] as const;
 
-export type ReportSectionId = (typeof REPORT_SECTIONS)[number]['id'];
+type ReportSectionId = (typeof REPORT_SECTIONS)[number]['id'];
 
 /** Whether a Reports card renders. An unset or empty list means every card. */
 export function showsSection(filters: AdminFilters, id: ReportSectionId): boolean {
@@ -92,7 +92,7 @@ export const PERIOD_PRESETS = [
   { id: 'last12', label: 'Last 12 months', days: 365 },
 ] as const;
 
-export type PeriodPresetId = (typeof PERIOD_PRESETS)[number]['id'];
+type PeriodPresetId = (typeof PERIOD_PRESETS)[number]['id'];
 
 export function presetRange(id: PeriodPresetId): { from: string; to: string } {
   const now = new Date();
@@ -142,10 +142,10 @@ export function describeScope(filters: AdminFilters, snapshot: Pick<AdminSnapsho
 }
 
 /** Only the resident columns the summaries need. `household_id` is how a resident reaches a barangay. */
-export type AdminResident = Pick<Individual, 'resident_id' | 'household_id' | 'sex' | 'birthday' | 'updated_at'>;
+type AdminResident = Pick<Individual, 'resident_id' | 'household_id' | 'sex' | 'birthday' | 'updated_at'>;
 
 /** Just enough of a household to place everything under it in a barangay. Both scope columns are trigger-stamped, so optional. */
-export type AdminHousehold = {
+type AdminHousehold = {
   household_id: string;
   purok_id?: string;
   barangay_id?: string;
@@ -674,7 +674,7 @@ export function filterAccounts(rows: AccountRow[], filters: AdminFilters): Accou
   });
 }
 
-export type ResidentPage = {
+type ResidentPage = {
   rows: Individual[];
   total: number;
 };
@@ -964,7 +964,7 @@ export async function assignBhwToPurok(bhwId: string, purokId: string, reason: s
     throw new Error(error.message);
   }
 }
-export const SHADED_STATUS: NutritionStatus = 'underweight';
+const SHADED_STATUS: NutritionStatus = 'underweight';
 
 export type BarangayStats = {
   /** Empty string for the households no barangay has been stamped on. */

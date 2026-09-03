@@ -103,7 +103,7 @@ export function forgetDeviceSyncState(): void {
 }
 
 /** The central row changed after this device's edit, so the entry goes straight to the dead letter. */
-export class SyncConflictError extends Error {
+class SyncConflictError extends Error {
   constructor(table: LocalTableName) {
     super(`This ${table.replace(/_/g, ' ')} record was changed centrally after this device edited it.`);
     this.name = 'SyncConflictError';
@@ -137,7 +137,7 @@ const primaryKeys: PrimaryKeyByTable = {
 /** Guards against two sync loops running at once (e.g. a mashed "Sync" button). */
 let syncInProgress = false;
 
-export async function isNetworkConnected(): Promise<boolean> {
+async function isNetworkConnected(): Promise<boolean> {
   const status = await Network.getStatus();
   return status.connected;
 }
@@ -574,7 +574,7 @@ export function withKnownParents<TRow>(rows: TRow[], foreignKey: keyof TRow & st
   return kept;
 }
 
-export async function pullRemoteUpdates(): Promise<void> {
+async function pullRemoteUpdates(): Promise<void> {
   try {
     // Row scope is enforced by RLS, not repeated here. `gte`, not `gt`, so a row
     // written in the same millisecond as the watermark is not skipped.

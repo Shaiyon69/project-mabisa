@@ -3,7 +3,7 @@ import { Network } from '@capacitor/network';
 import { initializeLocalDatabase } from '../services/localDatabase';
 import { idleResult, syncPendingQueue, type SyncResult, type SyncStatus } from '../services/syncService';
 
-export type BackgroundSyncState = {
+type BackgroundSyncState = {
   status: SyncStatus;
   isOnline: boolean;
   lastResult: SyncResult | null;

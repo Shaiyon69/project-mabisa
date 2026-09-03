@@ -58,7 +58,7 @@ type TableEmptyProps = {
   text: string;
 };
 
-export function TableEmpty({ title, text }: TableEmptyProps) {
+function TableEmpty({ title, text }: TableEmptyProps) {
   return <EmptyState title={title} text={text} />;
 }
 

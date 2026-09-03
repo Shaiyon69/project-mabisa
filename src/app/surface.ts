@@ -6,7 +6,7 @@
  * Set by `define` in vite.config.ts from the build mode rather than a `.env` file,
  * since the value decides what a deployment is.
  */
-export type Surface = 'bhw' | 'admin' | 'both';
+type Surface = 'bhw' | 'admin' | 'both';
 
 export const surface: Surface = (import.meta.env.VITE_SURFACE as Surface | undefined) ?? 'both';
 

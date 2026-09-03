@@ -146,7 +146,7 @@ export async function clearPin(userId: string): Promise<void> {
   await secureStorage.removeItem(attemptsKey(userId));
 }
 
-export type PinAttempt =
+type PinAttempt =
   | { ok: true }
   | { ok: false; reason: 'no-pin' }
   | { ok: false; reason: 'wrong'; waitMs: number }
