@@ -1,4 +1,4 @@
-export type Theme = 'light' | 'dark' | 'oled';
+export type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'mabisa.theme';
 
@@ -10,7 +10,9 @@ const STORAGE_KEY = 'mabisa.theme';
 export function readTheme(): Theme {
   const stored = localStorage.getItem(STORAGE_KEY);
 
-  if (stored === 'light' || stored === 'dark' || stored === 'oled') {
+  // 'oled' was a third palette reachable only by a second tap on Dark. Anyone
+  // holding it lands on dark.
+  if (stored === 'light' || stored === 'dark') {
     return stored;
   }
 

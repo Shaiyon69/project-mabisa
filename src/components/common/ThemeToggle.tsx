@@ -16,13 +16,8 @@ export function ThemeToggle() {
       <button type="button" className={theme === 'light' ? 'active' : ''} onClick={() => choose('light')}>
         Light
       </button>
-      {/* A second tap on Dark drops to true-black OLED; undocumented on purpose (a battery trick, not a third menu choice). */}
-      <button
-        type="button"
-        className={theme === 'light' ? '' : 'active'}
-        onClick={() => choose(theme === 'dark' ? 'oled' : 'dark')}
-      >
-        {theme === 'oled' ? 'OLED' : 'Dark'}
+      <button type="button" className={theme === 'dark' ? 'active' : ''} onClick={() => choose('dark')}>
+        Dark
       </button>
     </div>
   );
