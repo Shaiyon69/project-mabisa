@@ -475,7 +475,7 @@ describe('the local store', () => {
   describe('clearing the records for a new health worker', () => {
     it('empties the data tables and leaves both queues alone', async () => {
       await seed();
-      await store.enqueueSyncOperation('households', 'INSERT', household());
+      await store.saveHouseholdLocally(household({ household_id: 'h5', household_number: 'HH-005' }));
       await store.pullHealthAssessmentsFromServer([assessment({ assessment_id: 'a1', resident_id: 'r1' })]);
       await store.pullSupplyDisbursementsFromServer([
         disbursement({ log_id: 'd1', item_id: 'i1', resident_id: 'r1' }),
@@ -774,6 +774,53 @@ describe('the local store', () => {
       expect((await store.readLocalInventoryItems())[0].current_stock).toBe(15);
     });
   });
+
+  // ---------------------------------------------------------------------------
+
+  describe('base version', () => {
+    it('queues an update against the version the row held before the edit', async () => {
+      await seed();
+
+      // r1 was pulled at AT, so that is the last version the server gave us.
+      await store.saveIndividualLocally(
+        individual({ resident_id: 'r1', first_name: 'Juanito', updated_at: '2026-08-09T10:00:00.000Z' }),
+        'UPDATE',
+      );
+
+      const [entry] = await store.readSyncQueue();
+
+      expect(entry.operation_type).toBe('UPDATE');
+      expect(entry.base_version).toBe(AT);
+    });
+
+    it('leaves an insert with no version to race against', async () => {
+      await seed();
+      await store.saveHouseholdLocally(household({ household_id: 'h9', household_number: 'HH-009' }));
+
+      const [entry] = await store.readSyncQueue();
+
+      expect(entry.base_version).toBeNull();
+    });
+
+    it('carries the version through quarantine and back onto the queue', async () => {
+      await seed();
+      await store.saveIndividualLocally(
+        individual({ resident_id: 'r1', updated_at: '2026-08-09T10:00:00.000Z' }),
+        'UPDATE',
+      );
+
+      const [queued] = await store.readSyncQueue();
+      await store.moveSyncQueueEntryToDeadLetter(queued, 'server said no');
+
+      const [quarantined] = await store.readDeadLetterEntries();
+      expect(quarantined.base_version).toBe(AT);
+
+      await store.requeueDeadLetterEntries();
+
+      const [requeued] = await store.readSyncQueue();
+      expect(requeued.base_version).toBe(AT);
+    });
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -847,5 +894,68 @@ describe('a device installed before the current schema', () => {
     // The write that the leftover `not null` columns would have failed.
     await store.saveHouseholdLocally(household({ household_id: 'h2', household_number: 'HH-002' }));
     expect(await store.countRows('households')).toBe(2);
+  });
+
+  it('adds base_version to a queue that predates it, without losing what is waiting', async () => {
+    vi.resetModules();
+    harness.database = await newSqlJsDatabase();
+
+    // A phone in the field: the queue shape before the concurrency base existed,
+    // holding an unsent visit. `create table if not exists` will not touch it, so
+    // if the column upgrade misses, every later read of the queue throws and this
+    // device stops syncing entirely.
+    harness.database.run(`create table sync_queue (
+      queue_id integer primary key autoincrement,
+      operation_type text not null,
+      target_table text not null,
+      payload text not null,
+      created_at text not null,
+      attempts integer not null default 0,
+      last_error text,
+      next_attempt_at text
+    )`);
+    harness.database.run(`create table sync_dead_letter (
+      dead_letter_id integer primary key autoincrement,
+      original_queue_id integer not null,
+      operation_type text not null,
+      target_table text not null,
+      payload text not null,
+      created_at text not null,
+      attempts integer not null default 0,
+      last_error text,
+      failed_at text not null
+    )`);
+    harness.database.run(
+      `insert into sync_queue (operation_type, target_table, payload, created_at)
+       values ('UPDATE', 'individuals', '{"resident_id":"r1"}', '${AT}')`,
+    );
+    harness.database.run(
+      `insert into sync_dead_letter (original_queue_id, operation_type, target_table, payload, created_at, failed_at)
+       values (7, 'INSERT', 'households', '{"household_id":"h1"}', '${AT}', '${AT}')`,
+    );
+
+    const store: LocalDatabaseModule = await import('./localDatabase');
+    await store.initializeLocalDatabase();
+
+    const queue = await store.readSyncQueue();
+    const quarantined = await store.readDeadLetterEntries();
+
+    // The unsent visit is still there, and reads back with no base to match on —
+    // which is what sends it down the old comparison rather than quarantining it.
+    expect(queue).toHaveLength(1);
+    expect(queue[0].target_table).toBe('individuals');
+    expect(queue[0].base_version).toBeNull();
+    expect(quarantined).toHaveLength(1);
+    expect(quarantined[0].base_version).toBeNull();
+
+    // And a new edit on this upgraded device does record one.
+    await store.pullHouseholdsFromServer([household({ household_id: 'h9', household_number: 'HH-009' })]);
+    await store.saveHouseholdLocally(
+      household({ household_id: 'h9', household_number: 'HH-009-b', updated_at: '2026-09-01T00:00:00.000Z' }),
+      'UPDATE',
+    );
+
+    const after = await store.readSyncQueue();
+    expect(after.at(-1)?.base_version).toBe(AT);
   });
 });
