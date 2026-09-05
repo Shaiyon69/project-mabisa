@@ -140,6 +140,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const [removingMember, setRemovingMember] = useState<number | null>(null);
   // The pending draft write, so a save can cancel one that is still armed.
   const draftTimer = useRef<number | undefined>(undefined);
+  // Ids for a save that has not landed. Held here rather than in state, so a
+  // retry reuses them without turning the pending INSERT into an UPDATE.
+  const pendingIds = useRef<{ householdId: string; memberIds: string[] } | null>(null);
   // A form carrying a household id is editing that household, not creating one.
   const isRevisit = Boolean(household.household_id);
   const missingRequirements = [
@@ -187,6 +190,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
   function startBlank() {
     discardDraft();
+    pendingIds.current = null;
     setHousehold(blankHousehold());
     setMembers([blankMember(true)]);
     setFlagged([]);
@@ -211,6 +215,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   async function openExisting(existing: Household) {
     const existingMembers = await readLocalIndividuals({ householdId: existing.household_id });
 
+    pendingIds.current = null;
     setHousehold(existing);
     // Head first, matching how the form is filled in on paper; the read is ordered by name.
     setMembers(
@@ -309,19 +314,17 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
    * record shown, the reason, and who confirmed it.
    */
   async function persistHousehold(overriddenMembers: FlaggedMember[], reason: string): Promise<void> {
-    // A re-visit keeps the ids it was opened with, so the same house is updated.
-    // New members inside it are still inserts.
-    const householdId = household.household_id ?? createId();
+    // A re-visit keeps the ids it was opened with; new members are still inserts.
+    // A row added since a failed attempt is past the end of the held list.
+    const held = pendingIds.current;
+    const householdId = held?.householdId ?? household.household_id ?? createId();
+    const memberIds = members.map(
+      (member, index) => member.resident_id ?? held?.memberIds[index] ?? createId(),
+    );
+
+    pendingIds.current = { householdId, memberIds };
     const timestamp = new Date().toISOString();
     const overrideByMemberNumber = new Map(overriddenMembers.map((member) => [member.memberNumber, member]));
-    // Held in state before the write, so a retry after a partial save updates what
-    // landed rather than minting a second household.
-    const memberIds = members.map((member) => member.resident_id ?? createId());
-
-    setHousehold((current) => ({ ...current, household_id: householdId }));
-    setMembers((current) =>
-      current.map((member, index) => (member.resident_id ? member : { ...member, resident_id: memberIds[index] })),
-    );
 
     // The whole visit in one transaction and one flush. See saveHouseholdWithMembersLocally.
     await saveHouseholdWithMembersLocally(
@@ -366,7 +369,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       }),
     );
 
-    // The entries are now in SQLite and on the queue — the draft has nothing left to protect.
+    // In SQLite and on the queue: nothing left for the draft or the held ids to protect.
+    pendingIds.current = null;
     discardDraft();
     setRestoredNotice(false);
   }
