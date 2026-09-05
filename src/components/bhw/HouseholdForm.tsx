@@ -131,7 +131,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   // Members that look like an existing record, plus the reason for saving anyway.
   // Non-empty `flagged` holds the save until the warning is answered.
   const [flagged, setFlagged] = useState<FlaggedMember[]>([]);
-  const [overrideReason, setOverrideReason] = useState('');
+  // Keyed by member number: each flagged member's reason is stored on that
+  // member's own record, so they cannot share one.
+  const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
   // The household already recorded under the number being typed. Offered, never
   // forced.
   const [existingMatch, setExistingMatch] = useState<Household | null>(null);
@@ -313,7 +315,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
    * members once the BHW confirms they are different people, each stamped with the
    * record shown, the reason, and who confirmed it.
    */
-  async function persistHousehold(overriddenMembers: FlaggedMember[], reason: string): Promise<void> {
+  async function persistHousehold(overriddenMembers: FlaggedMember[], reasons: Record<number, string>): Promise<void> {
     // A re-visit keeps the ids it was opened with; new members are still inserts.
     // A row added since a failed attempt is past the end of the held list.
     const held = pendingIds.current;
@@ -360,7 +362,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
             // Falls back to what the member already carries, so a re-visit raising no
             // new warning does not erase an earlier override.
             duplicate_override_of: overridden?.matches[0]?.person.resident_id ?? member.duplicate_override_of ?? null,
-            duplicate_override_reason: overridden ? reason.trim() : member.duplicate_override_reason ?? null,
+            duplicate_override_reason: overridden
+              ? reasons[overridden.memberNumber]?.trim() ?? null
+              : member.duplicate_override_reason ?? null,
             duplicate_override_by: overridden ? bhwId : member.duplicate_override_by ?? null,
             duplicate_override_at: overridden ? timestamp : member.duplicate_override_at ?? null,
           },
@@ -393,7 +397,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     setFormError(null);
 
     try {
-      await persistHousehold(flagged, overrideReason);
+      await persistHousehold(flagged, overrideReasons);
     } catch (error) {
       setFlagged([]);
       setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
@@ -403,7 +407,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     }
 
     setFlagged([]);
-    setOverrideReason('');
+    setOverrideReasons({});
     setSaving(false);
     await leaveAfterSave();
   }
@@ -462,7 +466,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         return;
       }
 
-      await persistHousehold([], '');
+      await persistHousehold([], {});
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
       scrollToFirstError();
@@ -605,13 +609,14 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       <DuplicateWarningModal
         open={flagged.length > 0}
         flagged={flagged}
-        reason={overrideReason}
+        reasons={overrideReasons}
         saving={saving}
-        onReasonChange={setOverrideReason}
-        onCancel={() => {
-          setFlagged([]);
-          setOverrideReason('');
-        }}
+        onReasonChange={(memberNumber, reason) =>
+          setOverrideReasons((current) => ({ ...current, [memberNumber]: reason }))
+        }
+        // Keeps what was typed: the backdrop is a large target on a phone, and
+        // discarding the reasons on a stray tap costs the whole answer.
+        onCancel={() => setFlagged([])}
         onOverride={() => void handleOverride()}
       />
 

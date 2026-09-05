@@ -16,9 +16,10 @@ export type FlaggedMember = {
 type DuplicateWarningModalProps = {
   open: boolean;
   flagged: FlaggedMember[];
-  reason: string;
+  /** One reason per flagged member, keyed by `memberNumber`. */
+  reasons: Record<number, string>;
   saving: boolean;
-  onReasonChange: (reason: string) => void;
+  onReasonChange: (memberNumber: number, reason: string) => void;
   onCancel: () => void;
   onOverride: () => void;
 };
@@ -31,13 +32,15 @@ type DuplicateWarningModalProps = {
 export function DuplicateWarningModal({
   open,
   flagged,
-  reason,
+  reasons,
   saving,
   onReasonChange,
   onCancel,
   onOverride,
 }: DuplicateWarningModalProps) {
-  const hasReason = reason.trim().length > 0;
+  // Every flagged member needs its own: the reason is stored on that member's
+  // record, so one sentence covering three of them misdescribes two.
+  const answered = flagged.every((member) => reasons[member.memberNumber]?.trim());
 
   return (
     <Modal open={open} title="Someone here may already be registered" onClose={onCancel}>
@@ -68,22 +71,23 @@ export function DuplicateWarningModal({
               </li>
             ))}
           </ul>
+
+          <TextAreaField
+            label={`Why is ${member.memberName || `member ${member.memberNumber}`} a different person?`}
+            value={reasons[member.memberNumber] ?? ''}
+            rows={2}
+            required
+            onChange={(event) => onReasonChange(member.memberNumber, event.target.value)}
+            hint="Saved with this member's record, so an administrator can see who decided it and why."
+          />
         </div>
       ))}
-
-      <TextAreaField
-        label="Why is this a different person?"
-        value={reason}
-        rows={3}
-        onChange={(event) => onReasonChange(event.target.value)}
-        hint="Saved with the record so an administrator can see who decided this and why."
-      />
 
       <div className="modal-actions">
         <Button variant="ghost" onClick={onCancel} disabled={saving}>
           Go back and edit
         </Button>
-        <Button variant="danger" onClick={onOverride} disabled={!hasReason || saving}>
+        <Button variant="danger" onClick={onOverride} disabled={!answered || saving}>
           <Icon name="save" size={17} />
           {saving ? 'Saving Offline...' : 'Not the same person — save'}
         </Button>
