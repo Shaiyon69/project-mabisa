@@ -147,7 +147,7 @@ export function PinGate({ userId, pendingRecordCount, children }: PinGateProps) 
   return (
     <div className="pin-gate" role="dialog" aria-modal="true" aria-label={copy.title}>
       <span className="brand-mark" aria-hidden="true">
-        M
+        B
       </span>
       <h2>{copy.title}</h2>
       <p className="muted">{copy.body}</p>
