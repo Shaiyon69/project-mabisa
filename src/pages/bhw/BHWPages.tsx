@@ -49,7 +49,7 @@ export function RegisterResidentPage() {
       bhwId={bhwId}
       onSaved={async () => {
         await refreshLocalData();
-        setMessage('Saved Offline. Household profile is queued for sync.');
+        setMessage('Saved on this phone. It will be sent when you have signal.');
         navigate('/bhw');
       }}
     />
@@ -103,7 +103,7 @@ export function ResidentsPage() {
     <Card className="list-section">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Registry</p>
+          <p className="eyebrow">On this phone</p>
           <h2>Residents</h2>
         </div>
       </div>
@@ -136,13 +136,13 @@ export function ResidentsPage() {
         </ul>
       ) : readFailed ? (
         <ErrorState
-          title="Could not read this device's records"
-          text="The residents are still saved. Search again to retry."
+          title="Could not open this phone's records"
+          text="Your residents are still saved. Search again to try once more."
         />
       ) : (
         <EmptyState
           title={searching ? 'Searching...' : 'No resident found'}
-          text="Register a household to start the offline-first BHW workflow."
+          text="Register a household to begin. It saves on this phone even with no signal."
         />
       )}
     </Card>
@@ -165,7 +165,7 @@ export function ResidentDetailPage() {
         bhwId={bhwId}
         onSaved={async () => {
           await refreshLocalData();
-          setMessage('Pending Sync. Profile changes were saved on this device.');
+          setMessage('Changes saved on this phone. They will be sent when you have signal.');
         }}
       />
     </>
@@ -181,7 +181,7 @@ export function HealthAssessmentPage() {
       individualCount={snapshot.individualCount}
       onSaved={async () => {
         await refreshLocalData();
-        setMessage('Pending Sync. Health assessment was saved on this device.');
+        setMessage('Health check saved on this phone. It will be sent when you have signal.');
         navigate('/bhw');
       }}
     />
@@ -228,7 +228,7 @@ export function ProfilePage() {
           <dd>Barangay Health Worker</dd>
         </div>
         <div>
-          <dt>Records on this device</dt>
+          <dt>Records on this phone</dt>
           <dd>{snapshot.householdCount + snapshot.individualCount}</dd>
         </div>
       </dl>
@@ -244,7 +244,7 @@ export function ProfilePage() {
       </Button>
 
       <Modal open={confirmingLogout} title="Log out of BRHP-MSAM?" onClose={() => setConfirmingLogout(false)}>
-        <p className="logout-warning"><Icon name="warning" size={20} />Make sure pending records are synchronized before leaving this device.</p>
+        <p className="logout-warning"><Icon name="warning" size={20} />Send your waiting records before you log out of this phone.</p>
         <div className="modal-actions">
           <Button variant="ghost" onClick={() => setConfirmingLogout(false)}>Stay logged in</Button>
           <Button variant="danger" onClick={() => void logout()}><Icon name="logout" size={17} />Log out</Button>
@@ -264,7 +264,7 @@ export function SupplyDisbursementPage() {
       inventoryItems={snapshot.inventoryItems}
       onSaved={async () => {
         await refreshLocalData();
-        setMessage('Pending Sync. Supply release was saved and stock was updated on this device.');
+        setMessage('Saved on this phone. Your stock was updated, and it will be sent when you have signal.');
         navigate('/bhw');
       }}
     />

@@ -140,7 +140,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
       );
 
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Profile changes were not saved.');
+      setFormError(error instanceof Error ? error.message : 'Your changes were not saved.');
       scrollToFirstError();
       setSaving(false);
       return;
@@ -156,7 +156,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
       apply(await readResident(residentId));
       await onSaved();
     } catch {
-      setFormError('Changes were saved. The screen could not be refreshed — reopen the resident to see them.');
+      setFormError('Your changes were saved. The screen did not refresh — open this resident again to see them.');
     }
   }
 
@@ -172,8 +172,8 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
     return (
       <Card>
         <EmptyState
-          title="Resident not on this device"
-          text="They may belong to another purok, or their record has not synced down yet."
+          title="This resident is not on this phone"
+          text="They may belong to another purok, or their record has not come down to this phone yet."
         />
         <Link className="ghost-button" to="/bhw/residents">
           Back to residents
@@ -226,7 +226,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
 
             <SelectField
               label="Still in this household?"
-              hint="A member who left stays on file — every check and supply release recorded for them stays attached."
+              hint="Someone who left stays on file — every check and supply you recorded for them stays with their record."
               value={draft.status ?? 'active'}
               onChange={(event) => setDraft({ ...draft, status: event.target.value as Individual['status'] })}
             >
@@ -251,7 +251,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               </Button>
               <Button disabled={saving} onClick={() => void handleSave()}>
                 <Icon name="save" size={18} />
-                {saving ? 'Saving Offline...' : 'Save changes'}
+                {saving ? 'Saving...' : 'Save changes'}
               </Button>
             </FormActions>
           </>
@@ -263,7 +263,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               <Fact label="Sex" value={titleCase(resident.sex)} />
               <Fact label="Household" value={resident.household_number ?? '—'} />
               <Fact
-                label="Household membership"
+                label="Still in this household"
                 value={
                   !resident.status || resident.status === 'active'
                     ? 'Active member'
@@ -271,7 +271,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
                 }
               />
               <Fact
-                label="Relationship to Household Head"
+                label="Relation to the Head"
                 value={
                   resident.is_household_head
                     ? 'Household Head'
@@ -282,7 +282,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               />
               <Fact label="Occupation" value={resident.occupation ?? '—'} />
               <Fact
-                label="Educational Attainment"
+                label="Highest Grade Finished"
                 value={resident.educational_attainment ? titleCase(resident.educational_attainment) : '—'}
               />
               <Fact label="PhilHealth Number" value={resident.philhealth_number ?? '—'} />
@@ -317,7 +317,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
         <div className="panel-heading">
           <div>
             <p className="eyebrow">Recent checks</p>
-            <h2>Health Assessments</h2>
+            <h2>Health Checks</h2>
           </div>
           <Badge label={`${assessments.length}`} tone="info" />
         </div>
@@ -335,15 +335,15 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
             ))}
           </ul>
         ) : (
-          <EmptyState title="No assessments yet" text="Saved health assessments will appear here." />
+          <EmptyState title="No health checks yet" text="Checks you save will appear here." />
         )}
       </Card>
 
       <Card className="list-section">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">Inventory</p>
-            <h2>Supplies Released</h2>
+            <p className="eyebrow">Supplies</p>
+            <h2>Supplies Given</h2>
           </div>
           <Badge label={`${disbursements.length}`} tone="info" />
         </div>
@@ -355,7 +355,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
 
               return (
                 <li key={release.log_id}>
-                  <span>{item?.item_name ?? 'Item not on this device'}</span>
+                  <span>{item?.item_name ?? 'Item not on this phone'}</span>
                   <small>
                     {release.quantity} item(s) • {formatDate(release.disbursement_date)}
                   </small>
@@ -364,7 +364,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
             })}
           </ul>
         ) : (
-          <EmptyState title="No supplies released" text="Supply releases to this resident appear here." />
+          <EmptyState title="No supplies given yet" text="Supplies you give this resident will appear here." />
         )}
       </Card>
     </div>

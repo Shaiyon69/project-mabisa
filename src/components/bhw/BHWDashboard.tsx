@@ -81,18 +81,18 @@ export function BHWDashboard({
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
-        <Metric label="Households" value={snapshot.householdCount} detail="Registered dwellings" tone="blue" />
+        <Metric label="Households" value={snapshot.householdCount} detail="Houses recorded" tone="blue" />
         {/* The one metric with somewhere to go. There is no sixth slot on the
             bottom nav, so the registry is reached from the count of it. */}
         <Metric
-          label="Individuals"
+          label="Residents"
           value={snapshot.individualCount}
-          detail="Local profiles"
+          detail="People on this phone"
           tone="green"
           to="/bhw/residents"
         />
-        <Metric label="Assessments" value={snapshot.assessmentCount} detail="Health records" tone="amber" />
-        <Metric label="Released" value={snapshot.disbursementCount} detail="Supply logs" tone="red" />
+        <Metric label="Health checks" value={snapshot.assessmentCount} detail="Checks recorded" tone="amber" />
+        <Metric label="Supplies given" value={snapshot.disbursementCount} detail="Items handed out" tone="red" />
       </section>
 
       {/* What this health worker is still carrying. The numbers were already on the
@@ -115,7 +115,7 @@ export function BHWDashboard({
           {/* Stock only moves when the barangay office allocates or this phone
               syncs, so the age of the figure is part of the figure. */}
           <Badge
-            label={lastSyncAt ? `Synced ${formatDate(lastSyncAt)}` : 'Not synced yet'}
+            label={lastSyncAt ? `Updated ${formatDate(lastSyncAt)}` : 'Not updated yet'}
             tone={lastSyncAt ? 'success' : 'warning'}
           />
         </div>
@@ -135,8 +135,8 @@ export function BHWDashboard({
           </ul>
         ) : (
           <EmptyState
-            title="No supplies allocated to you yet"
-            text="The barangay office allocates stock to each health worker. Sync once you have a signal to check again."
+            title="No supplies given to you yet"
+            text="The barangay office hands out stock to each health worker. Get the latest once you have signal to check again."
           />
         )}
       </Card>
@@ -144,10 +144,10 @@ export function BHWDashboard({
       <Card className="list-section">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">BHW workflow</p>
-            <h2>Recent Profiles</h2>
+            <p className="eyebrow">Recently added</p>
+            <h2>Recent Residents</h2>
           </div>
-          <Badge label={snapshot.pendingQueueCount ? 'Pending Sync' : 'Saved Offline'} tone={snapshot.pendingQueueCount ? 'warning' : 'success'} />
+          <Badge label={snapshot.pendingQueueCount ? 'Waiting to send' : 'All sent'} tone={snapshot.pendingQueueCount ? 'warning' : 'success'} />
         </div>
 
         {latestIndividuals.length ? (
@@ -168,9 +168,9 @@ export function BHWDashboard({
             ))}
           </ul>
         ) : readFailed ? (
-          <ErrorState title="Could not read this device's records" text="The profiles are still saved. Reopen this screen to try again." />
+          <ErrorState title="Could not open this phone's records" text="Your records are still saved. Open this screen again to try once more." />
         ) : (
-          <EmptyState title="No local profiles yet" text="Register a household to start the offline-first BHW workflow." />
+          <EmptyState title="No residents yet" text="Register a household to begin. It saves on this phone even with no signal." />
         )}
       </Card>
 
@@ -178,7 +178,7 @@ export function BHWDashboard({
         <div className="panel-heading">
           <div>
             <p className="eyebrow">Recent checks</p>
-            <h2>Health Assessments</h2>
+            <h2>Health Checks</h2>
           </div>
         </div>
         {snapshot.latestAssessments.length ? (
@@ -193,7 +193,7 @@ export function BHWDashboard({
             ))}
           </ul>
         ) : (
-          <EmptyState title="No assessments yet" text="Saved health assessments will appear here." />
+          <EmptyState title="No health checks yet" text="Checks you save will appear here." />
         )}
       </Card>
     </div>

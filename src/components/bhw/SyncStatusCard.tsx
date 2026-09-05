@@ -8,7 +8,7 @@ import type { SyncStatus } from '../../services/syncService';
 type SyncStatusCardProps = {
   isOnline: boolean;
   syncStatus: SyncStatus;
-  /** Present only on a genuine failure. Drives the "Action Required" banner. */
+  /** Present only on a genuine failure. Drives the "Please check" banner. */
   syncError: string | null;
   /** When the queue last drained, ISO 8601, or null if it never has on this device. */
   lastSyncAt: string | null;
@@ -24,12 +24,12 @@ type SyncStatusCardProps = {
 // Exhaustive over the union, so a new status is a build error here rather than
 // engine vocabulary on screen.
 const statusLabels: Record<SyncStatus, string> = {
-  idle: 'Idle',
-  offline: 'Offline',
-  syncing: 'Syncing',
-  synced: 'Synced',
-  deferred: 'Waiting to retry',
-  failed: 'Failed',
+  idle: 'Nothing waiting',
+  offline: 'No signal',
+  syncing: 'Sending...',
+  synced: 'All sent',
+  deferred: 'Will try again',
+  failed: 'Could not send',
   unauthenticated: 'Sign in needed',
 };
 
@@ -74,7 +74,7 @@ export function SyncStatusCard({
   const setAsideCount = deadLetterEntries.length;
   const hasSetAside = setAsideCount > 0;
 
-  const syncedLabel = isError ? 'Sync Failed' : hasSetAside ? 'Needs Review' : isPending ? 'Pending Sync' : 'Synced';
+  const syncedLabel = isError ? 'Could not send' : hasSetAside ? 'Needs checking' : isPending ? 'Waiting to send' : 'All sent';
   // The engine's last run is not the whole answer. Rows queued since it finished
   // are still on the phone, and "Synced" beside a queue of four reads as a
   // promise the app has not kept.
@@ -88,25 +88,25 @@ export function SyncStatusCard({
     <Card className="sync-hero">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Device status</p>
-          <h2>{isOnline ? 'Ready to sync records' : 'Encoding works offline'}</h2>
+          <p className="eyebrow">This phone</p>
+          <h2>{isOnline ? 'This phone has signal' : 'You can keep working without signal'}</h2>
         </div>
         <Badge label={syncedLabel} tone={badgeTone} />
       </div>
 
       <div className="status-strip">
         <StatusCard
-          label="Connection"
-          value={isOnline ? 'Online' : 'Offline'}
+          label="Signal"
+          value={isOnline ? 'Yes' : 'None'}
           tone={isOnline ? 'success' : 'warning'}
         />
         <StatusCard
-          label="Sync status"
+          label="Records"
           value={statusValue}
           tone={isError ? 'danger' : isPending ? 'warning' : 'info'}
         />
         <StatusCard
-          label="Queue"
+          label="Records waiting"
           value={`${pendingQueueCount}`}
           tone={isPending ? 'warning' : 'success'}
         />
@@ -114,15 +114,15 @@ export function SyncStatusCard({
 
       <p className="muted sync-last">
         {lastSyncAt
-          ? `Last synced ${formatSyncMoment(lastSyncAt)}`
-          : 'This device has not completed a sync yet.'}
+          ? `Last sent ${formatSyncMoment(lastSyncAt)}`
+          : 'Nothing has been sent from this phone yet.'}
       </p>
 
       {needsSignIn && (
         <section className="sync-signin" aria-label="Sign in needed">
           <p className="alert sync-alert">
             <strong>Sign in needed:</strong>{' '}
-            This device was signed out. Records already saved here stay on the phone and sync once you are back in.
+            This phone was signed out. Everything you saved is still here, and will be sent once you sign in again.
           </p>
           <Button onClick={() => void onSignInAgain()}>Sign in again</Button>
         </section>
@@ -130,7 +130,7 @@ export function SyncStatusCard({
 
       {isError && (
         <p className="alert sync-alert">
-          <strong>Action Required:</strong> {syncError ?? 'Sync failed. Try again.'}
+          <strong>Please check:</strong> {syncError ?? 'The records could not be sent. Try again.'}
         </p>
       )}
 
@@ -138,17 +138,17 @@ export function SyncStatusCard({
         <section className="sync-quarantine" aria-label="Changes set aside">
           <div className="sync-quarantine-heading">
             <div>
-              <p className="eyebrow">Set aside after repeated failures</p>
+              <p className="eyebrow">Could not be sent after several tries</p>
               <strong>
-                {setAsideCount} change{setAsideCount === 1 ? '' : 's'} still on this device
+                {setAsideCount} record{setAsideCount === 1 ? '' : 's'} still on this phone
               </strong>
             </div>
-            <Badge label="Needs Review" tone="warning" />
+            <Badge label="Needs checking" tone="warning" />
           </div>
 
           <p className="muted">
-            Nothing was deleted. These were moved out of the queue so the rest of your records could sync, and can be
-            sent again once the cause is fixed.
+            Nothing was deleted. These were set aside so the rest of your records could go through, and can be sent
+            again once the problem is fixed.
           </p>
 
           <ul className="sync-quarantine-list">
@@ -156,7 +156,7 @@ export function SyncStatusCard({
               <li key={entry.dead_letter_id}>
                 <span>{recordLabels[entry.target_table]}</span>
                 <small>
-                  Saved {formatDate(entry.created_at)} • {entry.attempts} attempt{entry.attempts === 1 ? '' : 's'}
+                  Saved {formatDate(entry.created_at)} • tried {entry.attempts} time{entry.attempts === 1 ? '' : 's'}
                 </small>
                 <small className="sync-quarantine-error">{entry.last_error ?? 'Unknown error'}</small>
               </li>
@@ -164,7 +164,7 @@ export function SyncStatusCard({
           </ul>
 
           <Button variant="secondary" onClick={onRetryDeadLetters} disabled={isButtonDisabled}>
-            {syncingManually ? 'Retrying...' : 'Try these again'}
+            {syncingManually ? 'Sending...' : 'Try these again'}
           </Button>
         </section>
       )}
@@ -173,14 +173,14 @@ export function SyncStatusCard({
         <Button onClick={onManualSync} disabled={isButtonDisabled}>
           {/* Dynamic Button Text explains exactly what the click will do */}
           {syncingManually
-            ? 'Syncing...'
+            ? 'Sending...'
             : !isOnline
-              ? 'Offline'
+              ? 'No signal'
               : isError
-                ? 'Retry Sync'
+                ? 'Try again'
                 : isPending
-                  ? 'Push Local Changes'
-                  : 'Check for Updates'}
+                  ? 'Send now'
+                  : 'Get latest'}
         </Button>
       </div>
     </Card>

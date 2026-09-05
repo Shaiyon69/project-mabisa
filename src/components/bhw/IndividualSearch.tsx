@@ -72,7 +72,7 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
 
   return (
     <Combobox
-      label="Individual"
+      label="Resident"
       required
       value={selectedResidentId}
       options={options}
@@ -84,7 +84,7 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
       onQueryChange={setQuery}
       placeholder="Search by name..."
       error={error}
-      emptyText={isLoading ? 'Searching...' : readFailed ? "Could not read this device's records" : 'No resident found'}
+      emptyText={isLoading ? 'Searching...' : readFailed ? "Could not open this phone's records" : 'No resident found'}
     />
   );
 }

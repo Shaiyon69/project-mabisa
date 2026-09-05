@@ -76,7 +76,7 @@ type TableMetaProps = {
 export function TableMeta({ shown, total, label }: TableMetaProps) {
   return (
     <p className="ui-table-meta">
-      Showing {shown} of {total} {label} row(s).
+      Showing {shown} of {total} {label}.
     </p>
   );
 }

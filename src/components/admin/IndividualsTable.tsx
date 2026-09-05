@@ -261,12 +261,12 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
         columns={columns}
         rows={rows}
         getRowKey={(individual) => individual.resident_id}
-        emptyTitle={loading ? 'Reading the central registry' : 'No individual rows found'}
-        emptyText={loading ? 'One moment.' : 'Try a different search, or wait for a field device to sync.'}
+        emptyTitle={loading ? 'Loading the records' : 'No residents found'}
+        emptyText={loading ? 'One moment.' : "Try a different search, or wait for a health worker's phone to send its records."}
         limit={ITEMS_PER_PAGE}
       />
 
-      <TableMeta shown={rows.length} total={total} label="central individual" />
+      <TableMeta shown={rows.length} total={total} label="residents" />
 
       <div className="admin-pager">
         <Button disabled={page === 1 || loading} onClick={() => setPage((current) => current - 1)}>

@@ -394,7 +394,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     try {
       await onSaved();
     } catch {
-      setFormError('Household was saved. The screen could not be refreshed — it is on the queue either way.');
+      setFormError('The household was saved. The screen did not refresh, but the record is on this phone.');
       scrollToFirstError();
     }
   }
@@ -407,7 +407,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
       await persistHousehold(flagged, overrideReasons);
     } catch (error) {
       setFlagged([]);
-      setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
+      setFormError(error instanceof Error ? error.message : 'The household was not saved.');
       scrollToFirstError();
       setSaving(false);
       return;
@@ -444,7 +444,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
     if (badPhilhealth !== -1) {
       reject(
-        `Cannot save: Member ${badPhilhealth + 1}'s PhilHealth number may only contain digits, spaces, and dashes.`,
+        `Cannot save: Member ${badPhilhealth + 1}'s PhilHealth number may only have numbers, spaces and dashes.`,
       );
       return;
     }
@@ -459,7 +459,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
         if (existing && existing.household_id !== household.household_id) {
           setExistingMatch(existing);
-          reject(`Household ${existing.household_number} is already recorded on this device. Open it to update the record instead of saving a second copy.`);
+          reject(`Household ${existing.household_number} is already on this phone. Open it and update it, instead of saving a second copy.`);
           return;
         }
       }
@@ -475,7 +475,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
       await persistHousehold([], {});
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Household profile was not saved.');
+      setFormError(error instanceof Error ? error.message : 'The household was not saved.');
       scrollToFirstError();
       setSaving(false);
       return;
@@ -489,8 +489,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Household Profiling</p>
-          <h2>{isRevisit ? `Update ${household.household_number}` : 'New Household Registration'}</h2>
+          <p className="eyebrow">Household</p>
+          <h2>{isRevisit ? `Update ${household.household_number}` : 'New Household'}</h2>
         </div>
         {/* Neutral, and phrased as a capability: a green tick reading "Saved
             Offline" over a form that has saved nothing says the visit is done. */}
@@ -505,8 +505,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         {restoredNotice ? (
           <p className="form-alert tone-info" role="status">
             <Icon name="save" size={18} />
-            Unsaved entries from your last visit were restored.
-            <Button type="button" variant="ghost" onClick={startBlank}>Start blank</Button>
+            We kept what you typed last time.
+            <Button type="button" variant="ghost" onClick={startBlank}>Start over</Button>
           </p>
         ) : null}
 
@@ -515,7 +515,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         {existingMatch ? (
           <p className="form-alert tone-info" role="status">
             <Icon name="home" size={18} />
-            Household {existingMatch.household_number} is already recorded on this device.
+            Household {existingMatch.household_number} is already on this phone.
             <Button type="button" variant="ghost" onClick={() => void openExisting(existingMatch)}>
               Open it
             </Button>
@@ -525,13 +525,13 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         {isRevisit ? (
           <p className="form-alert tone-info" role="status">
             <Icon name="save" size={18} />
-            Updating the household already on file. Members already recorded stay: open a member's
-            own record to mark them moved out, deceased or transferred.
+            You are updating a household already on file. People already recorded stay here — open a person's own
+            record to mark them moved out, deceased or transferred.
             <Button type="button" variant="ghost" onClick={startBlank}>Record a different household</Button>
           </p>
         ) : null}
 
-        <h3>Household Information</h3>
+        <h3>About the Household</h3>
         <FormField 
           label="Household Number"
           value={household.household_number} 
@@ -548,7 +548,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
           options={WATER_OPTIONS}
           selectedValues={household.water_source || []}
           onChange={(newValues) => setHousehold({ ...household, water_source: newValues })}
-          error={showValidation && !household.water_source?.length ? 'Select at least one water source.' : undefined}
+          error={showValidation && !household.water_source?.length ? 'Select at least one.' : undefined}
         />
 
         <CheckboxGroup
@@ -557,7 +557,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
           options={TOILET_OPTIONS}
           selectedValues={household.toilet_type || []}
           onChange={(newValues) => setHousehold({ ...household, toilet_type: newValues })}
-          error={showValidation && !household.toilet_type?.length ? 'Select at least one toilet facility.' : undefined}
+          error={showValidation && !household.toilet_type?.length ? 'Select at least one.' : undefined}
         />
 
         <CheckboxGroup
@@ -566,12 +566,12 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
           options={FOOD_OPTIONS}
           selectedValues={household.food_production || []}
           onChange={(newValues) => setHousehold({ ...household, food_production: newValues })}
-          error={showValidation && !household.food_production?.length ? 'Select at least one food-production option.' : undefined}
+          error={showValidation && !household.food_production?.length ? 'Select at least one.' : undefined}
         />
 
         <hr className="form-divider" />
 
-        <h3>Household Members</h3>
+        <h3>People in this Household</h3>
 
         {members.map((member, index) => (
           <div key={index} className="member-card">
@@ -599,18 +599,18 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
               />
             </MemberFields>
 
-            {showValidation && !members.some((entry) => entry.is_household_head) ? <small className="field-error"><b className="required-mark">*</b> Assign one household head.</small> : null}
+            {showValidation && !members.some((entry) => entry.is_household_head) ? <small className="field-error"><b className="required-mark">*</b> Tick one person as the household head.</small> : null}
           </div>
         ))}
 
         <Button type="button" variant="ghost" className="add-member-action" onClick={addMember}>
-          Add another member
+          Add another person
         </Button>
 
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
-            {saving ? 'Saving Offline...' : 'Save Complete Household'}
+            {saving ? 'Saving...' : 'Save Household'}
           </Button>
         </FormActions>
       </form>
@@ -631,17 +631,17 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
       <Modal
         open={removingMember !== null}
-        title="Remove this member?"
+        title="Remove this person?"
         onClose={() => setRemovingMember(null)}
       >
         <p className="logout-warning">
           <Icon name="warning" size={20} />
           {removingMember !== null ? memberLabel(members[removingMember], removingMember) : ''}
           {' — '}
-          what was typed for this member will be discarded.
+          what you typed for this person will be discarded.
         </p>
         <div className="modal-actions">
-          <Button variant="ghost" onClick={() => setRemovingMember(null)}>Keep member</Button>
+          <Button variant="ghost" onClick={() => setRemovingMember(null)}>Keep person</Button>
           <Button variant="danger" onClick={() => removingMember !== null && removeMember(removingMember)}>
             Remove
           </Button>

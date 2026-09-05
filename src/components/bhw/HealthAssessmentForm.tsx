@@ -55,7 +55,7 @@ function bmiCaveats(person: Individual | null): string[] {
       `This resident is ${age} years old. Adult BMI does not classify anyone under ${ADULT_BMI_MIN_AGE} — read the result against the DOH/WHO growth chart instead.`,
     // One column covers all three; only pregnancy and nursing invalidate the reading.
     person.is_pregnant_nursing_fp &&
-      'This resident is flagged pregnant, nursing, or on family planning. If pregnant or nursing, BMI does not measure their nutrition status.',
+      'This resident is marked pregnant, nursing, or on family planning. If pregnant or nursing, BMI does not show their nutrition status.',
   ].filter(Boolean) as string[];
 }
 
@@ -92,15 +92,15 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   const nutritionStatus = getNutritionStatus(bmi);
   const hasIndividuals = individualCount > 0;
   const missingRequirements = [
-    !hasIndividuals && 'registered resident',
-    !residentId && 'selected resident',
-    !assessmentDate && 'assessment date',
-    isInFuture(assessmentDate) && 'an assessment date on or before today',
+    !hasIndividuals && 'a registered resident',
+    !residentId && 'the resident being checked',
+    !assessmentDate && 'the date of the check',
+    isInFuture(assessmentDate) && 'a date on or before today',
     (!isMeasurementInRange(weight, WEIGHT_KG_RANGE) ||
       !isMeasurementInRange(height, HEIGHT_CM_RANGE) ||
       !bmi ||
       !nutritionStatus) &&
-      'valid weight and height',
+      'a weight and height within range',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
   const caveats = bmiCaveats(resident);
@@ -139,7 +139,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     try {
       await saveHealthAssessmentLocally(assessment);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Health assessment was not saved.');
+      setFormError(error instanceof Error ? error.message : 'This health check was not saved.');
       scrollToFirstError();
       setSaving(false);
       return;
@@ -158,7 +158,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     try {
       await onSaved();
     } catch {
-      setFormError('Assessment was saved. The screen could not be refreshed — it is on the queue either way.');
+      setFormError('Saved. The screen did not refresh, but the record is on this phone.');
     }
   }
 
@@ -166,10 +166,10 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Assessment</p>
-          <h2>Health Assessment</h2>
+          <p className="eyebrow">Health check</p>
+          <h2>Health Check</h2>
         </div>
-        <Badge label={hasIndividuals ? 'Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
+        <Badge label={hasIndividuals ? 'Ready' : 'No residents yet'} tone={hasIndividuals ? 'success' : 'warning'} />
       </div>
       <form className="stack" onSubmit={handleSubmit} onKeyDown={ignoreImplicitSubmit} noValidate>
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
@@ -183,10 +183,10 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           error={showValidation && !residentId ? 'Select a resident.' : undefined}
         />
         
-        {!hasIndividuals ? <p className="form-hint">Register a household before recording a health assessment.</p> : null}
+        {!hasIndividuals ? <p className="form-hint">Register a household first.</p> : null}
         
         <FormField 
-          label="Assessment Date"
+          label="Date of Check"
           type="date" 
           max={today()} 
           value={assessmentDate} 
@@ -194,9 +194,9 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           required 
           error={
             showValidation && !assessmentDate
-              ? 'Assessment date is required.'
+              ? 'The date of the check is required.'
               : showValidation && isInFuture(assessmentDate)
-                ? 'Assessment date cannot be in the future.'
+                ? 'The date cannot be in the future.'
                 : undefined
           }
         />
@@ -235,7 +235,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
-            {saving ? 'Saving Offline...' : 'Save Assessment'}
+            {saving ? 'Saving...' : 'Save Assessment'}
           </Button>
         </FormActions>
       </form>
@@ -248,7 +248,7 @@ function BmiRail({ bmi, status }: { bmi: number | null; status: NutritionStatus 
   return (
     <section className="bmi-rail">
       <div className="bmi-readout">
-        <p className="eyebrow">Body mass index</p>
+        <p className="eyebrow">Body Mass Index (BMI)</p>
         <strong>{bmi ? bmi.toFixed(1) : '--'}</strong>
         <output className={`bmi-verdict${status ? ` bmi-verdict-${status}` : ''}`}>
           {status ? titleCase(status) : 'Enter weight and height'}

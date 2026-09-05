@@ -25,7 +25,7 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
     },
     {
       key: 'current-stock',
-      header: 'Unallocated',
+      header: 'At the barangay',
       render: (item) => item.current_stock,
     },
     {
@@ -66,11 +66,11 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
         columns={columns}
         rows={filteredItems}
         getRowKey={(item) => item.item_id}
-        emptyTitle={loading ? 'Reading central inventory' : 'No inventory rows'}
+        emptyTitle={loading ? 'Loading the supplies' : 'No supplies yet'}
         emptyText={
           loading
             ? 'One moment.'
-            : 'Nothing has been stocked yet. A barangay administrator adds supplies from this screen.'
+            : 'Nothing has been stocked yet. A barangay administrator adds supplies on this screen.'
         }
       />
       {/*
@@ -80,7 +80,7 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
         items, not thousands, and the search box above narrows them; server-side
         paging here would be machinery for a list that fits on a screen.
       */}
-      <TableMeta shown={filteredItems.length} total={inventoryItems.length} label="central inventory" />
+      <TableMeta shown={filteredItems.length} total={inventoryItems.length} label="items" />
     </div>
   );
 }
