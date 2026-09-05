@@ -34,8 +34,13 @@ import { SummaryContext } from './AdminFilterBar';
  * one snapshot the page already read.
  */
 export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
-  const stats = barangayStats(snapshot);
+  // Read off `unscoped` and the session's own barangay, so picking one barangay
+  // narrows the panels below but never deletes the others from a comparison.
+  // An RHU account compares every barangay; a barangay administrator has one.
+  const stats = barangayStats(snapshot.unscoped, snapshot.sessionBarangayId);
   const scope = describeScope(filters, snapshot);
+  // What those two panels actually cover, which is not what the picker says.
+  const everyBarangay = snapshot.barangayLabel;
 
   return (
     // The half-width panels are adjacent so they share a row, and there are two
@@ -49,9 +54,9 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
           as broken rather than as new. */}
       <DemographicsPanel snapshot={snapshot} filters={filters} scope={scope} />
       <StockPanel snapshot={snapshot} filters={filters} scope={scope} />
-      <CoveragePanel stats={stats} filters={filters} scope={scope} />
+      <CoveragePanel stats={stats} filters={filters} scope={everyBarangay} />
       <TrendPanel snapshot={snapshot} filters={filters} scope={scope} />
-      <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={scope} />
+      <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={everyBarangay} />
       <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
     </div>
   );
@@ -296,7 +301,7 @@ function ComparisonPanel({
   const plotted = stats.some((row) => row.residents || row.assessments || row.underweight);
   // The whole nutrition mix per barangay, next to the single underweight share
   // the bars and the table above carry.
-  const mix = nutritionByBarangay(snapshot);
+  const mix = nutritionByBarangay(snapshot.unscoped, snapshot.sessionBarangayId);
   const columns: TableColumn<BarangayStats>[] = [
     { key: 'name', header: 'Barangay', render: (row) => row.name },
     { key: 'households', header: 'Households', render: (row) => row.households },
@@ -366,7 +371,8 @@ function ComparisonPanel({
       />
       <p className="muted report-note">
         Households, residents and units released are counted through the household that records the barangay. Assessment
-        figures cover the selected period; the household and resident counts do not.
+        figures cover the selected period; the household and resident counts do not. Every barangay this account can
+        read is listed, whichever one the filter is set to — comparing them is what this panel is for.
       </p>
     </Card>
   );
@@ -407,7 +413,8 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
       )}
       <p className="muted report-note">
         Share of each barangay&apos;s registered residents with at least one assessment in this period. A low bar is a
-        profiling gap, not a health finding.
+        profiling gap, not a health finding. Every barangay this account can read gets a ring, whichever one the filter
+        is set to.
       </p>
     </Card>
   );

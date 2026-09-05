@@ -152,6 +152,15 @@ type AdminHousehold = {
   updated_at: string;
 };
 
+/** The rows a per-barangay rollup reads. Named so a caller can hand it either the scoped or the unscoped set. */
+export type BarangayRollup = {
+  barangays: Barangay[];
+  households: AdminHousehold[];
+  residents: AdminResident[];
+  assessments: HealthAssessment[];
+  disbursements: SupplyDisbursement[];
+};
+
 export type AdminSnapshot = {
   /** Every barangay the session may read, for the scope picker and the map. */
   barangays: Barangay[];
@@ -170,6 +179,14 @@ export type AdminSnapshot = {
   inventoryItems: InventoryItem[];
   /** Stock handed from the barangay to a BHW, also a position. */
   allocations: InventoryAllocation[];
+  /**
+   * The same rows before the barangay and purok narrowing. The panels that
+   * compare barangays read these: picking one barangay must not delete the
+   * others from a comparison, which is the whole question those panels answer.
+   */
+  unscoped: BarangayRollup;
+  /** The barangay this session is confined to, or null for an RHU account that reads every one. */
+  sessionBarangayId: string | null;
   /** The barangay this snapshot covers, as it should appear on an export. */
   barangayLabel: string;
   /** When this snapshot was read from the central database. */
@@ -189,6 +206,8 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   disbursements: [],
   inventoryItems: [],
   allocations: [],
+  unscoped: { barangays: [], households: [], residents: [], assessments: [], disbursements: [] },
+  sessionBarangayId: null,
   barangayLabel: '',
   fetchedAt: new Date(0).toISOString(),
   newestRecordAt: null,
@@ -262,6 +281,8 @@ function readSnapshotRows(filters: AdminFilters) {
         .order('allocation_id')
         .range(from, to),
     ),
+    // Returns the label and the session's own barangay together: which barangays
+    // a rollup may name comes from the latter, not from the picker.
     fetchBarangayScope(),
   ]);
 }
@@ -351,7 +372,8 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     throw cause;
   }
 
-  const [barangays, puroks, households, residents, residentHouseholds, assessments, disbursements, inventory, allocations, barangayLabel] = rows;
+  const [barangays, puroks, households, residents, residentHouseholds, assessments, disbursements, inventory, allocations, sessionScope] =
+    rows;
 
   // Narrow to the selected barangay and purok. Both reach everything below
   // through the household, the only table carrying `barangay_id`.
@@ -387,14 +409,19 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
     allocations: allocationRows,
-    barangayLabel,
+    unscoped: { barangays, households, residents, assessments, disbursements },
+    sessionBarangayId: sessionScope.barangayId,
+    barangayLabel: sessionScope.label,
     fetchedAt: new Date().toISOString(),
     newestRecordAt: newest([...residentRows, ...assessmentRows, ...disbursementRows, ...inventoryRows]),
   };
 }
 
-/** What an export should call the area it covers: one barangay by name, or the whole unit for an RHU account. */
-export async function fetchBarangayScope(): Promise<string> {
+/**
+ * What an export should call the area it covers, and the barangay the session is
+ * confined to. Both come off one `current_barangay_id` call.
+ */
+export async function fetchBarangayScope(): Promise<{ label: string; barangayId: string | null }> {
   const [scope, barangays] = await Promise.all([
     // Null for an RHU account.
     supabase.rpc('current_barangay_id'),
@@ -407,7 +434,7 @@ export async function fetchBarangayScope(): Promise<string> {
     throw new Error(scope.error.message);
   }
 
-  return describeBarangayScope(scope.data, barangays);
+  return { label: describeBarangayScope(scope.data, barangays), barangayId: scope.data };
 }
 
 export function describeBarangayScope(scopeId: string | null, barangays: { barangay_id: string; name: string }[]): string {
@@ -947,6 +974,16 @@ export async function assignBhwToPurok(bhwId: string, purokId: string, reason: s
 }
 const SHADED_STATUS: NutritionStatus = 'underweight';
 
+/**
+ * The barangays a rollup may name. `barangays` lists every row the API returns,
+ * which for a barangay administrator is all of them even though their household
+ * rows are one barangay's — seeding off it unfiltered reports the neighbours as
+ * holding nothing.
+ */
+function readableBarangays({ barangays }: BarangayRollup, sessionBarangayId: string | null): Barangay[] {
+  return sessionBarangayId ? barangays.filter((barangay) => barangay.barangay_id === sessionBarangayId) : barangays;
+}
+
 export type BarangayStats = {
   /** Empty string for the households no barangay has been stamped on. */
   barangayId: string;
@@ -983,8 +1020,14 @@ function residentBarangayMap(snapshot: Pick<AdminSnapshot, 'households' | 'resid
 /**
  * One row per barangay, which the map, the comparison table and the coverage
  * panel all render from. Barangays holding nothing still appear, with zeroes.
+ *
+ * `sessionBarangayId` is what the session may read, not what the picker has
+ * narrowed to: an RHU account passes null and gets every barangay, a barangay
+ * administrator gets the one row it can see rather than its neighbours at zero.
+ * Pass `snapshot.unscoped` as the source, or these rows will report the
+ * barangays outside the current view as holding nothing.
  */
-export function barangayStats(snapshot: AdminSnapshot): BarangayStats[] {
+export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: string | null = null): BarangayStats[] {
   const residentBarangay = residentBarangayMap(snapshot);
 
   const rows = new Map<string, BarangayStats>();
@@ -1001,7 +1044,7 @@ export function barangayStats(snapshot: AdminSnapshot): BarangayStats[] {
     unitsReleased: 0,
   });
 
-  for (const barangay of snapshot.barangays) {
+  for (const barangay of readableBarangays(snapshot, sessionBarangayId)) {
     rows.set(barangay.barangay_id, blank(barangay.barangay_id, barangay.name));
   }
 
@@ -1061,8 +1104,8 @@ export function barangayStats(snapshot: AdminSnapshot): BarangayStats[] {
   );
 }
 
-/** One `ChartRow` per barangay, its four values in `NUTRITION_ORDER`, for the Analytics nutrition mix. */
-export function nutritionByBarangay(snapshot: AdminSnapshot): ChartRow[] {
+/** One `ChartRow` per barangay the session may read, its four values in `NUTRITION_ORDER`, for the Analytics nutrition mix. */
+export function nutritionByBarangay(snapshot: BarangayRollup, sessionBarangayId: string | null = null): ChartRow[] {
   const residentBarangay = residentBarangayMap(snapshot);
   const rows = new Map<string, { barangayId: string; name: string; counts: Map<NutritionStatus, number> }>();
 
@@ -1079,7 +1122,7 @@ export function nutritionByBarangay(snapshot: AdminSnapshot): ChartRow[] {
     return created;
   };
 
-  for (const barangay of snapshot.barangays) {
+  for (const barangay of readableBarangays(snapshot, sessionBarangayId)) {
     at(barangay.barangay_id, barangay.name);
   }
 

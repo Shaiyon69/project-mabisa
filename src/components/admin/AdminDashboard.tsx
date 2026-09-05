@@ -37,7 +37,9 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
   // record. `releasedTotal` above is the quantity question.
   const recordsGathered =
     snapshot.householdCount + snapshot.residentCount + snapshot.assessments.length + snapshot.disbursements.length;
-  const stats = barangayStats(snapshot);
+  // Unscoped: this panel is also the barangay picker, so narrowing it to the
+  // selected barangay would leave no row to switch to.
+  const stats = barangayStats(snapshot.unscoped, snapshot.sessionBarangayId);
   // One tally feeding both the ring and the bars, so the two cannot disagree.
   const nutrition = nutritionTally(snapshot.assessments);
 
@@ -118,11 +120,15 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
             Open analytics
           </Link>
         </div>
-        <SummaryContext filters={filters} snapshot={snapshot} />
+        {/* Names what the rows below actually cover, which is every barangay this
+            account can read rather than whichever one the picker is set to. */}
+        <SummaryContext filters={filters} extra={snapshot.barangayLabel} />
         <BarangayRates
           stats={stats}
           selected={filters.barangayId}
-          onSelect={(barangayId) => onScope({ ...filters, barangayId })}
+          // The purok goes with it: one from the barangay just left matches no
+          // household in the new one.
+          onSelect={(barangayId) => onScope({ ...filters, barangayId, purokId: null })}
         />
       </Card>
 
