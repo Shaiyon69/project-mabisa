@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ageInYears,
   calculateBmi,
@@ -11,6 +11,7 @@ import {
   philhealthDigits,
   statusChangedOn,
   titleCase,
+  today,
   WEIGHT_KG_RANGE,
 } from './utils';
 
@@ -136,6 +137,23 @@ describe('philhealthDigits', () => {
     expect(philhealthDigits('--')).toBeNull();
     expect(philhealthDigits(null)).toBeNull();
     expect(philhealthDigits(undefined)).toBeNull();
+  });
+});
+
+describe('today', () => {
+  it('reads the local calendar day, not the UTC one', () => {
+    vi.useFakeTimers();
+    // 23:30 in Manila on the 5th is still the 4th in UTC. `toISOString()` would
+    // date a visit recorded now to yesterday, and `max={today()}` would refuse
+    // the date the BHW is standing in.
+    vi.setSystemTime(new Date(2026, 8, 5, 23, 30));
+
+    expect(today()).toBe('2026-09-05');
+
+    vi.setSystemTime(new Date(2026, 0, 1, 0, 30));
+    expect(today()).toBe('2026-01-01');
+
+    vi.useRealTimers();
   });
 });
 

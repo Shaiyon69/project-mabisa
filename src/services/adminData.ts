@@ -1,5 +1,5 @@
 import { PULL_PAGE_SIZE, readAllPages, supabase } from '../lib/supabase';
-import { ADULT_BMI_MIN_AGE, ageInYears } from '../lib/utils';
+import { ADULT_BMI_MIN_AGE, ageInYears, isoLocalDay } from '../lib/utils';
 import type { ChartRow } from '../lib/charts';
 import type {
   Barangay,
@@ -80,10 +80,6 @@ export function showsSection(filters: AdminFilters, id: ReportSectionId): boolea
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 /** The selectable period ranges. `to` is always today. */
 export const PERIOD_PRESETS = [
   { id: 'last30', label: 'Last 30 days', days: 30 },
@@ -99,8 +95,8 @@ export function presetRange(id: PeriodPresetId): { from: string; to: string } {
   const preset = PERIOD_PRESETS.find((candidate) => candidate.id === id);
 
   return {
-    from: preset?.days ? isoDay(new Date(now.getTime() - (preset.days - 1) * DAY_MS)) : `${now.getFullYear()}-01-01`,
-    to: isoDay(now),
+    from: preset?.days ? isoLocalDay(new Date(now.getTime() - (preset.days - 1) * DAY_MS)) : `${now.getFullYear()}-01-01`,
+    to: isoLocalDay(now),
   };
 }
 
@@ -538,15 +534,6 @@ function yearsBefore(date: Date, years: number): Date {
 
 function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
-/** `YYYY-MM-DD` off a date's local calendar parts, not `isoDay`'s UTC ones. */
-function isoLocalDay(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
 }
 
 /**

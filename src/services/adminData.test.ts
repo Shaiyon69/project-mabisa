@@ -240,7 +240,9 @@ describe('disbursementsByItem', () => {
 describe('period', () => {
   it('defaults to year to date', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-22T05:00:00.000Z'));
+    // Midday UTC: the range is read off the local calendar day, so a time near
+    // either midnight would make this assert the runner's timezone.
+    vi.setSystemTime(new Date('2026-08-22T12:00:00.000Z'));
 
     expect(defaultAdminFilters()).toEqual({ from: '2026-01-01', to: '2026-08-22', barangayId: null });
 

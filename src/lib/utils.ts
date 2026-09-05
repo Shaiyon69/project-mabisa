@@ -72,8 +72,17 @@ export function createId(): string {
   return crypto.randomUUID();
 }
 
+/** `YYYY-MM-DD` off a date's local calendar parts. The UTC day is yesterday here until 08:00. */
+export function isoLocalDay(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return isoLocalDay(new Date());
 }
 
 /**
