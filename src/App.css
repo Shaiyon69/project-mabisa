@@ -930,12 +930,23 @@ tbody tr:hover {
   background: var(--muted-surface);
 }
 
-/* Flows with the form, no bar chrome: the panel already frames it, and a second
-   framed strip inside read as a nested box on a phone. */
+/* Pinned to the foot of the scrollport, which is what the class has always been
+   named for. A household with five members runs past 20,000px, and Save sitting
+   at the bottom of that meant scrolling the whole form to reach it.
+
+   Bled out to the panel's own 20px padding and given the panel's fill, so the
+   form scrolls under a solid bar rather than behind a floating button. */
 .sticky-actions {
+  position: sticky;
+  z-index: 4;
+  bottom: 0;
   display: grid;
   gap: 10px;
-  margin-top: 4px;
+  margin: 4px -20px -20px;
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--panel);
 }
 
 .sticky-actions .primary-button {
@@ -1572,6 +1583,15 @@ tbody tr:hover {
 .bhw-mobile-shell .sticky-actions .primary-button {
   width: 100%;
   min-height: 58px;
+}
+
+/* Clears the docked nav, which is sticky at the same edge and one layer above.
+   The bleed is re-cut to this shell's own 17px card padding, or the bar overhangs
+   the rounded card edge by the 3px difference. */
+.bhw-mobile-shell .sticky-actions {
+  bottom: calc(66px + env(safe-area-inset-bottom));
+  margin: 4px -17px -17px;
+  padding: 14px 17px;
 }
 
 .bhw-mobile-shell .modal-actions button {

@@ -9,9 +9,11 @@ type CheckboxGroupProps = {
   selectedValues: string[];
   onChange: (newValues: string[]) => void;
   error?: string;
+  /** Marks the group before submit, the same way a required field is marked. */
+  required?: boolean;
 };
 
-export function CheckboxGroup({ label, options, selectedValues, onChange, error }: CheckboxGroupProps) {
+export function CheckboxGroup({ label, options, selectedValues, onChange, error, required }: CheckboxGroupProps) {
   function handleToggle(value: string) {
     if (selectedValues.includes(value)) {
       onChange(selectedValues.filter((v) => v !== value));
@@ -22,10 +24,15 @@ export function CheckboxGroup({ label, options, selectedValues, onChange, error 
 
   // fieldset/legend, so a screen reader hears these options as one question.
   return (
-    <fieldset className={`choice-group${error ? ' has-error' : ''}`} aria-invalid={Boolean(error)}>
+    <fieldset className={`choice-group${error ? ' has-error' : ''}`}>
       <legend>
         {label}
-        {error ? <b className="required-mark"> *</b> : null}
+        {required ? (
+          <b className="required-mark" aria-hidden="true">
+            {' '}
+            *
+          </b>
+        ) : null}
       </legend>
       <div className="choice-list">
         {options.map((option) => {

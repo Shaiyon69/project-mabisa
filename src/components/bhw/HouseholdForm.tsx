@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
-import { createId, emptyToNull, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
+import { createId, describeMissing, emptyToNull, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
   findLocalHouseholdByNumber,
@@ -422,7 +422,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     }
 
     if (!isFormReady) {
-      reject(null);
+      reject(describeMissing(missingRequirements));
       return;
     }
 
@@ -531,6 +531,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
         <CheckboxGroup
           label="Primary Water Source(s)"
+          required
           options={WATER_OPTIONS}
           selectedValues={household.water_source || []}
           onChange={(newValues) => setHousehold({ ...household, water_source: newValues })}
@@ -539,6 +540,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
         <CheckboxGroup
           label="Toilet Facility"
+          required
           options={TOILET_OPTIONS}
           selectedValues={household.toilet_type || []}
           onChange={(newValues) => setHousehold({ ...household, toilet_type: newValues })}
@@ -547,6 +549,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
         <CheckboxGroup
           label="Food Production"
+          required
           options={FOOD_OPTIONS}
           selectedValues={household.food_production || []}
           onChange={(newValues) => setHousehold({ ...household, food_production: newValues })}
