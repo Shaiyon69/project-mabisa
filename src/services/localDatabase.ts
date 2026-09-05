@@ -53,6 +53,15 @@ type MigratableTableName = LocalTableName | LocalBookkeepingTableName;
 
 export type SyncOperationType = 'INSERT' | 'UPDATE';
 
+/** Primary key column per table. Lives here because both the write path and the push need it. */
+export const primaryKeys = {
+  households: 'household_id',
+  individuals: 'resident_id',
+  health_assessments: 'assessment_id',
+  inventory_items: 'item_id',
+  supply_disbursements: 'log_id',
+} as const satisfies Record<LocalTableName, string>;
+
 /** Insert payload shape per table, for type-safe sync_queue writes. */
 type LocalInsertPayloadByTable = {
   households: HouseholdInsert;
@@ -86,6 +95,13 @@ export type SyncQueueEntry<TTable extends LocalTableName = LocalTableName> = {
   // Earliest retry time, null means "now". Persisted so a cold start does not
   // reset the backoff.
   next_attempt_at: string | null;
+  /**
+   * The row's `updated_at` as this device last read it from the server, captured
+   * before the edit overwrote it. The push matches on this, so a stale device
+   * loses the race instead of every device losing it to clock drift. Null on an
+   * INSERT, and on an entry queued before the column existed.
+   */
+  base_version: string | null;
 };
 
 // A queue entry that exhausted its retries, preserved in full so it can be requeued.
@@ -99,6 +115,7 @@ export type DeadLetterEntry<TTable extends LocalTableName = LocalTableName> = {
   attempts: number;
   last_error: string | null;
   failed_at: string;
+  base_version: string | null;
 };
 
 type SqlValue = string | number | null;
@@ -195,7 +212,8 @@ const migrations = [
     created_at text not null,
     attempts integer not null default 0,
     last_error text,
-    next_attempt_at text
+    next_attempt_at text,
+    base_version text
   )`,
 
   // Sync Dead Letter Table — exhausted retries, quarantined so the main queue keeps draining.
@@ -208,7 +226,8 @@ const migrations = [
     created_at text not null,
     attempts integer not null default 0,
     last_error text,
-    failed_at text not null
+    failed_at text not null,
+    base_version text
   )`,
 
   // Performance Indices for faster lookups and table joins
@@ -227,6 +246,11 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   { table: 'individuals', column: 'middle_name', definition: 'text' },
   // Retry backoff column — absent on devices installed before it existed.
   { table: 'sync_queue', column: 'next_attempt_at', definition: 'text' },
+  // The `updated_at` this device last read from the server for the row an UPDATE
+  // targets. Null on an entry queued before the column existed, which falls back
+  // to the old timestamp comparison.
+  { table: 'sync_queue', column: 'base_version', definition: 'text' },
+  { table: 'sync_dead_letter', column: 'base_version', definition: 'text' },
   // Who last wrote the row (updated_at already carries the when).
   { table: 'individuals', column: 'updated_by', definition: 'text' },
   // Duplicate-override provenance. No foreign key: the referenced record may not
@@ -388,22 +412,44 @@ function queueStatement<TTable extends LocalTableName, TOperation extends SyncOp
   targetTable: TTable,
   operationType: TOperation,
   payload: SyncPayload<TTable, TOperation>,
+  baseVersion: string | null = null,
 ) {
   return {
-    statement: `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error)
-     values (?, ?, ?, ?, 0, null)`,
-    values: [[operationType, targetTable, JSON.stringify(payload), new Date().toISOString()] as SqlValue[]],
+    statement: `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, base_version)
+     values (?, ?, ?, ?, 0, null, ?)`,
+    values: [
+      [operationType, targetTable, JSON.stringify(payload), new Date().toISOString(), baseVersion] as SqlValue[],
+    ],
   };
 }
 
-/** Stringifies the payload and queues it — called right after the local write ("double-write"). */
-export async function enqueueSyncOperation<TTable extends LocalTableName, TOperation extends SyncOperationType>(
-  targetTable: TTable,
-  operationType: TOperation,
-  payload: SyncPayload<TTable, TOperation>,
-): Promise<void> {
+/**
+ * The row's current `updated_at`, read before a write replaces it. That value is
+ * the server's own whenever the row has been pulled or pushed, which is what
+ * makes it usable as a concurrency base.
+ */
+export async function readRowVersion(table: LocalTableName, id: unknown): Promise<string | null> {
+  if (typeof id !== 'string') {
+    return null;
+  }
+
   const database = await initializeLocalDatabase();
-  await database.executeSet([queueStatement(targetTable, operationType, payload)]);
+  const result = await database.query(
+    `select updated_at from ${table} where ${primaryKeys[table]} = ?`,
+    [id],
+  );
+  const value = result.values?.[0]?.updated_at;
+
+  return typeof value === 'string' ? value : null;
+}
+
+/** Records the `updated_at` the server stamped on a row this device just pushed, so the next edit bases on it. */
+export async function setRowVersion(table: LocalTableName, id: string, version: string): Promise<void> {
+  const database = await initializeLocalDatabase();
+  await database.run(
+    `update ${table} set updated_at = ? where ${primaryKeys[table]} = ?`,
+    [version, id],
+  );
 }
 
 /** The columns a queue row and a dead-letter row hold in common. */
@@ -422,7 +468,7 @@ function parseQueuedOperation(row: Record<string, unknown>) {
 export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
   const database = await initializeLocalDatabase();
   const result = await database.query(
-    `select queue_id, operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at
+    `select queue_id, operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at, base_version
      from sync_queue
      order by queue_id asc`,
   );
@@ -431,6 +477,7 @@ export async function readSyncQueue(): Promise<SyncQueueEntry[]> {
     ...parseQueuedOperation(row),
     queue_id: Number(row.queue_id),
     next_attempt_at: nullableText(row.next_attempt_at),
+    base_version: nullableText(row.base_version),
   }));
 }
 
@@ -462,8 +509,8 @@ export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, erro
   await database.executeSet([
     {
       statement: `insert into sync_dead_letter
-     (original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+     (original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at, base_version)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       values: [
         [
           entry.queue_id,
@@ -474,6 +521,7 @@ export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, erro
           entry.attempts,
           errorMessage,
           new Date().toISOString(),
+          entry.base_version,
         ],
       ],
     },
@@ -484,7 +532,7 @@ export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, erro
 export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
   const database = await initializeLocalDatabase();
   const result = await database.query(
-    `select dead_letter_id, original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at
+    `select dead_letter_id, original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at, base_version
      from sync_dead_letter
      order by original_queue_id asc`,
   );
@@ -494,6 +542,7 @@ export async function readDeadLetterEntries(): Promise<DeadLetterEntry[]> {
     dead_letter_id: Number(row.dead_letter_id),
     original_queue_id: Number(row.original_queue_id),
     failed_at: String(row.failed_at),
+    base_version: nullableText(row.base_version),
   }));
 }
 
@@ -516,13 +565,14 @@ export async function requeueDeadLetterEntries(): Promise<number> {
   // `queue_id`s if that retry cost ever shows up in the field.
   await database.executeSet([
     {
-      statement: `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at)
-       values (?, ?, ?, ?, 0, null, null)`,
+      statement: `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at, base_version)
+       values (?, ?, ?, ?, 0, null, null, ?)`,
       values: entries.map((entry) => [
         entry.operation_type,
         entry.target_table,
         JSON.stringify(entry.payload),
         entry.created_at,
+        entry.base_version,
       ]),
     },
     {
@@ -701,10 +751,15 @@ async function writeAndQueue<TTable extends LocalTableName, TOperation extends S
   payload: SyncPayload<TTable, TOperation>,
 ): Promise<void> {
   const database = await initializeLocalDatabase();
+  // Read before the write below replaces it. An INSERT has no version to race against.
+  const baseVersion =
+    operationType === 'UPDATE'
+      ? await readRowVersion(targetTable, (payload as Record<string, unknown>)[primaryKeys[targetTable]])
+      : null;
 
   await database.executeSet([
     ...rows.map((row) => ({ statement: row.statement, values: [row.values] })),
-    queueStatement(targetTable, operationType, payload),
+    queueStatement(targetTable, operationType, payload, baseVersion),
   ]);
 
   await persistLocalDatabase();
@@ -755,12 +810,21 @@ export async function saveHouseholdWithMembersLocally(
 ): Promise<void> {
   const database = await initializeLocalDatabase();
 
+  // Every version read before the transaction below overwrites the rows.
+  const householdBase =
+    household.operationType === 'UPDATE' ? await readRowVersion('households', household.row.household_id) : null;
+  const memberBases = await Promise.all(
+    members.map((member) =>
+      member.operationType === 'UPDATE' ? readRowVersion('individuals', member.row.resident_id) : null,
+    ),
+  );
+
   await database.executeSet([
     { statement: householdUpsert.statement, values: [householdUpsert.values(household.row)] },
-    queueStatement('households', household.operationType, household.row),
-    ...members.flatMap((member) => [
+    queueStatement('households', household.operationType, household.row, householdBase),
+    ...members.flatMap((member, index) => [
       { statement: individualUpsert.statement, values: [individualUpsert.values(member.row)] },
-      queueStatement('individuals', member.operationType, syncableIndividual(member.row)),
+      queueStatement('individuals', member.operationType, syncableIndividual(member.row), memberBases[index]),
     ]),
   ]);
 

@@ -18,6 +18,8 @@ import {
   pullHealthAssessmentsFromServer,
   pullSupplyDisbursementsFromServer,
   readExistingIds,
+  primaryKeys,
+  setRowVersion,
 } from './localDatabase';
 
 /** `deferred` is a normal outcome (retry backoff), distinct from `failed` (quarantined). */
@@ -111,26 +113,6 @@ class SyncConflictError extends Error {
 }
 
 // -----------------------------------------------------------------------------
-// Primary key column name per table, used by `updatePayload` to target the right row.
-// -----------------------------------------------------------------------------
-
-type PrimaryKeyByTable = {
-  households: 'household_id';
-  individuals: 'resident_id';
-  health_assessments: 'assessment_id';
-  inventory_items: 'item_id';
-  supply_disbursements: 'log_id';
-};
-
-const primaryKeys: PrimaryKeyByTable = {
-  households: 'household_id',
-  individuals: 'resident_id',
-  health_assessments: 'assessment_id',
-  inventory_items: 'item_id',
-  supply_disbursements: 'log_id',
-};
-
-// -----------------------------------------------------------------------------
 // Sync Engine State
 // -----------------------------------------------------------------------------
 
@@ -162,11 +144,18 @@ function entityKey(table: LocalTableName, id: string): EntityKey {
   return `${table}:${id}`;
 }
 
+/** The primary key this entry writes, or null if the payload carries no usable one. */
+function ownRowId(entry: SyncQueueEntry): string | null {
+  const value = (entry.payload as Record<string, unknown>)[primaryKeys[entry.target_table]];
+
+  return typeof value === 'string' ? value : null;
+}
+
 /** The record this entry writes, or null if the payload carries no usable primary key. */
 export function ownEntityKey(entry: SyncQueueEntry): EntityKey | null {
-  const payload = entry.payload as Record<string, unknown>;
-  const value = payload[primaryKeys[entry.target_table]];
-  return typeof value === 'string' ? entityKey(entry.target_table, value) : null;
+  const id = ownRowId(entry);
+
+  return id === null ? null : entityKey(entry.target_table, id);
 }
 
 /** The records this entry's foreign keys point at. */
@@ -240,6 +229,12 @@ export async function syncPendingQueue(): Promise<SyncResult> {
     // Records that must not be pushed this pass, and why.
     const heldBack = new Map<EntityKey, HoldReason>();
 
+    // What the server said a row's `updated_at` is, for rows pushed earlier in
+    // this same pass. A second edit made offline was queued against the version
+    // before the first one landed, and the server has moved on since — without
+    // this it would match nothing and quarantine a change nobody conflicted with.
+    const pushedVersions = new Map<EntityKey, string>();
+
     const hold = (key: EntityKey | null, reason: HoldReason) => {
       if (key) {
         heldBack.set(key, reason);
@@ -277,7 +272,17 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       }
 
       try {
-        await pushQueueEntry(entry);
+        const baseVersion = (own && pushedVersions.get(own)) ?? entry.base_version;
+        const newVersion = await pushQueueEntry(entry, baseVersion);
+
+        // Remember the server's stamp, both for the next entry on this row and
+        // for the next edit made on this device.
+        const rowId = ownRowId(entry);
+
+        if (own && rowId && newVersion) {
+          pushedVersions.set(own, newVersion);
+          await setRowVersion(entry.target_table, rowId, newVersion);
+        }
 
         // If the API call succeeds, safely delete it from the local device
         await removeSyncQueueEntry(entry.queue_id);
@@ -407,13 +412,13 @@ function describeIncompletePass(deferred: number, deadLettered: number, firstErr
 // Supabase Transport Logic
 // -----------------------------------------------------------------------------
 
-async function pushQueueEntry(entry: SyncQueueEntry): Promise<void> {
+/** Pushes one entry and hands back the `updated_at` the server ended up holding, when it said. */
+async function pushQueueEntry(entry: SyncQueueEntry, baseVersion: string | null): Promise<string | null> {
   if (entry.operation_type === 'INSERT') {
-    await insertPayload(entry.target_table, entry.payload);
-    return;
+    return insertPayload(entry.target_table, entry.payload);
   }
 
-  await updatePayload(entry.target_table, entry.payload);
+  return updatePayload(entry.target_table, entry.payload, baseVersion);
 }
 
 /**
@@ -421,7 +426,7 @@ async function pushQueueEntry(entry: SyncQueueEntry): Promise<void> {
  * cannot narrow the row shape or the column names. One cast, here.
  */
 type UntypedRows = {
-  upsert(values: Record<string, unknown>, options: { onConflict: string }): PromiseLike<{ error: PostgrestError }>;
+  upsert(values: Record<string, unknown>, options: { onConflict: string }): UntypedRows;
   update(values: Record<string, unknown>): UntypedRows;
   eq(column: string, value: string): UntypedRows;
   lte(column: string, value: string): UntypedRows;
@@ -434,16 +439,34 @@ function rowsOf(table: LocalTableName): UntypedRows {
   return supabase.from(table) as unknown as UntypedRows;
 }
 
-/** Uses `.upsert()`, so a retry after a dropped connection does not fatal on a duplicate key. */
-async function insertPayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
-  const { error } = await rowsOf(targetTable).upsert(payload, { onConflict: primaryKeys[targetTable] });
+/**
+ * Uses `.upsert()`, so a retry after a dropped connection does not fatal on a
+ * duplicate key. Selects `updated_at` back, which becomes the base version for
+ * the next edit of this row.
+ */
+async function insertPayload(
+  targetTable: LocalTableName,
+  payload: SyncQueueEntry['payload'],
+): Promise<string | null> {
+  const { data, error } = await rowsOf(targetTable)
+    .upsert(payload, { onConflict: primaryKeys[targetTable] })
+    .select('updated_at');
 
   if (error) throw error;
+
+  return serverVersion(data);
+}
+
+/** The `updated_at` a write handed back, or null if the server returned no row. */
+function serverVersion(rows: unknown[] | null): string | null {
+  const value = (rows?.[0] as Record<string, unknown> | undefined)?.updated_at;
+
+  return typeof value === 'string' ? value : null;
 }
 
 /**
- * The device's edit timestamp. Updates filter on `updated_at <= this`, so a
- * central row changed since matches nothing and surfaces as a conflict.
+ * The device's edit timestamp, used only by entries queued before `base_version`
+ * existed. Cross-clock, which is the reason it was replaced.
  */
 function editedAt(payload: SyncQueueEntry['payload']): string {
   const value = (payload as Record<string, unknown>).updated_at;
@@ -461,8 +484,17 @@ function assertApplied(targetTable: LocalTableName, rows: unknown[] | null): voi
 /**
  * Strips the primary key from the payload before updating, and selects it back:
  * a no-op update is otherwise indistinguishable from success.
+ *
+ * The guard matches the row against `baseVersion` — the `updated_at` this device
+ * last read from the server. Both sides of that comparison are then server
+ * clocks, so only a row genuinely changed since fails it. Without one, the entry
+ * predates the column and falls back to the old device-clock comparison.
  */
-async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntry['payload']): Promise<void> {
+async function updatePayload(
+  targetTable: LocalTableName,
+  payload: SyncQueueEntry['payload'],
+  baseVersion: string | null,
+): Promise<string | null> {
   const primaryKey = primaryKeys[targetTable];
   const primaryValue = payload[primaryKey as keyof typeof payload];
 
@@ -470,14 +502,19 @@ async function updatePayload(targetTable: LocalTableName, payload: SyncQueueEntr
     throw new Error(`Missing primary key for ${targetTable} update`);
   }
 
-  const { data, error } = await rowsOf(targetTable)
+  const targeted = rowsOf(targetTable)
     .update(withoutPrimaryKey(payload, primaryKey))
-    .eq(primaryKey, primaryValue)
-    .lte('updated_at', editedAt(payload))
-    .select(primaryKey);
+    .eq(primaryKey, primaryValue);
+
+  const { data, error } = await (baseVersion
+    ? targeted.eq('updated_at', baseVersion)
+    : targeted.lte('updated_at', editedAt(payload))
+  ).select(`${primaryKey}, updated_at`);
 
   if (error) throw error;
   assertApplied(targetTable, data);
+
+  return serverVersion(data);
 }
 
 // -----------------------------------------------------------------------------

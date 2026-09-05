@@ -30,6 +30,10 @@ const fake = vi.hoisted(() => {
     known: {} as Record<string, string[]>,
     /** What each pull writer was actually handed, after the guards ran. */
     pulled: {} as Record<string, Record<string, unknown>[]>,
+    /** Every `setRowVersion` the pass made: the server stamp written back to a local row. */
+    rowVersions: [] as [string, string, string][],
+    /** The `updated_at` the fake server stamps on a write, standing in for the BEFORE UPDATE trigger. */
+    updatedAt: null as string | null,
   };
 });
 
@@ -41,6 +45,10 @@ vi.mock('@capacitor/network', () => ({
 // pull depends on and stays real.
 vi.mock('../lib/supabase', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/supabase')>();
+
+  /** What a write hands back: the row, carrying the server's own `updated_at` when one is set. */
+  const stamped = (payload: Record<string, unknown>) =>
+    fake.updatedAt ? { ...payload, updated_at: fake.updatedAt } : payload;
 
   /** Chainable and awaitable, like a PostgrestFilterBuilder, minus the HTTP. */
   const resolving = (value: unknown, filters: [string, string, unknown][] = []) => {
@@ -67,7 +75,9 @@ vi.mock('../lib/supabase', async (importOriginal) => {
           const filters: [string, string, unknown][] = [];
           fake.sent.push({ table, operation: 'upsert', payload, onConflict: options?.onConflict, filters });
           return resolving(
-            fake.rejecting.has(table) ? { data: null, error: new Error(`${table} rejected`) } : { data: [payload], error: null },
+            fake.rejecting.has(table)
+              ? { data: null, error: new Error(`${table} rejected`) }
+              : { data: [stamped(payload)], error: null },
             filters,
           );
         },
@@ -77,7 +87,7 @@ vi.mock('../lib/supabase', async (importOriginal) => {
           return resolving(
             fake.rejecting.has(table)
               ? { data: null, error: new Error(`${table} rejected`) }
-              : { data: fake.updateMatches ? [payload] : [], error: null },
+              : { data: fake.updateMatches ? [stamped(payload)] : [], error: null },
             filters,
           );
         },
@@ -122,9 +132,10 @@ vi.mock('./localDatabase', () => ({
     return Promise.resolve();
   },
   pullInventoryFromServer: () => Promise.resolve(),
-  pullHealthAssessmentsFromServer: () => Promise.resolve(),
-  pullSupplyDisbursementsFromServer: () => Promise.resolve(),
-  readExistingIds: (table: string) => Promise.resolve(new Set(fake.known[table] ?? [])),
+  setRowVersion: (table: string, id: string, version: string) => {
+    fake.rowVersions.push([table, id, version]);
+    return Promise.resolve();
+  },
 }));
 
 const { syncPendingQueue } = await import('./syncService');
@@ -145,6 +156,7 @@ function queued(
     attempts: 0,
     last_error: null,
     next_attempt_at: null,
+    base_version: null,
     ...overrides,
   } as SyncQueueEntry;
 }
@@ -159,6 +171,8 @@ beforeEach(() => {
   fake.cloud = {};
   fake.known = {};
   fake.pulled = {};
+  fake.rowVersions = [];
+  fake.updatedAt = null;
 });
 
 describe('an interrupted pass', () => {
@@ -217,9 +231,13 @@ describe('the statement each table is written with', () => {
     expect(fake.sent.map((call) => [call.table, call.onConflict])).toEqual(primaryKeys);
   });
 
-  it('narrows each update by the primary key of that table and by the device edit time', async () => {
+  it('narrows each update by the primary key of that table and by the base version', async () => {
     fake.queue = primaryKeys.map(([table, key]) =>
-      queued(table, { [key]: `${key}-1`, updated_at: '2026-08-18T01:00:00.000Z' }, { operation_type: 'UPDATE' }),
+      queued(
+        table,
+        { [key]: `${key}-1`, updated_at: '2026-08-18T01:00:00.000Z' },
+        { operation_type: 'UPDATE', base_version: '2026-08-17T09:00:00.000Z' },
+      ),
     );
 
     await syncPendingQueue();
@@ -230,11 +248,57 @@ describe('the statement each table is written with', () => {
       expect(call.table).toBe(table);
       expect(call.operation).toBe('update');
       expect(call.filters).toContainEqual(['eq', key, `${key}-1`]);
-      // Without this the update overwrites a row the office edited in the meantime.
-      expect(call.filters).toContainEqual(['lte', 'updated_at', '2026-08-18T01:00:00.000Z']);
+      // The version this device last read from the server, not the time it typed
+      // the edit: both sides of the comparison are then a server clock.
+      expect(call.filters).toContainEqual(['eq', 'updated_at', '2026-08-17T09:00:00.000Z']);
+      expect(call.filters).not.toContainEqual(['lte', 'updated_at', '2026-08-18T01:00:00.000Z']);
       // Selected back so a no-op update is distinguishable from a successful one.
-      expect(call.filters).toContainEqual(['select', key, undefined]);
+      expect(call.filters).toContainEqual(['select', `${key}, updated_at`, undefined]);
     }
+  });
+
+  it('falls back to the device edit time for an entry queued before base_version existed', async () => {
+    fake.queue = [
+      queued(
+        'households',
+        { household_id: 'h1', updated_at: '2026-08-18T01:00:00.000Z' },
+        { operation_type: 'UPDATE', base_version: null },
+      ),
+    ];
+
+    await syncPendingQueue();
+
+    expect(fake.sent[0].filters).toContainEqual(['lte', 'updated_at', '2026-08-18T01:00:00.000Z']);
+  });
+
+  it('bases a second offline edit on what the first push landed, not on the stale version', async () => {
+    // The case that used to quarantine a change nobody conflicted with: both
+    // edits were queued against v0, and the server moved to v1 when the first
+    // one landed. Without the chaining the second matches no row.
+    fake.queue = [
+      queued(
+        'individuals',
+        { resident_id: 'r1', updated_at: '2026-08-18T01:00:00.000Z' },
+        { operation_type: 'UPDATE', base_version: 'v0' },
+      ),
+      queued(
+        'individuals',
+        { resident_id: 'r1', updated_at: '2026-08-18T02:00:00.000Z' },
+        { operation_type: 'UPDATE', base_version: 'v0' },
+      ),
+    ];
+    // What the fake server hands back from the first write.
+    fake.updatedAt = 'v1';
+
+    const result = await syncPendingQueue();
+
+    expect(result.status).toBe('synced');
+    expect(result.processed).toBe(2);
+    expect(result.deadLettered).toBe(0);
+    expect(fake.sent[0].filters).toContainEqual(['eq', 'updated_at', 'v0']);
+    expect(fake.sent[1].filters).toContainEqual(['eq', 'updated_at', 'v1']);
+    // And written back, so an edit made after this pass bases on it too.
+    expect(fake.rowVersions).toContainEqual(['individuals', 'r1', 'v1']);
   });
 
   it('lets a payload with no updated_at through rather than quarantining it', async () => {
