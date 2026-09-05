@@ -180,7 +180,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     exportReport(
       {
         title: 'Accounts',
-        barangay: await fetchBarangayScope(),
+        barangay: (await fetchBarangayScope()).label,
         from: 'all dates',
         to: 'all dates',
         // The drawer's filters, named on the file, so an export of a narrowed

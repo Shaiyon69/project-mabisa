@@ -198,7 +198,7 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
    * for `total` rows in one call is capped and truncated silently.
    */
   async function exportResidents() {
-    const [all, barangay] = await Promise.all([
+    const [all, scope] = await Promise.all([
       readAllResidentPages((offset) => fetchResidentPage(query, PULL_PAGE_SIZE, offset, filters, statusFilter)),
       fetchBarangayScope(),
     ]);
@@ -206,7 +206,7 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
     exportReport(
       {
         title: 'Resident Registry',
-        barangay,
+        barangay: scope.label,
         // The band is assessed over a period; an unfiltered registry is not.
         from: statusFilter?.from ?? 'all dates',
         to: statusFilter?.to ?? 'all dates',

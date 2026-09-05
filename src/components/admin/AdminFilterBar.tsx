@@ -122,6 +122,20 @@ export function AdminFilterBar({
         ) : null}
       </Button>
 
+      {/* The scope survives a move between screens, so an analytics panel can be
+          narrowed to one barangay by a choice made on the dashboard. Undoing it
+          from the drawer means knowing it is set — this states it and clears it. */}
+      {canPickBarangay && filters.barangayId ? (
+        <Button
+          className="scope-clear"
+          variant="ghost"
+          onClick={() => onChange({ ...filters, barangayId: null, purokId: null })}
+        >
+          <span>Only {scope}</span>
+          <span className="scope-clear-action">Show all</span>
+        </Button>
+      ) : null}
+
       <Modal open={open} title="Filters" onClose={() => setOpen(false)} className="filter-drawer">
         <div className="period-presets" role="group" aria-label="Period">
           {PERIOD_PRESETS.map((option) => (

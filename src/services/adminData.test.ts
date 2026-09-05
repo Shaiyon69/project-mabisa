@@ -469,6 +469,28 @@ describe('barangayStats', () => {
     expect(at('empty').coverageRate).toBeNull();
   });
 
+  it('keeps every barangay for an RHU account, which reads all of them', () => {
+    // The reason the portal has an RHU role at all: one account comparing
+    // barangays. A picked barangay narrows the panels, never this list.
+    expect(stats.map((row) => row.barangayId)).toEqual(['big', 'empty', 'small', '']);
+  });
+
+  it('names only its own barangay for a barangay administrator', () => {
+    // `barangays` returns every row to any signed-in account, but this session
+    // reads one barangay's households — the rest would be reported at zero.
+    const own = barangayStats(
+      {
+        ...snapshot,
+        households: snapshot.households.filter((household) => household.barangay_id === 'small'),
+        residents: snapshot.residents.filter((resident) => resident.household_id === 'h3'),
+        assessments: snapshot.assessments.filter((row) => row.resident_id === 'r4'),
+      },
+      'small',
+    );
+
+    expect(own.map((row) => row.barangayId)).toEqual(['small']);
+  });
+
   it('counts unstamped households rather than dropping them, and sorts them last', () => {
     expect(at('').name).toBe('Unassigned');
     expect(at('').residents).toBe(1);
