@@ -4,15 +4,28 @@ type FieldShellProps = {
   label: string;
   hint?: string;
   error?: string;
+  /** Marks the field before the BHW submits, rather than only once it has failed. */
+  required?: boolean;
   children: ReactNode;
 };
 
-export function FieldShell({ label, hint, error, children }: FieldShellProps) {
+export function FieldShell({ label, hint, error, required, children }: FieldShellProps) {
   return (
     <label className={`ui-field${error ? ' has-error' : ''}`}>
-      <span>{label}{error ? <b className="required-mark"> *</b> : null}</span>
+      <span>
+        {label}
+        {required ? (
+          <b className="required-mark" aria-hidden="true">
+            {' '}
+            *
+          </b>
+        ) : null}
+      </span>
       {children}
-      {error ? <small className="field-error">{error}</small> : hint ? <small>{hint}</small> : null}
+      {/* The hint stays put under an error. It is the sentence that says how to
+          satisfy the field, which is wanted most at the moment the field is wrong. */}
+      {error ? <small className="field-error">{error}</small> : null}
+      {hint ? <small>{hint}</small> : null}
     </label>
   );
 }
@@ -25,7 +38,7 @@ type FormFieldProps = InputHTMLAttributes<HTMLInputElement> & {
 
 export function FormField({ label, hint, error, ...props }: FormFieldProps) {
   return (
-    <FieldShell label={label} hint={hint} error={error}>
+    <FieldShell label={label} hint={hint} error={error} required={props.required}>
       <input aria-invalid={Boolean(error)} {...props} />
     </FieldShell>
   );
@@ -40,7 +53,7 @@ type SelectFieldProps = SelectHTMLAttributes<HTMLSelectElement> & {
 
 export function SelectField({ label, hint, error, children, ...props }: SelectFieldProps) {
   return (
-    <FieldShell label={label} hint={hint} error={error}>
+    <FieldShell label={label} hint={hint} error={error} required={props.required}>
       <select aria-invalid={Boolean(error)} {...props}>{children}</select>
     </FieldShell>
   );
@@ -54,7 +67,7 @@ type TextAreaFieldProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 
 export function TextAreaField({ label, hint, error, ...props }: TextAreaFieldProps) {
   return (
-    <FieldShell label={label} hint={hint} error={error}>
+    <FieldShell label={label} hint={hint} error={error} required={props.required}>
       <textarea aria-invalid={Boolean(error)} {...props} />
     </FieldShell>
   );

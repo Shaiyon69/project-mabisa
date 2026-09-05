@@ -73,6 +73,7 @@ export function IndividualSearch({ selectedResidentId, onChange, error }: Indivi
   return (
     <Combobox
       label="Individual"
+      required
       value={selectedResidentId}
       options={options}
       onChange={(residentId) => {

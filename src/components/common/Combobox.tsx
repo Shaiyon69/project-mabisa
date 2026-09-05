@@ -15,6 +15,8 @@ type ComboboxProps = {
   error?: string;
   disabled?: boolean;
   emptyText?: string;
+  /** Marks the field, as on the plain inputs — this stands in for a required <select>. */
+  required?: boolean;
 };
 
 /**
@@ -32,6 +34,7 @@ export function Combobox({
   error,
   disabled,
   emptyText,
+  required,
 }: ComboboxProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -98,7 +101,7 @@ export function Combobox({
   }
 
   return (
-    <FieldShell label={label} hint={hint} error={error}>
+    <FieldShell label={label} hint={hint} error={error} required={required}>
       <div className="combobox" ref={wrapperRef}>
         <input
           type="text"

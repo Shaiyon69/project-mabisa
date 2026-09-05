@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { InventoryItem, SupplyDisbursement } from '../../types/database'; 
-import { createId, ignoreImplicitSubmit, isInFuture, scrollToFirstError, today } from '../../lib/utils';
+import { createId, describeMissing, ignoreImplicitSubmit, isInFuture, scrollToFirstError, today } from '../../lib/utils';
 import { saveSupplyDisbursementLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -54,6 +54,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     setFormError(null);
     
     if (!isFormReady) {
+      setFormError(describeMissing(missingRequirements));
       scrollToFirstError();
       return;
     }
@@ -117,6 +118,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
 
         <Combobox
           label="Item"
+          required
           value={itemId}
           options={inventoryItems.map((item) => ({
             value: item.item_id,

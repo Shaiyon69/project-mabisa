@@ -5,6 +5,7 @@ import {
   ageInYears,
   calculateBmi,
   createId,
+  describeMissing,
   getNutritionStatus,
   HEIGHT_CM_RANGE,
   ignoreImplicitSubmit,
@@ -113,6 +114,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     setFormError(null);
 
     if (!isFormReady || !bmi || !nutritionStatus) {
+      setFormError(describeMissing(missingRequirements));
       scrollToFirstError();
       return;
     }

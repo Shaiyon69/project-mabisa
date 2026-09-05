@@ -148,6 +148,11 @@ export function ageInYears(birthday: string, on: Date = new Date()): number | nu
   return on.getFullYear() - year - (hasHadBirthday ? 0 : 1);
 }
 
+/** The unmet requirements as one sentence, for the alert at the head of a form. */
+export function describeMissing(missing: string[]): string {
+  return `Still needed: ${missing.join(', ')}.`;
+}
+
 export function titleCase(value: string): string {
   return value
     .replace(/_/g, ' ')
