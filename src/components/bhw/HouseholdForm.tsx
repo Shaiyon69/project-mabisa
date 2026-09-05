@@ -492,7 +492,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
           <p className="eyebrow">Household Profiling</p>
           <h2>{isRevisit ? `Update ${household.household_number}` : 'New Household Registration'}</h2>
         </div>
-        <Badge label="Saved Offline" tone="success" />
+        {/* Neutral, and phrased as a capability: a green tick reading "Saved
+            Offline" over a form that has saved nothing says the visit is done. */}
+        <Badge label="Works offline" />
       </div>
 
       <form className="stack" onSubmit={handleSubmit} onKeyDown={ignoreImplicitSubmit} noValidate>

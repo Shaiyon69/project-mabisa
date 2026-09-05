@@ -78,7 +78,9 @@ export function AdminAccountMenu({ fullName, role, logout }: AdminAccountMenuPro
               topbar, which is one row high. */}
           <span className="account-identity">
             <span className="account-name">{displayName}</span>
-            <span className="account-email-line">{email ?? 'Signed in'}</span>
+            {/* Dropped when the name line is already the address — an account with
+                no `full_name` otherwise prints its email twice, stacked. */}
+            {email && email !== displayName ? <span className="account-email-line">{email}</span> : null}
           </span>
           <Icon name="chevron" size={15} className="account-caret" />
         </summary>
