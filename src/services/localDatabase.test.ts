@@ -777,6 +777,34 @@ describe('the local store', () => {
 
   // ---------------------------------------------------------------------------
 
+  describe('reconcileInventory', () => {
+    it('drops what this worker no longer carries and zeroes what a release still points at', async () => {
+      await seed();
+      await store.pullInventoryFromServer([item({ item_id: 'i1' }), item({ item_id: 'i2', item_name: 'Amoxicillin' })]);
+      await store.saveSupplyDisbursementLocally(disbursement({ log_id: 'd1', item_id: 'i1', quantity: 2 }));
+
+      // The next pull returned neither: both allocations have ended.
+      await store.reconcileInventory(new Set());
+
+      const rows = await store.readLocalInventoryItems();
+
+      // i2 is unreferenced and goes; i1 is held by d1's foreign key and is zeroed
+      // instead, so the release history survives and the form stops offering it.
+      expect(rows.map((row) => row.item_id)).toEqual(['i1']);
+      expect(rows[0].current_stock).toBe(0);
+    });
+
+    it('leaves an item the pull still returned alone', async () => {
+      await seed();
+      await store.reconcileInventory(new Set(['i1']));
+
+      const rows = await store.readLocalInventoryItems();
+
+      expect(rows.map((row) => row.item_id)).toEqual(['i1']);
+      expect(rows[0].current_stock).toBe(20);
+    });
+  });
+
   describe('base version', () => {
     it('queues an update against the version the row held before the edit', async () => {
       await seed();

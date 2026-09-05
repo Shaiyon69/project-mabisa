@@ -19,6 +19,7 @@ import {
   pullSupplyDisbursementsFromServer,
   readExistingIds,
   primaryKeys,
+  reconcileInventory,
   setRowVersion,
 } from './localDatabase';
 
@@ -691,6 +692,16 @@ async function pullRemoteUpdates(): Promise<void> {
       withKnownParents(withoutQuarantined('individuals', cloudIndividuals), 'household_id', householdIds),
     );
     await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
+
+    // The stock read is unfiltered, so what it did not return is no longer
+    // allocated here. Quarantined items are kept: their local figure is ahead of
+    // the server's, which is the whole reason they are held back.
+    await reconcileInventory(
+      new Set([
+        ...cloudInventory.map((item) => item.item_id),
+        ...(quarantined.get('inventory_items') ?? []),
+      ]),
+    );
 
     // Parents are read after the writes above, so a row that arrived in this same pass counts as held.
     const [residentIds, itemIds] = await Promise.all([

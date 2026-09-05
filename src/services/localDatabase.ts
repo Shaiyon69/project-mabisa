@@ -1249,6 +1249,48 @@ export const pullSupplyDisbursementsFromServer = (rows: SupplyDisbursement[]) =>
   pullRowsFromServer('supply disbursements', disbursementInsert, rows);
 
 /**
+ * Drops the items this health worker no longer carries.
+ *
+ * `bhw_item_stock` is read whole on every pull, so an item missing from it is one
+ * whose allocation has ended. The upsert only writes rows that came back, so
+ * without this the local row sits at its last known count forever — top of the
+ * dashboard's lowest-first list, and still offered by the release form.
+ *
+ * A row a local release still points at is zeroed rather than deleted: the
+ * disbursement's foreign key needs it, and that history is the point of keeping it.
+ */
+export async function reconcileInventory(keepIds: Set<string>): Promise<void> {
+  const database = await initializeLocalDatabase();
+  const local = await database.query('select item_id from inventory_items');
+  const stale = (local.values ?? []).map((row) => String(row.item_id)).filter((id) => !keepIds.has(id));
+
+  if (!stale.length) {
+    return;
+  }
+
+  const referenced = await database.query('select distinct item_id from supply_disbursements');
+  const held = new Set((referenced.values ?? []).map((row) => String(row.item_id)));
+  const removable = stale.filter((id) => !held.has(id));
+  const zeroable = stale.filter((id) => held.has(id));
+
+  await database.executeSet([
+    ...(removable.length
+      ? [{ statement: 'delete from inventory_items where item_id = ?', values: removable.map((id) => [id]) }]
+      : []),
+    ...(zeroable.length
+      ? [
+          {
+            statement: 'update inventory_items set current_stock = 0 where item_id = ?',
+            values: zeroable.map((id) => [id]),
+          },
+        ]
+      : []),
+  ]);
+
+  logDev('Reconciled local inventory against this pull', { removed: removable.length, zeroed: zeroable.length });
+}
+
+/**
  * Primary keys already in a local table, so the pull can drop a row whose parent
  * this device does not hold rather than fail the statement on the foreign key.
  */
