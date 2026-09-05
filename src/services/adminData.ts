@@ -1258,7 +1258,7 @@ export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
       onHand: item.current_stock,
       allocated: allocated.get(item.item_id) ?? 0,
       releasedInPeriod: released.get(item.item_id) ?? 0,
-      reorderLevel: item.reorder_level ?? 0,
+      reorderLevel: reorderLevelOf(item),
     }))
     .sort((a, b) => b.releasedInPeriod - a.releasedInPeriod || a.itemName.localeCompare(b.itemName));
 }

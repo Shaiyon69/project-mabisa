@@ -20,6 +20,12 @@ type TableProps<Row> = {
 export function Table<Row>({ columns, rows, getRowKey, emptyTitle, emptyText, limit }: TableProps<Row>) {
   const visibleRows = typeof limit === 'number' ? rows.slice(0, limit) : rows;
 
+  // No rows means no table: the header strip and its 640px scrollbar over an
+  // empty state read as a table that failed to load.
+  if (!rows.length) {
+    return <TableEmpty title={emptyTitle} text={emptyText} />;
+  }
+
   return (
     <div className="ui-table-wrap">
       <table>
@@ -40,7 +46,6 @@ export function Table<Row>({ columns, rows, getRowKey, emptyTitle, emptyText, li
           ))}
         </tbody>
       </table>
-      {!rows.length ? <TableEmpty title={emptyTitle} text={emptyText} /> : null}
     </div>
   );
 }

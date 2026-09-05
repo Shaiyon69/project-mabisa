@@ -82,6 +82,8 @@ function downloadCsv(fileName: string, content: string): void {
   anchor.download = fileName;
   anchor.click();
 
-  URL.revokeObjectURL(url);
+  // Revoked on the next frame: Firefox reads the blob after the click returns,
+  // and freeing it synchronously cancels the download.
+  requestAnimationFrame(() => URL.revokeObjectURL(url));
   logDev('Exported report', fileName);
 }

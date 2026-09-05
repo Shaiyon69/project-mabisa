@@ -155,7 +155,10 @@ export function BHWDashboard({
             {latestIndividuals.map((person) => (
               <li key={person.resident_id}>
                 <Link to={`/bhw/residents/${person.resident_id}`}>
-                  <span>{person.first_name} {person.last_name} {person.is_household_head ? '(Head)' : ''}</span>
+                  <span>
+                    {person.last_name}, {person.first_name}
+                    {person.is_household_head ? ' (Head)' : ''}
+                  </span>
                   <small>
                     {titleCase(person.sex)}
                   </small>
