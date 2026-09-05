@@ -378,6 +378,9 @@ test.describe('deep probe', () => {
   });
 
   test('what the 60-second poll re-downloads', async ({ page }) => {
+    // The wait below is longer than Playwright's default timeout, so this test
+    // could never reach its own assertions.
+    test.setTimeout(120_000);
     await signIn(page, { role: 'admin', userId: 'admin-poll' });
     const traffic = await seed(page, 'admin-poll', 'admin');
 
