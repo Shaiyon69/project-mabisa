@@ -450,10 +450,18 @@ button:active,
    instead of being truncated one at a time. Hidden again at 860px, where
    `.admin-sidebar` takes over. */
 
+/* Six destinations. Three-up on a narrow window and six-up once there is room —
+   a five-column track left Reports alone on a second row at a fifth of the width. */
 .admin-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+}
+
+@media (min-width: 640px) {
+  .admin-tabs {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 .admin-tabs a {

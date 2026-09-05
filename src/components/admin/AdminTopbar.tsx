@@ -1,9 +1,11 @@
 import { AdminAccountMenu } from './AdminAccountMenu';
+import type { UserRole } from '../../types/database';
 import { Badge } from '../common/Badge';
 
 type AdminTopbarProps = {
   isOnline: boolean;
   fullName: string | null;
+  role: UserRole | null;
   logout: () => Promise<void>;
 };
 
@@ -14,11 +16,11 @@ type AdminTopbarProps = {
  * No pending-sync count: the only queue this browser can see is its own, which
  * says nothing about whether the barangay's devices have synced.
  */
-export function AdminTopbar({ isOnline, fullName, logout }: AdminTopbarProps) {
+export function AdminTopbar({ isOnline, fullName, role, logout }: AdminTopbarProps) {
   return (
     <div className="admin-topbar">
       <Badge label={isOnline ? 'Online' : 'Offline'} tone={isOnline ? 'success' : 'warning'} />
-      <AdminAccountMenu fullName={fullName} logout={logout} />
+      <AdminAccountMenu fullName={fullName} role={role} logout={logout} />
     </div>
   );
 }

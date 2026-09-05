@@ -1,9 +1,11 @@
 import { NavLink } from 'react-router-dom';
 import { Icon } from '../common/Icon';
 import { AdminAccountMenu } from './AdminAccountMenu';
+import type { UserRole } from '../../types/database';
 
 type AdminSidebarProps = {
   fullName: string | null;
+  role: UserRole | null;
   logout: () => Promise<void>;
 };
 
@@ -24,7 +26,7 @@ const adminNavItems = [
 ];
 
 /** The rail: navigation, plus the account and the way out pinned to its foot. */
-export function AdminSidebar({ fullName, logout }: AdminSidebarProps) {
+export function AdminSidebar({ fullName, role, logout }: AdminSidebarProps) {
   return (
     <aside className="side-rail admin-sidebar" aria-label="Admin navigation">
       <div className="brand-lockup">
@@ -48,7 +50,7 @@ export function AdminSidebar({ fullName, logout }: AdminSidebarProps) {
         ))}
       </nav>
       <div className="sidebar-account">
-        <AdminAccountMenu fullName={fullName} logout={logout} />
+        <AdminAccountMenu fullName={fullName} role={role} logout={logout} />
       </div>
     </aside>
   );

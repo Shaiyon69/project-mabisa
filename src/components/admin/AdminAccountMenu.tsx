@@ -4,11 +4,21 @@ import { Button } from '../common/Button';
 import { Icon } from '../common/Icon';
 import { Modal } from '../common/Modal';
 import { ThemeToggle } from '../common/ThemeToggle';
+import type { UserRole } from '../../types/database';
 
 type AdminAccountMenuProps = {
   /** The signed-in account's name, from the cached profile row read at sign-in. */
   fullName: string | null;
+  /** Named on the panel, so an RHU account is not told it is a barangay one. */
+  role: UserRole | null;
   logout: () => Promise<void>;
+};
+
+/** How a role reads on screen. `barangay_admin` is not a title an officer would recognise. */
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Rural Health Unit administrator',
+  barangay_admin: 'Barangay administrator',
+  bhw: 'Barangay Health Worker',
 };
 
 /**
@@ -19,7 +29,7 @@ type AdminAccountMenuProps = {
  * Rendered at the foot of the rail and again in `AdminTopbar` below 860px, with
  * CSS keeping exactly one on screen.
  */
-export function AdminAccountMenu({ fullName, logout }: AdminAccountMenuProps) {
+export function AdminAccountMenu({ fullName, role, logout }: AdminAccountMenuProps) {
   const [email, setEmail] = useState<string | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const menu = useRef<HTMLDetailsElement>(null);
@@ -30,13 +40,32 @@ export function AdminAccountMenu({ fullName, logout }: AdminAccountMenuProps) {
     void supabase.auth.getSession().then(({ data }) => setEmail(data.session?.user.email ?? null));
   }, []);
 
-  const displayName = fullName ?? email ?? 'Barangay Official';
+  // A <details> closes on a second click on its own summary and on nothing else,
+  // so the panel would otherwise stay open over the table behind it.
+  useEffect(() => {
+    const closeIfOutside = (event: Event) => {
+      if (!menu.current?.contains(event.target as Node)) {
+        menu.current?.removeAttribute('open');
+      }
+    };
+
+    document.addEventListener('pointerdown', closeIfOutside);
+    document.addEventListener('focusin', closeIfOutside);
+
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutside);
+      document.removeEventListener('focusin', closeIfOutside);
+    };
+  }, []);
+
+  const displayName = fullName ?? email ?? 'Signed-in account';
+  const roleLabel = role ? ROLE_LABELS[role] : 'Signed in';
 
   return (
     <>
-      {/* A native <details> rather than open-state plus an outside-click
-          listener: the summary is already focusable, already toggles on Enter
-          and Space, and already closes on a second click. */}
+      {/* A native <details> rather than open state: the summary is already
+          focusable and already toggles on Enter and Space. Closing it from
+          outside is the one thing it does not do, hence the effect above. */}
       <details className="account-menu" ref={menu}>
         <summary aria-label="Account menu">
           <span className="account-avatar" aria-hidden="true">
@@ -55,7 +84,7 @@ export function AdminAccountMenu({ fullName, logout }: AdminAccountMenuProps) {
         </summary>
 
         <div className="account-panel">
-          <p className="account-role">Barangay Official</p>
+          <p className="account-role">{roleLabel}</p>
           <p className="account-email">{email ?? 'Signed in'}</p>
 
           <div className="profile-setting">

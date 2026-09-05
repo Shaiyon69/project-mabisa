@@ -42,7 +42,7 @@ export function AdminLayout({ logout, fullName, role }: AdminLayoutProps) {
   // Admin screens are desktop-first because barangay officials use the web dashboard from an LGU workstation.
   return (
     <main className="mobile-shell app-layout admin-layout">
-      <AdminSidebar fullName={fullName} logout={logout} />
+      <AdminSidebar fullName={fullName} role={role} logout={logout} />
       <section className="workspace">
         {/* Narrow windows only — above 860px the rail carries the account and the
             navigation and this whole block is hidden. Topbar and tabs stick as
@@ -50,7 +50,7 @@ export function AdminLayout({ logout, fullName, role }: AdminLayoutProps) {
             long table, and pinning them separately would mean guessing the
             topbar's height in the tab bar's `top`. */}
         <div className="admin-header">
-          <AdminTopbar isOnline={isOnline} fullName={fullName} logout={logout} />
+          <AdminTopbar isOnline={isOnline} fullName={fullName} role={role} logout={logout} />
           <AdminTabs />
         </div>
         {/* The role reaches the pages through the outlet rather than a provider:
