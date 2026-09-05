@@ -95,11 +95,16 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
                 : undefined
           }
         />
+        {/* No default: a pre-picked answer is recorded as an answer, and every
+            member nobody looked at would be filed as one sex. */}
         <SelectField
           label="Sex"
-          value={member.sex ?? 'female'}
-          onChange={(event) => onChange('sex', event.target.value as IndividualSex)}
+          required
+          value={member.sex ?? ''}
+          onChange={(event) => onChange('sex', (event.target.value || null) as IndividualSex | null)}
+          error={showValidation && !member.sex ? 'Sex is required.' : undefined}
         >
+          <option value="">(Select)</option>
           <option value="female">Female</option>
           <option value="male">Male</option>
         </SelectField>

@@ -101,7 +101,6 @@ function blankMember(isHead: boolean): Partial<Individual> {
     first_name: '',
     middle_name: '',
     last_name: '',
-    sex: 'female',
     birthday: '',
     is_household_head: isHead,
     relationship_to_head: null,
@@ -147,12 +146,20 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   const pendingIds = useRef<{ householdId: string; memberIds: string[] } | null>(null);
   // A form carrying a household id is editing that household, not creating one.
   const isRevisit = Boolean(household.household_id);
+  // Numbered, because a household of six rows is taller than the phone and
+  // "member names and birthdates" leaves the BHW scrolling for the blank one.
+  const incompleteMembers = members
+    .map((member, index) =>
+      member.first_name?.trim() && member.last_name?.trim() && member.birthday && member.sex ? null : index + 1,
+    )
+    .filter((memberNumber): memberNumber is number => memberNumber !== null);
   const missingRequirements = [
     !household.household_number?.trim() && 'household number',
     !household.water_source?.length && 'water source',
     !household.toilet_type?.length && 'toilet facility',
     !household.food_production?.length && 'food production',
-    !members.every((member) => member.first_name?.trim() && member.last_name?.trim() && member.birthday) && 'member names and birthdates',
+    incompleteMembers.length > 0 &&
+      `name, birthdate and sex for member${incompleteMembers.length > 1 ? 's' : ''} ${incompleteMembers.join(', ')}`,
     !members.some((member) => member.is_household_head) && 'household head',
     members.some((member) => isInFuture(member.birthday)) && 'birthdates on or before today',
   ].filter(Boolean) as string[];
