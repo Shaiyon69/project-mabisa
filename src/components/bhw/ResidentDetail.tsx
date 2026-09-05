@@ -110,7 +110,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
     setShowValidation(true);
     setFormError(null);
 
-    if (!draft.first_name.trim() || !draft.last_name.trim() || !draft.birthday || isInFuture(draft.birthday)) {
+    if (!draft.first_name.trim() || !draft.last_name.trim() || !draft.birthday || !draft.sex || isInFuture(draft.birthday)) {
       scrollToFirstError();
       return;
     }
