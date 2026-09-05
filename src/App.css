@@ -1351,12 +1351,6 @@ tbody tr:hover {
    and this is the cheapest real win on them: the header stays in view while
    the rows scroll under it. The opaque background is what keeps a row from
    showing through the header cells as it passes beneath. */
-.admin-layout .ui-table-wrap th {
-  position: sticky;
-  top: 0;
-  background: var(--panel);
-}
-
 /* Legibility floor: density here means less padding, not smaller type.
    `.summary-context` was pinned at the phone's 12px; raised one step so
    nothing on the desk view of the portal reads under 13px. */
@@ -2358,7 +2352,7 @@ tbody tr:hover {
   gap: 12px;
   padding: 24px;
   inset: 0;
-  background: var(--surface);
+  background: var(--panel);
   text-align: center;
 }
 

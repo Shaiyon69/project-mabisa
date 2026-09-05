@@ -38,7 +38,9 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     !residentId && 'selected resident',
     !hasInventory && 'available inventory',
     !itemId && 'selected item',
-    (!requestedQuantity || requestedQuantity < 1) && 'valid quantity',
+    // Whole units: the column is an integer, and `noValidate` means the step
+    // attribute is not the guard it looks like.
+    (!Number.isInteger(requestedQuantity) || requestedQuantity < 1) && 'a whole quantity of at least 1',
     selectedItem && requestedQuantity > selectedItem.current_stock && 'quantity within available stock',
     !disbursementDate && 'disbursement date',
     isInFuture(disbursementDate) && 'a disbursement date on or before today',
@@ -141,7 +143,16 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
             value={quantity} 
             onChange={(event) => setQuantity(event.target.value)} 
             required 
-            error={showValidation && (!requestedQuantity || requestedQuantity < 1 || Boolean(selectedItem && requestedQuantity > selectedItem.current_stock)) ? selectedItem && requestedQuantity > selectedItem.current_stock ? `Only ${selectedItem.current_stock} item(s) are available.` : 'Enter a quantity of at least 1.' : undefined}
+            error={
+              showValidation &&
+              (!Number.isInteger(requestedQuantity) ||
+                requestedQuantity < 1 ||
+                Boolean(selectedItem && requestedQuantity > selectedItem.current_stock))
+                ? selectedItem && requestedQuantity > selectedItem.current_stock
+                  ? `Only ${selectedItem.current_stock} item(s) are available.`
+                  : 'Enter a whole number of at least 1.'
+                : undefined
+            }
           />
           <FormField 
             label="Date"

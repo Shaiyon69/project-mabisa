@@ -84,8 +84,20 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
     setFormError(error instanceof Error ? error.message : 'Could not open this resident.');
   }, [residentId]);
 
+  // `current` guards the read, not just the effect: moving between residents
+  // leaves two in flight, and the slower one landing last would stamp `loadedId`
+  // with the resident nobody is looking at any more — leaving the screen on
+  // "Opening record..." for good.
   useEffect(() => {
-    readResident(residentId).then(apply).catch(failed);
+    let current = true;
+
+    readResident(residentId)
+      .then((loaded) => current && apply(loaded))
+      .catch((error: unknown) => current && failed(error));
+
+    return () => {
+      current = false;
+    };
   }, [residentId, apply, failed]);
 
   const loading = loadedId !== residentId;

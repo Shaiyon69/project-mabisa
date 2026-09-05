@@ -71,6 +71,9 @@ export function Combobox({
   function select(option: ComboboxOption) {
     onChange(option.value);
     setQuery('');
+    // The caller's list is filtered by its own copy of the term, so clearing only
+    // the local one leaves an empty box over the last search's results.
+    onQueryChange?.('');
     setIsOpen(false);
   }
 
