@@ -12,12 +12,12 @@
 export const NUTRITION_COLORS: Record<string, string> = {
   underweight: 'var(--bmi-low)',
   normal: 'var(--primary)',
-  overweight: 'var(--secondary)',
+  overweight: 'var(--series-2)',
   obese: 'var(--danger)',
 };
 
 /** Fixed order, never cycled: a fourth series belongs in the table instead. */
-export const SERIES_COLORS = ['var(--primary)', 'var(--secondary)', 'var(--bmi-low)'];
+export const SERIES_COLORS = ['var(--primary)', 'var(--series-2)', 'var(--bmi-low)'];
 
 export type ChartSeries = {
   label: string;
