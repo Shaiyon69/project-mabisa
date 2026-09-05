@@ -818,7 +818,13 @@ export async function fetchResidentPage(
     request = request.or(clauses.join(','));
   }
 
-  const { data, count, error } = await request.order('last_name').range(offset, offset + limit - 1);
+  // Secondary sort is the primary key, as on every other paged read: shared last
+  // names are the rule in a barangay, and ties have no stable order across
+  // separate LIMIT/OFFSET queries — a resident would land on two pages or none.
+  const { data, count, error } = await request
+    .order('last_name')
+    .order('resident_id')
+    .range(offset, offset + limit - 1);
 
   if (error) {
     throw new Error(error.message);
