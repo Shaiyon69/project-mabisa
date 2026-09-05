@@ -75,6 +75,10 @@ export function SyncStatusCard({
   const hasSetAside = setAsideCount > 0;
 
   const syncedLabel = isError ? 'Sync Failed' : hasSetAside ? 'Needs Review' : isPending ? 'Pending Sync' : 'Synced';
+  // The engine's last run is not the whole answer. Rows queued since it finished
+  // are still on the phone, and "Synced" beside a queue of four reads as a
+  // promise the app has not kept.
+  const statusValue = isPending && (syncStatus === 'synced' || syncStatus === 'idle') ? 'Waiting to send' : statusLabels[syncStatus];
   const badgeTone = isError ? 'danger' : (!isOnline || isPending || hasSetAside) ? 'warning' : 'success';
 
   // Disabled only while syncing or offline — not on an empty queue, so a BHW can pull updates anytime.
@@ -98,8 +102,8 @@ export function SyncStatusCard({
         />
         <StatusCard
           label="Sync status"
-          value={statusLabels[syncStatus]}
-          tone={isError ? 'danger' : 'info'}
+          value={statusValue}
+          tone={isError ? 'danger' : isPending ? 'warning' : 'info'}
         />
         <StatusCard
           label="Queue"
