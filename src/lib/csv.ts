@@ -1,4 +1,4 @@
-import { logDev } from './utils';
+import { isoLocalDay, logDev } from './utils';
 
 export type CsvColumn<Row> = {
   header: string;
@@ -69,7 +69,7 @@ export function exportReport<Row>(context: ReportContext, rows: Row[], columns: 
 export function reportFileName(title: string): string {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-  return `${slug || 'report'}-${new Date().toISOString().slice(0, 10)}.csv`;
+  return `${slug || 'report'}-${isoLocalDay(new Date())}.csv`;
 }
 
 /** Hands the finished CSV to the browser's download flow. The BOM makes Excel read it as UTF-8. */
