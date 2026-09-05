@@ -2189,7 +2189,7 @@ tbody tr:hover {
 }
 
 .bmi-band-overweight {
-  background: var(--secondary);
+  background: var(--series-2);
 }
 
 .bmi-band-obese {

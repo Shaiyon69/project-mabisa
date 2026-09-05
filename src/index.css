@@ -63,8 +63,14 @@
   --panel: #fffefa;
   --field: #fffdf7;
   --field-soft: #f7f2ea;
-  --border: #c7bfb0;
+  /* 3.05:1 on the page and 3.10:1 on a panel. The old #c7bfb0 was 1.78:1, under
+     the 3:1 a control boundary needs — and these are read in sunlight. */
+  --border: #9c9080;
   --danger: #b5182a;
+  /* The second chart series. Not --secondary: that yellow is 1.44:1 on the page,
+     so a bar drawn in it was a shape you had to already know was there. Kept as a
+     gold, so the series still reads as the same family it always did. */
+  --series-2: #b8860b;
   /* Alert tones as three tokens each rather than a hex per rule: dark mode has to
      restate them all, and App.css was repeating the same nine values by hand. */
   --danger-ink: #8c1120;
@@ -133,8 +139,11 @@
   --panel: #1f2124;
   --field: #24262a;
   --field-soft: #202225;
-  --border: #383b3f;
+  /* 3.51:1 on the page, 3.19:1 on a panel; #383b3f was 1.43:1 on a panel. */
+  --border: #6a6f76;
   --danger: #ef7a5f;
+  /* The dark palette's yellow already clears the ground it sits on at 10:1. */
+  --series-2: #e6c257;
   --danger-ink: #f5a8ae;
   --danger-surface: #3a1a1f;
   --danger-line: #5c2a31;
