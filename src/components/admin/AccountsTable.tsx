@@ -131,7 +131,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
       // A BHW with no active assignment can neither read nor write a field row, so
       // an empty cell here explains a device that signs in and sees nothing.
       render: (account) =>
-        account.purokName ?? (account.profile.role === 'bhw' ? 'None — cannot sync' : 'Not purok-scoped'),
+        account.purokName ?? (account.profile.role === 'bhw' ? 'None — cannot receive records' : 'Not assigned to a purok'),
     },
     {
       key: 'assigned-since',
@@ -209,7 +209,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         columns={columns}
         rows={visible}
         getRowKey={(account) => account.profile.user_id}
-        emptyTitle={loading ? 'Reading accounts' : 'No accounts found'}
+        emptyTitle={loading ? 'Loading the accounts' : 'No accounts found'}
         emptyText={
           loading
             ? 'One moment.'
@@ -219,7 +219,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         }
       />
 
-      <TableMeta shown={visible.length} total={rows.length} label="account" />
+      <TableMeta shown={visible.length} total={rows.length} label="accounts" />
 
       {/* Keyed on the account and the action so the fields reset between
           openings: a reason typed for one account must never be carried into

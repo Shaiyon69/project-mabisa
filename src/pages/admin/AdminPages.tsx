@@ -55,8 +55,8 @@ export function ResidentsPage() {
     <>
       <PageHeader
         icon="users"
-        title="Resident Registry"
-        description="Every resident profile synced to the central database, by barangay."
+        title="Residents"
+        description="Every resident recorded by the health workers, listed by barangay."
         actions={
           <AdminFilterBar
             filters={filters}
@@ -69,7 +69,7 @@ export function ResidentsPage() {
         }
       />
       <Card className="admin-monitor">
-        {error ? <ErrorState title="Could not read the central database" text={error} /> : null}
+        {error ? <ErrorState title="Could not load the records" text={error} /> : null}
         <IndividualsTable filters={filters} snapshot={snapshot} />
       </Card>
     </>
@@ -93,8 +93,8 @@ export function InventoryPage() {
     <>
       <PageHeader
         icon="package"
-        title="Supply Inventory"
-        description="Stock the barangay still holds unallocated, and what is left to hand out."
+        title="Supplies"
+        description="What the barangay still holds, and what the health workers are carrying."
         actions={
           <AdminFilterBar
             filters={filters}
@@ -118,12 +118,12 @@ export function InventoryPage() {
       */}
       {canMoveStock ? <InventoryControls items={snapshot.inventoryItems} onChanged={handleChanged} /> : null}
       <Card className="admin-monitor">
-        {error ? <ErrorState title="Could not read inventory" text={error} /> : null}
+        {error ? <ErrorState title="Could not load the supplies" text={error} /> : null}
         <div className="panel-heading">
-          <h2>At the barangay</h2>
+          <h2>Held at the barangay</h2>
         </div>
         <p className="summary-context">
-          Unallocated stock — what has not yet been handed to a health worker.
+          What has not yet been handed to a health worker.
           {canMoveStock ? '' : ' Only a barangay administrator can move stock.'}
         </p>
         {/* `filterInventory` rather than a filter of its own, so the type and
@@ -135,7 +135,7 @@ export function InventoryPage() {
         <div className="panel-heading">
           <h2>Carried by health workers</h2>
         </div>
-        <p className="summary-context">Allocated to a health worker, less what they have already released.</p>
+        <p className="summary-context">What was handed to a health worker, less what they have already given out.</p>
         <BhwStockTable reloadToken={movementToken} />
       </Card>
     </>
@@ -189,13 +189,13 @@ export function AnalyticsPage() {
     <>
       <PageHeader
         icon="chart"
-        title="Analytics"
-        description="Trend, barangay comparison, coverage and supply utilization."
+        title="Charts"
+        description="Trends over time, barangay by barangay, and how supplies are being used."
         actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
       {error ? (
         <Card className="admin-monitor">
-          <ErrorState title="Could not read the central database" text={error} />
+          <ErrorState title="Could not load the records" text={error} />
         </Card>
       ) : null}
       <div aria-busy={loading}>
@@ -216,13 +216,13 @@ export function ReportsPage() {
       <PageHeader
         icon="clipboard"
         title="Reports"
-        description="Period summaries, each exportable as CSV."
+        description="Summaries for the period you choose. Each one can be saved as a spreadsheet file."
         actions={
           <AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} sections />
         }
       />
       <Card className="activity-panel">
-        {error ? <ErrorState title="Could not read the central database" text={error} /> : null}
+        {error ? <ErrorState title="Could not load the records" text={error} /> : null}
         <Suspense fallback={null}>
           <ReportCards snapshot={snapshot} filters={filters} />
         </Suspense>

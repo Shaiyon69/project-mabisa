@@ -314,7 +314,7 @@ function DataFreshness({ snapshot, loading }: { snapshot: AdminSnapshot; loading
       Central data read {new Date(snapshot.fetchedAt).toLocaleTimeString()}.{' '}
       {snapshot.newestRecordAt
         ? `Newest synced record ${formatDate(snapshot.newestRecordAt)}.`
-        : 'No synced records in range.'}
+        : 'No records received for this period.'}
     </small>
   );
 }

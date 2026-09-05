@@ -7,10 +7,10 @@ import { PageHeader } from '../common/PageHeader';
 import { Icon } from '../common/Icon';
 
 const bhwNavItems = [
-  { to: '/bhw', label: 'Dashboard', shortLabel: 'Status', icon: 'home' as const, end: true },
+  { to: '/bhw', label: 'Home', shortLabel: 'Home', icon: 'home' as const, end: true },
   { to: '/bhw/register-resident', label: 'Register Resident', shortLabel: 'Resident', icon: 'user' as const },
-  { to: '/bhw/health-assessment', label: 'Health Assessment', shortLabel: 'Health', icon: 'heart' as const },
-  { to: '/bhw/supply-disbursement', label: 'Supply Release', shortLabel: 'Supply', icon: 'package' as const },
+  { to: '/bhw/health-assessment', label: 'Health Check', shortLabel: 'Health', icon: 'heart' as const },
+  { to: '/bhw/supply-disbursement', label: 'Give Supplies', shortLabel: 'Supply', icon: 'package' as const },
   { to: '/bhw/profile', label: 'Profile', shortLabel: 'Profile', icon: 'profile' as const },
 ];
 
@@ -38,17 +38,17 @@ function recordRail(
   const records = (count: number) => `${count} record${count === 1 ? '' : 's'}`;
 
   if (setAsideCount > 0) {
-    return { tone: 'alert', label: `${records(setAsideCount)} need review` };
+    return { tone: 'alert', label: `${records(setAsideCount)} need checking` };
   }
 
   if (syncStatus === 'failed') {
-    return { tone: 'alert', label: 'Sync failed — open Status' };
+    return { tone: 'alert', label: 'Could not send — open Home' };
   }
 
   if (!isOnline) {
     return {
       tone: 'hold',
-      label: pendingQueueCount ? `Offline — ${records(pendingQueueCount)} held here` : 'Offline — records save here',
+      label: pendingQueueCount ? `No signal — ${records(pendingQueueCount)} kept here` : 'No signal — records save here',
     };
   }
 

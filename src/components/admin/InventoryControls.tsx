@@ -72,7 +72,7 @@ function ReceiveStockCard({ items, onChanged }: InventoryControlsProps) {
   return (
     <Card className="report-card">
       <h3>Receive stock</h3>
-      <p className="muted">Supplies delivered to the barangay. Nothing here reaches a health worker until it is allocated below.</p>
+      <p className="muted">Supplies delivered to the barangay. Nothing here reaches a health worker until you hand it out below.</p>
 
       <SelectField label="What arrived" value={mode} onChange={(event) => setMode(event.target.value as 'new' | 'existing')}>
         <option value="new">An item not stocked before</option>
@@ -152,9 +152,10 @@ function AllocateStockCard({ items, bhws, onChanged }: InventoryControlsProps & 
 
   return (
     <Card className="report-card">
-      <h3>Allocate to a health worker</h3>
+      <h3>Hand out to a health worker</h3>
       <p className="muted">
-        Moves stock out of the barangay's holding and into one BHW's. They can release only what they have been given.
+        Moves stock out of the barangay's store and into one health worker's hands. They can only give out what they
+        have been handed.
       </p>
 
       <ItemSelect items={items} value={itemId} onChange={setItemId} />
@@ -182,13 +183,13 @@ function AllocateStockCard({ items, bhws, onChanged }: InventoryControlsProps & 
         error={overStock ? `Only ${selected?.current_stock} unallocated.` : undefined}
       />
 
-      <FormField label="Reason" value={reason} placeholder="Weekly field allocation" onChange={(event) => setReason(event.target.value)} />
+      <FormField label="Reason" value={reason} placeholder="Weekly supply for field visits" onChange={(event) => setReason(event.target.value)} />
 
       <StockActionFooter
         busy={busy}
         message={message}
         error={error}
-        label="Allocate"
+        label="Hand out"
         disabled={!itemId || !bhwId || !Number.isInteger(amount) || amount < 1 || overStock || reason.trim() === ''}
         onSubmit={() =>
           run(async () => {
@@ -216,7 +217,7 @@ function ReorderLevelCard({ items, onChanged }: InventoryControlsProps) {
     <Card className="report-card">
       <h3>Set a low-stock warning</h3>
       <p className="muted">
-        The barangay is warned when an item's unallocated count falls to this number. Five sachets and five sacks are
+        The barangay is warned when the amount still at the barangay falls to this number. Five sachets and five sacks are
         not the same situation, so each item carries its own.
       </p>
 

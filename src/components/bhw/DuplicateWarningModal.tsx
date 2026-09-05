@@ -78,7 +78,7 @@ export function DuplicateWarningModal({
             rows={2}
             required
             onChange={(event) => onReasonChange(member.memberNumber, event.target.value)}
-            hint="Saved with this member's record, so an administrator can see who decided it and why."
+            hint="Saved with this record, so the office can see who decided and why."
           />
         </div>
       ))}
@@ -89,7 +89,7 @@ export function DuplicateWarningModal({
         </Button>
         <Button variant="danger" onClick={onOverride} disabled={!answered || saving}>
           <Icon name="save" size={17} />
-          {saving ? 'Saving Offline...' : 'Not the same person — save'}
+          {saving ? 'Saving...' : 'Not the same person — save'}
         </Button>
       </div>
     </Modal>

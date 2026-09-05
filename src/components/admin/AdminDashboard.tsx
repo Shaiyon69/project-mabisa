@@ -156,7 +156,7 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
             <SummaryBars
               rows={nutrition}
               emptyTitle="No assessments in this period"
-              emptyText="Widen the date range, or wait for a field device to sync."
+              emptyText="Try a wider date range, or wait for a health worker's phone to send its records."
               hrefFor={(row) => `/admin/residents?status=${row.label}&${period}`}
             />
           </div>

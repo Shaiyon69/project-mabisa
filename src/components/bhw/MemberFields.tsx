@@ -7,7 +7,7 @@ import { FormField, SelectField } from '../common/FormField';
 // The column is plain text with no check constraint, so a fixed list is safe and
 // keeps the registry searchable.
 const EDUCATION_OPTIONS = [
-  { label: '(Not specified)', value: '' },
+  { label: '(Not answered)', value: '' },
   { label: 'None', value: 'none' },
   { label: 'Elementary', value: 'elementary' },
   { label: 'High School', value: 'high_school' },
@@ -116,7 +116,7 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
           answer survives an accidental tick-and-untick. */}
       {member.is_household_head ? null : (
         <SelectField
-          label="Relationship to Household Head"
+          label="Relation to the Head"
           value={member.relationship_to_head ?? ''}
           onChange={(event) =>
             onChange('relationship_to_head', (event.target.value || null) as RelationshipToHead | null)
@@ -127,7 +127,7 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
               nearest wrong answer. Labels are titleCased from the stored value,
               the same way
               educational_attainment is displayed. */}
-          <option value="">(Not specified)</option>
+          <option value="">(Not answered)</option>
           {RELATIONSHIPS_TO_HEAD.map((value) => (
             <option key={value} value={value}>
               {titleCase(value)}
@@ -144,7 +144,7 @@ export function MemberFields({ member, onChange, showValidation, children }: Mem
           placeholder="(Optional)"
         />
         <SelectField
-          label="Educational Attainment"
+          label="Highest Grade Finished"
           value={member.educational_attainment ?? ''}
           onChange={(event) => onChange('educational_attainment', event.target.value)}
         >

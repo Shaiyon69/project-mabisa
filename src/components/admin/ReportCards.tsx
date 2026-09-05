@@ -64,7 +64,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
               <SummaryBars
                 rows={tally(snapshot.residents, (resident) => resident.sex, ['female', 'male'])}
                 emptyTitle="No residents"
-                emptyText="Resident profiles appear here once a BHW device has synced."
+                emptyText="Residents appear here once a health worker's phone has sent its records."
               />
             </div>
             <div>
@@ -92,20 +92,20 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           <SummaryBars
             rows={nutritionTally(snapshot.assessments)}
             emptyTitle="No assessments in this period"
-            emptyText="Widen the date range, or wait for a field device to sync."
+            emptyText="Try a wider date range, or wait for a health worker's phone to send its records."
           />
         </ReportPanel>
       ) : null}
 
       {showsSection(filters, 'stock') ? (
         <ReportPanel
-          title="Unallocated barangay stock"
+          title="Stock still at the barangay"
           note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. This is what the barangay still holds to hand out — quantities already allocated to a health worker are counted against that worker, not here. Stock is a current position and ignores the period.`}
           filters={filters}
           scope={snapshot}
           filterNote="none beyond the period (stock is current, not historical)"
           onExport={() =>
-            exportReport(reportContext('Unallocated Barangay Stock'), snapshot.inventoryItems, inventoryColumns)
+            exportReport(reportContext('Stock Still At The Barangay'), snapshot.inventoryItems, inventoryColumns)
           }
         >
           {lowStock.length ? (
@@ -127,7 +127,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
 
       {showsSection(filters, 'supply') ? (
         <ReportPanel
-          title="Supply allocation"
+          title="Supplies given out"
           note={`${releasedTotal} unit(s) across ${snapshot.disbursements.length} release(s).`}
           filters={filters}
           scope={snapshot}
@@ -142,7 +142,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           <SummaryBars
             rows={disbursementsByItem(snapshot.disbursements, snapshot.inventoryItems)}
             emptyTitle="No releases in this period"
-            emptyText="Supply disbursements logged by a BHW appear here after sync."
+            emptyText="Supplies a health worker hands out appear here once their phone sends the records."
           />
         </ReportPanel>
       ) : null}
@@ -223,7 +223,7 @@ const inventoryColumns: CsvColumn<InventoryItem>[] = [
   { header: 'Item ID', value: (row) => row.item_id },
   { header: 'Item', value: (row) => row.item_name },
   { header: 'Type', value: (row) => titleCase(row.type) },
-  { header: 'Unallocated stock', value: (row) => row.current_stock },
+  { header: 'Still at the barangay', value: (row) => row.current_stock },
   { header: 'Last updated', value: (row) => formatDate(row.updated_at) },
 ];
 

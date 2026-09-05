@@ -34,16 +34,16 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
   const selectedItem = inventoryItems.find((item) => item.item_id === itemId);
   const requestedQuantity = Number(quantity);
   const missingRequirements = [
-    !hasIndividuals && 'registered resident',
-    !residentId && 'selected resident',
-    !hasInventory && 'available inventory',
-    !itemId && 'selected item',
+    !hasIndividuals && 'a registered resident',
+    !residentId && 'the resident receiving the supply',
+    !hasInventory && 'stock to give out',
+    !itemId && 'the item being given',
     // Whole units: the column is an integer, and `noValidate` means the step
     // attribute is not the guard it looks like.
-    (!Number.isInteger(requestedQuantity) || requestedQuantity < 1) && 'a whole quantity of at least 1',
-    selectedItem && requestedQuantity > selectedItem.current_stock && 'quantity within available stock',
-    !disbursementDate && 'disbursement date',
-    isInFuture(disbursementDate) && 'a disbursement date on or before today',
+    (!Number.isInteger(requestedQuantity) || requestedQuantity < 1) && 'a whole number, 1 or more',
+    selectedItem && requestedQuantity > selectedItem.current_stock && 'a quantity you actually have',
+    !disbursementDate && 'the date',
+    isInFuture(disbursementDate) && 'a date on or before today',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
   // Minted once and held until the row lands, so a retry updates the same release
@@ -79,7 +79,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     try {
       await saveSupplyDisbursementLocally(disbursement);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Supply disbursement was not saved.');
+      setFormError(error instanceof Error ? error.message : 'This supply release was not saved.');
       scrollToFirstError();
       setSaving(false);
       return;
@@ -95,7 +95,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     try {
       await onSaved();
     } catch {
-      setFormError('Release was recorded. The screen could not be refreshed — it is on the queue either way.');
+      setFormError('The release was recorded. The screen did not refresh, but the record is on this phone.');
     }
   }
 
@@ -103,12 +103,12 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
     <Card className="form-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Inventory</p>
-          <h2>Disburse Supplies</h2>
+          <p className="eyebrow">Supplies</p>
+          <h2>Give Out Supplies</h2>
         </div>
         <div className="header-actions">
-          <Badge label={hasIndividuals ? 'Residents Ready' : 'Needs Profile'} tone={hasIndividuals ? 'success' : 'warning'} />
-          <Badge label={hasInventory ? 'Stock Available' : 'Empty Stock'} tone={hasInventory ? 'success' : 'danger'} />
+          <Badge label={hasIndividuals ? 'Residents ready' : 'No residents yet'} tone={hasIndividuals ? 'success' : 'warning'} />
+          <Badge label={hasInventory ? 'You have stock' : 'No stock'} tone={hasInventory ? 'success' : 'danger'} />
         </div>
       </div>
 
@@ -116,7 +116,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
         {formError ? <p className="form-alert" role="alert"><Icon name="warning" size={18} />{formError}</p> : null}
 
         <IndividualSearch selectedResidentId={residentId} onChange={setResidentId} error={showValidation && !residentId ? 'Select a resident.' : undefined} />
-        {!hasIndividuals ? <p className="form-hint">Register a household before disbursing supplies.</p> : null}
+        {!hasIndividuals ? <p className="form-hint">Register a household first.</p> : null}
 
         <Combobox
           label="Item"
@@ -129,10 +129,15 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
           onChange={setSelectedItemId}
           placeholder="Search item..."
           disabled={!hasInventory}
-          error={showValidation && !itemId ? 'Select an inventory item.' : undefined}
+          error={showValidation && !itemId ? 'Select an item.' : undefined}
           emptyText="No item found"
         />
-        {!hasInventory ? <p className="form-hint">Admin must sync inventory items before disbursement.</p> : null}
+        {!hasInventory ? (
+          <p className="form-hint">
+            No supplies have been given to you yet. The barangay office hands out stock to each health worker — get
+            the latest once you have signal to check again.
+          </p>
+        ) : null}
 
         <div className="field-row">
           <FormField 
@@ -149,8 +154,8 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
                 requestedQuantity < 1 ||
                 Boolean(selectedItem && requestedQuantity > selectedItem.current_stock))
                 ? selectedItem && requestedQuantity > selectedItem.current_stock
-                  ? `Only ${selectedItem.current_stock} item(s) are available.`
-                  : 'Enter a whole number of at least 1.'
+                  ? `You only have ${selectedItem.current_stock} of this left.`
+                  : 'Enter a whole number, 1 or more.'
                 : undefined
             }
           />
@@ -163,9 +168,9 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
             required 
             error={
               showValidation && !disbursementDate
-                ? 'Disbursement date is required.'
+                ? 'The date is required.'
                 : showValidation && isInFuture(disbursementDate)
-                  ? 'Disbursement date cannot be in the future.'
+                  ? 'The date cannot be in the future.'
                   : undefined
             }
           />
@@ -174,7 +179,7 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
-            {saving ? 'Saving Offline...' : 'Save Disbursement'}
+            {saving ? 'Saving...' : 'Save Supply Release'}
           </Button>
         </FormActions>
       </form>

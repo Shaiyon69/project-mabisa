@@ -123,7 +123,7 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
       ) : (
         <EmptyState
           title="No assessments in this period"
-          text="Widen the date range, or wait for a field device to sync."
+          text="Try a wider date range, or wait for a health worker's phone to send its records."
         />
       )}
       <p className="muted report-note">
@@ -217,7 +217,7 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
 
 const stockColumns: CsvColumn<Tally>[] = [
   { header: 'Item type', value: (row) => titleCase(row.label) },
-  { header: 'Units unallocated', value: (row) => row.count },
+  { header: 'Units at the barangay', value: (row) => row.count },
 ];
 
 /**
@@ -274,7 +274,7 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
               <h4>Units on hand by type</h4>
               <BarChart
                 rows={byType.map((row) => ({ label: titleCase(row.label), values: [row.count] }))}
-                series={[{ label: 'Units unallocated', color: SERIES_COLORS[1] }]}
+                series={[{ label: 'Units at the barangay', color: SERIES_COLORS[1] }]}
               />
             </div>
           ) : null}
@@ -346,7 +346,7 @@ function ComparisonPanel({
       ) : (
         <EmptyState
           title="Nothing to compare yet"
-          text="Barangay figures appear here once households and assessments have synced."
+          text="Barangay figures appear here once the phones have sent their households and checks."
         />
       )}
       {/* Four bands per barangay on one scale. Only drawn when something was
@@ -423,8 +423,8 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
 const utilizationColumns: CsvColumn<ItemUtilization>[] = [
   { header: 'Item', value: (row) => row.itemName },
   { header: 'Type', value: (row) => titleCase(row.type) },
-  { header: 'Unallocated at barangay', value: (row) => row.onHand },
-  { header: 'Allocated to BHWs (all time)', value: (row) => row.allocated },
+  { header: 'At the barangay', value: (row) => row.onHand },
+  { header: 'Given to health workers (all time)', value: (row) => row.allocated },
   { header: 'Released in period', value: (row) => row.releasedInPeriod },
   { header: 'Reorder level', value: (row) => row.reorderLevel },
 ];
@@ -436,8 +436,8 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
   // in the period. One scale would read as if one were the remainder of the other.
   const moved = rows.filter((row) => row.releasedInPeriod > 0);
   const position: Tally[] = [
-    { label: 'unallocated', count: rows.reduce((sum, row) => sum + row.onHand, 0) },
-    { label: 'with BHWs', count: rows.reduce((sum, row) => sum + row.allocated, 0) },
+    { label: 'at the barangay', count: rows.reduce((sum, row) => sum + row.onHand, 0) },
+    { label: 'with health workers', count: rows.reduce((sum, row) => sum + row.allocated, 0) },
   ];
   const positionColors: Record<string, string> = {
     unallocated: SERIES_COLORS[0],
@@ -445,15 +445,15 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
   };
   const columns: TableColumn<ItemUtilization>[] = [
     { key: 'item', header: 'Item', render: (row) => row.itemName },
-    { key: 'on-hand', header: 'Unallocated', render: (row) => row.onHand },
-    { key: 'allocated', header: 'With BHWs', render: (row) => row.allocated },
+    { key: 'on-hand', header: 'At the barangay', render: (row) => row.onHand },
+    { key: 'allocated', header: 'With health workers', render: (row) => row.allocated },
     { key: 'released', header: 'Released', render: (row) => row.releasedInPeriod },
   ];
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead
-        title="Supply utilization"
+        title="How supplies are used"
         onExport={() => exportReport(contextFor('Supply Utilization', { filters, scope }), rows, utilizationColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />

@@ -86,7 +86,7 @@ test.describe('register resident: what the form does with what is typed', () => 
     const screen = 'register resident — empty submit';
     await openBhw(page, '/bhw/register-resident');
 
-    const submit = page.getByRole('button', { name: /save complete household/i });
+    const submit = page.getByRole('button', { name: /save household/i });
     await submit.scrollIntoViewIfNeeded();
     await submit.click();
     await page.waitForTimeout(300);
@@ -105,7 +105,7 @@ test.describe('register resident: what the form does with what is typed', () => 
     await page.getByLabel('First Name').fill('   ');
     await page.getByLabel('Last Name').fill('  ');
 
-    const submit = page.getByRole('button', { name: /save complete household/i });
+    const submit = page.getByRole('button', { name: /save household/i });
     await submit.scrollIntoViewIfNeeded();
     await submit.click();
     await page.waitForTimeout(300);
@@ -138,7 +138,7 @@ test.describe('register resident: what the form does with what is typed', () => 
     await page.getByLabel('Household Number').fill('HH-TEST-1');
     await page.getByLabel('First Name').fill('Ana');
     await page.getByLabel('Last Name').fill('Cruz');
-    const submit = page.getByRole('button', { name: /save complete household/i });
+    const submit = page.getByRole('button', { name: /save household/i });
     await submit.scrollIntoViewIfNeeded();
     await submit.click();
     await page.waitForTimeout(500);
@@ -179,7 +179,7 @@ test.describe('register resident: what the form does with what is typed', () => 
       seen.push(`${here.tag}${here.type ? ':' + here.type : ''}`);
 
       if (!here.ring) record(screen, 'no focus ring', `${here.tag}${here.type ? ':' + here.type : ''} "${here.text}" shows nothing when focused by keyboard`);
-      if (/save complete household/i.test(here.text)) {
+      if (/save household/i.test(here.text)) {
         reachedSubmit = true;
         break;
       }
@@ -259,7 +259,7 @@ test.describe('supply release: quantity limits', () => {
 
     await page.getByLabel('Quantity').fill('99999');
 
-    const submit = page.getByRole('button', { name: /save disbursement/i });
+    const submit = page.getByRole('button', { name: /save supply release/i });
     // To the end of the page, not just into view: scrollIntoViewIfNeeded stops as
     // soon as the button is inside the viewport, which the sticky bar overlaps.
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -267,7 +267,7 @@ test.describe('supply release: quantity limits', () => {
 
     // Is the button reachable at all once scrolled to?
     const covered = await page.evaluate(() => {
-      const button = Array.from(document.querySelectorAll('button')).find((b) => /save disbursement/i.test(b.textContent || ''));
+      const button = Array.from(document.querySelectorAll('button')).find((b) => /save supply release/i.test(b.textContent || ''));
       if (!button) return 'missing';
       const box = button.getBoundingClientRect();
       const at = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
@@ -318,7 +318,7 @@ test.describe('what comes back out', () => {
     if ((await head.count()) && !(await headBox.isChecked())) await head.click();
     await expect(headBox).toBeChecked();
 
-    const submit = page.getByRole('button', { name: /save complete household/i });
+    const submit = page.getByRole('button', { name: /save household/i });
     await submit.scrollIntoViewIfNeeded();
     await submit.click();
     await page.waitForTimeout(1500);
