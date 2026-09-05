@@ -34,6 +34,8 @@ const fake = vi.hoisted(() => {
     rowVersions: [] as [string, string, string][],
     /** The `updated_at` the fake server stamps on a write, standing in for the BEFORE UPDATE trigger. */
     updatedAt: null as string | null,
+    /** Item ids the pull told the reconcile to keep. */
+    inventoryKept: [] as string[],
   };
 });
 
@@ -132,6 +134,20 @@ vi.mock('./localDatabase', () => ({
     return Promise.resolve();
   },
   pullInventoryFromServer: () => Promise.resolve(),
+  reconcileInventory: (keepIds: Set<string>) => {
+    fake.inventoryKept = [...keepIds];
+    return Promise.resolve();
+  },
+  pullHealthAssessmentsFromServer: () => Promise.resolve(),
+  pullSupplyDisbursementsFromServer: () => Promise.resolve(),
+  readExistingIds: (table: string) => Promise.resolve(new Set(fake.known[table] ?? [])),
+  primaryKeys: {
+    households: 'household_id',
+    individuals: 'resident_id',
+    health_assessments: 'assessment_id',
+    inventory_items: 'item_id',
+    supply_disbursements: 'log_id',
+  },
   setRowVersion: (table: string, id: string, version: string) => {
     fake.rowVersions.push([table, id, version]);
     return Promise.resolve();
@@ -173,6 +189,7 @@ beforeEach(() => {
   fake.pulled = {};
   fake.rowVersions = [];
   fake.updatedAt = null;
+  fake.inventoryKept = [];
 });
 
 describe('an interrupted pass', () => {
