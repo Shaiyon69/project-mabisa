@@ -68,6 +68,7 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
         columns={columns}
         rows={filteredItems}
         getRowKey={(item) => item.item_id}
+        numbered
         emptyTitle={loading ? 'Loading the supplies' : 'No supplies yet'}
         emptyText={
           loading

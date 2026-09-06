@@ -209,6 +209,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         columns={columns}
         rows={visible}
         getRowKey={(account) => account.profile.user_id}
+        numbered
         emptyTitle={loading ? 'Loading the accounts' : 'No accounts found'}
         emptyText={
           loading

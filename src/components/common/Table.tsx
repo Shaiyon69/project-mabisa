@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { formatCount } from '../../lib/utils';
 import { Badge } from './Badge';
+import { Button } from './Button';
 import { EmptyState } from './StateMessage';
 
 export type TableColumn<Row> = {
@@ -18,6 +19,11 @@ type TableProps<Row> = {
   emptyTitle: string;
   emptyText: string;
   limit?: number;
+  /** Rows per page. Given, the table pages through every row rather than cutting the list short. */
+  pageSize?: number;
+  /** Numbers the rows. `startIndex` continues the count for a table paged on the server. */
+  numbered?: boolean;
+  startIndex?: number;
 };
 
 function cell<Row>(column: TableColumn<Row>, row: Row): ReactNode {
@@ -26,8 +32,28 @@ function cell<Row>(column: TableColumn<Row>, row: Row): ReactNode {
   return column.numeric && typeof value === 'number' ? formatCount(value) : value;
 }
 
-export function Table<Row>({ columns, rows, getRowKey, emptyTitle, emptyText, limit }: TableProps<Row>) {
-  const visibleRows = typeof limit === 'number' ? rows.slice(0, limit) : rows;
+export function Table<Row>({
+  columns,
+  rows,
+  getRowKey,
+  emptyTitle,
+  emptyText,
+  limit,
+  pageSize,
+  numbered,
+  startIndex = 0,
+}: TableProps<Row>) {
+  const [page, setPage] = useState(1);
+  const pageCount = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
+  // Clamped rather than reset: a filter that shortens the list past the current
+  // page would otherwise leave the table on a page that no longer exists.
+  const current = Math.min(page, pageCount);
+  const offset = pageSize ? (current - 1) * pageSize : 0;
+  const visibleRows = pageSize
+    ? rows.slice(offset, offset + pageSize)
+    : typeof limit === 'number'
+      ? rows.slice(0, limit)
+      : rows;
 
   // No rows means no table: the header strip and its 640px scrollbar over an
   // empty state read as a table that failed to load.
@@ -36,29 +62,59 @@ export function Table<Row>({ columns, rows, getRowKey, emptyTitle, emptyText, li
   }
 
   return (
-    <div className="ui-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column.key} data-numeric={column.numeric ? '' : undefined}>
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {visibleRows.map((row) => (
-            <tr key={getRowKey(row)}>
+    <>
+      <div className="ui-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {numbered ? <th data-numeric="">#</th> : null}
               {columns.map((column) => (
-                <td key={column.key} data-numeric={column.numeric ? '' : undefined}>
-                  {cell(column, row)}
-                </td>
+                <th key={column.key} data-numeric={column.numeric ? '' : undefined}>
+                  {column.header}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visibleRows.map((row, index) => (
+              <tr key={getRowKey(row)}>
+                {numbered ? <td data-numeric="">{formatCount(startIndex + offset + index + 1)}</td> : null}
+                {columns.map((column) => (
+                  <td key={column.key} data-numeric={column.numeric ? '' : undefined}>
+                    {cell(column, row)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {pageCount > 1 ? (
+        <TablePager page={current} pageCount={pageCount} onPage={setPage} />
+      ) : null}
+    </>
+  );
+}
+
+type TablePagerProps = {
+  page: number;
+  pageCount: number;
+  onPage: (page: number) => void;
+};
+
+/** Previous/next for a table paged in the browser. Server-paged screens bring their own. */
+export function TablePager({ page, pageCount, onPage }: TablePagerProps) {
+  return (
+    <div className="admin-pager">
+      <Button variant="ghost" onClick={() => onPage(page - 1)} disabled={page <= 1}>
+        Previous
+      </Button>
+      <span className="muted">
+        Page {page} of {pageCount}
+      </span>
+      <Button variant="ghost" onClick={() => onPage(page + 1)} disabled={page >= pageCount}>
+        Next
+      </Button>
     </div>
   );
 }

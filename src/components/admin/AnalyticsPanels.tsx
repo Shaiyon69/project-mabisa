@@ -74,8 +74,8 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
 const COVERAGE_RINGS = 12;
 
 /**
- * Items a supply panel draws before deferring to the Inventory screen. An item row
- * carries a barangay, so an RHU account reads all sixty-four barangays' stock here.
+ * Item rows per page. An item row carries a barangay, so an RHU account reads all
+ * sixty-four barangays' stock here.
  */
 const SUPPLY_ROWS = 12;
 
@@ -392,6 +392,7 @@ function ComparisonPanel({
         getRowKey={(row) => row.barangayId || 'unassigned'}
         emptyTitle="No barangays"
         emptyText="Barangay records appear here once one has been created."
+        numbered
       />
       <p className="muted report-note">
         Worst underweight share first.
@@ -469,8 +470,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
   const rows = supplyUtilization(snapshot);
   // Two charts: the ring is where the stock stands now, the bars are what moved
   // in the period. One scale would read as if one were the remainder of the other.
-  // Busiest first and capped: every barangay's items land in this one list, so the
-  // full register belongs on the Inventory screen and in the export, not here.
+  // Busiest first: the table below pages through all of them, the bars draw the top few.
   const busiest = [...rows].sort((a, b) => b.releasedInPeriod - a.releasedInPeriod || b.onHand - a.onHand);
   const moved = busiest.filter((row) => row.releasedInPeriod > 0).slice(0, SUPPLY_ROWS);
   const position: Tally[] = POSITIONS.map(({ label, of }) => ({
@@ -529,9 +529,10 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
         getRowKey={(row) => row.itemId}
         emptyTitle="No inventory items"
         emptyText="Items created for this barangay appear here."
-        limit={SUPPLY_ROWS}
+        pageSize={SUPPLY_ROWS}
+        numbered
       />
-      <TableMeta shown={Math.min(busiest.length, SUPPLY_ROWS)} total={busiest.length} label="items" />
+      <TableMeta shown={busiest.length} total={busiest.length} label="items" />
       <p className="muted report-note">
         &ldquo;At the barangay&rdquo; and &ldquo;with health workers&rdquo; do not sum to a stock figure.
       </p>

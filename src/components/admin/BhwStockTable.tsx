@@ -58,6 +58,7 @@ export function BhwStockTable({ reloadToken }: { reloadToken: number }) {
         columns={columns}
         rows={rows}
         getRowKey={(row) => `${row.bhw_id}:${row.item_id}`}
+        numbered
         emptyTitle="Nothing given out yet"
         emptyText="Stock handed to a health worker appears here, less whatever they have already released."
       />
