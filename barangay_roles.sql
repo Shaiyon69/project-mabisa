@@ -1611,3 +1611,145 @@ $function$;
 
 revoke execute on function public.admin_create_profile(uuid, public.app_role, text, uuid) from public, anon;
 grant execute on function public.admin_create_profile(uuid, public.app_role, text, uuid) to authenticated;
+
+
+-- =============================================================================
+-- THE DEVICE REGISTRY IS DROPPED
+--   (applied 2026-09-06, migration `drop_authorized_devices`)
+--
+-- `public.authorized_devices` held zero rows and zero audit events for its whole
+-- life, and nothing in `src/`, `e2e/` or any branch ever named it. Only this file
+-- did, inside the audit whitelist at section 10 -- so that list, and the aside
+-- about it further down, are superseded by what follows.
+--
+-- It was dropped rather than kept, because it does not answer the question this
+-- project has. A registry answers "which phones may this account use", with the
+-- RHU approving each install. What the phones need answered is "whose unsent
+-- records is this phone holding", which `deviceHandover.ts` settles at sign-in,
+-- and which wants a self-service claim rather than an approval queue: a health
+-- worker whose phone waits on a municipal click is one who cannot work that
+-- morning. A server-side handover, if it is ever built, starts from that question.
+--
+-- The full prior definition -- the table, the enum, the three RPCs, the policy and
+-- the trigger -- is kept in `docs/dropped_authorized_devices.sql`, because it never
+-- existed in a tracked file and git history does not hold it.
+--
+-- `admin_set_profile_active` is re-created first, without the block that revoked a
+-- disabled worker's devices. It keeps `closed_assignment_count` in its audit
+-- metadata and loses `revoked_device_count`, which counted rows in a table that no
+-- longer exists.
+--
+-- Verified against the live project in rolled-back transactions: the RHU disables
+-- and reactivates a health worker and the `profile.disabled` event carries the
+-- assignment count; the Salay administrator disables their own barangay's worker;
+-- the Cabugao administrator is still refused the same worker with 42501.
+-- =============================================================================
+
+-- `admin_set_profile_active` re-created first, without its device-revocation
+-- block. It is the one thing that still wrote to the registry, and the Accounts
+-- screen that two roles now depend on runs through it.
+create or replace function public.admin_set_profile_active(
+  target_user_id uuid,
+  make_active boolean,
+  change_reason text
+)
+returns public.profiles
+language plpgsql
+security definer
+set search_path to 'pg_catalog'
+as $function$
+declare
+  actor_id uuid := private.assert_can_manage_bhw(target_user_id);
+  target_profile public.profiles;
+  changed_at timestamptz := clock_timestamp();
+  closed_assignment_count integer := 0;
+begin
+  if nullif(btrim(change_reason), '') is null then
+    raise check_violation using message = 'A reason is required';
+  end if;
+
+  select *
+  into target_profile
+  from public.profiles
+  where user_id = target_user_id
+  for update;
+
+  if target_profile.user_id is null then
+    raise no_data_found using message = 'Profile not found';
+  end if;
+
+  if target_profile.is_active = make_active then
+    return target_profile;
+  end if;
+
+  if not make_active and target_user_id = actor_id then
+    raise check_violation using message = 'An admin cannot disable their own active profile';
+  end if;
+
+  if not make_active and target_profile.role = 'admin'::public.app_role then
+    if (
+      select count(*)
+      from public.profiles
+      where role = 'admin'::public.app_role
+        and is_active
+    ) <= 1 then
+      raise check_violation using message = 'The last active admin cannot be disabled';
+    end if;
+  end if;
+
+  if not make_active and target_profile.role = 'bhw'::public.app_role then
+    update public.bhw_purok_assignments
+    set ended_at = changed_at,
+        ended_by = actor_id,
+        end_reason = 'BHW disabled: ' || btrim(change_reason)
+    where bhw_id = target_user_id
+      and ended_at is null;
+    get diagnostics closed_assignment_count = row_count;
+  end if;
+
+  update public.profiles
+  set is_active = make_active,
+      disabled_at = case when make_active then null else changed_at end,
+      disabled_by = case when make_active then null else actor_id end
+  where user_id = target_user_id
+  returning * into target_profile;
+
+  perform private.write_audit_event(
+    case when make_active then 'profile.reactivated' else 'profile.disabled' end,
+    'profiles',
+    target_user_id,
+    btrim(change_reason),
+    jsonb_build_object(
+      'is_active', make_active,
+      'closed_assignment_count', closed_assignment_count
+    )
+  );
+
+  return target_profile;
+end;
+$function$;
+
+revoke execute on function public.admin_set_profile_active(uuid, boolean, text) from public, anon;
+grant execute on function public.admin_set_profile_active(uuid, boolean, text) to authenticated;
+
+drop function if exists public.admin_register_device(uuid, text, text, text);
+drop function if exists public.admin_approve_device(uuid);
+drop function if exists public.admin_revoke_device(uuid, text);
+
+-- Takes its policy, trigger and five indexes with it.
+drop table if exists public.authorized_devices;
+
+drop type if exists public.device_status;
+
+-- The whitelist loses the table it can no longer name. No audit event ever used it.
+alter table public.audit_events drop constraint if exists audit_events_entity_table_check;
+alter table public.audit_events add constraint audit_events_entity_table_check check (
+  entity_table = any (array[
+    'profiles',
+    'puroks',
+    'bhw_purok_assignments',
+    'barangays',
+    'inventory_items',
+    'inventory_allocations'
+  ])
+);
