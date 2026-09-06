@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
 import { formatCount, titleCase } from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
@@ -26,7 +26,7 @@ import { Button } from '../common/Button';
 import { BarChart, DonutChart, GaugeRing, LineChart } from './Charts';
 import { Card } from '../common/Card';
 import { EmptyState } from '../common/StateMessage';
-import { Table, TableMeta, type TableColumn } from '../common/Table';
+import { Table, TableMeta, TablePager, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 /**
@@ -74,8 +74,11 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
   );
 }
 
-/** Rings drawn before the grid stops being scannable. The comparison table lists every barangay. */
+/** Rings per page. The grid stops being scannable past this, so the rest are a page away. */
 const COVERAGE_RINGS = 12;
+
+/** Barangay rows per page in the comparison table. */
+const COMPARISON_ROWS = 12;
 
 /**
  * Item rows per page. An item row carries a barangay, so an RHU account reads all
@@ -396,6 +399,7 @@ function ComparisonPanel({
         getRowKey={(row) => row.barangayId || 'unassigned'}
         emptyTitle="No barangays"
         emptyText="Barangay records appear here once one has been created."
+        pageSize={COMPARISON_ROWS}
         numbered
       />
       <p className="muted report-note">
@@ -413,8 +417,11 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
   // Emptiest first: a gap is what this panel is for, and at sixty-four barangays
   // the best-covered ones pushed it off the bottom of the grid.
   const ranked = [...stats].filter((row) => row.residents > 0).sort((a, b) => (a.coverageRate ?? 0) - (b.coverageRate ?? 0));
-  const shown = ranked.slice(0, COVERAGE_RINGS);
-  const hidden = ranked.length - shown.length;
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(ranked.length / COVERAGE_RINGS));
+  // Clamped rather than reset: a narrower period can shorten the list past the page in view.
+  const current = Math.min(page, pageCount);
+  const shown = ranked.slice((current - 1) * COVERAGE_RINGS, current * COVERAGE_RINGS);
 
   return (
     <Card className="activity-card report-card" as="article">
@@ -442,9 +449,10 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
       ) : (
         <EmptyState title="No registered residents" text="Coverage is a share of the residents on file." />
       )}
+      {pageCount > 1 ? <TablePager page={current} pageCount={pageCount} onPage={setPage} /> : null}
       <p className="muted report-note">
         A thin ring is a profiling gap, not a health finding.
-        {hidden > 0 ? ` Emptiest ${shown.length} of ${ranked.length} drawn; the table carries every one.` : ''}
+        {pageCount > 1 ? ` All ${ranked.length} barangays, emptiest first.` : ''}
       </p>
     </Card>
   );

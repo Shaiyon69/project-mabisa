@@ -5,6 +5,9 @@ import { reorderLevelOf } from '../../services/adminData';
 import { FormField } from '../common/FormField';
 import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
 
+/** Rows per page. The search box above narrows the list; the pager reaches the rest. */
+const ROWS_PER_PAGE = 15;
+
 type InventoryTableProps = {
   inventoryItems: InventoryItem[];
   loading?: boolean;
@@ -68,6 +71,7 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
         columns={columns}
         rows={filteredItems}
         getRowKey={(item) => item.item_id}
+        pageSize={ROWS_PER_PAGE}
         numbered
         emptyTitle={loading ? 'Loading the supplies' : 'No supplies yet'}
         emptyText={
@@ -77,11 +81,10 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
         }
       />
       {/*
-        No `limit`. It used to cut the list at ten with no pager, so an eleventh
-        item was unreachable — harmless while nothing could create one, and a real
-        loss now that a barangay administrator can. A barangay stocks tens of
-        items, not thousands, and the search box above narrows them; server-side
-        paging here would be machinery for a list that fits on a screen.
+        Paged in the browser, not on the server. It used to cut the list at ten with
+        no pager, so an eleventh item was unreachable. An RHU account reads every
+        barangay's items, which is hundreds of rows, but not the thousands that
+        would need the server to do the paging.
       */}
       <TableMeta shown={filteredItems.length} total={inventoryItems.length} label="items" />
     </div>
