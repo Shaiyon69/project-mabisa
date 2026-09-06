@@ -9,14 +9,19 @@ type SummaryBarsProps = {
   emptyText: string;
   /** Where a category's rows can be listed. Given, every row becomes a link. */
   hrefFor?: (row: Tally) => string;
+  /** The colour the category is drawn in elsewhere. Absent, every bar is the default fill. */
+  colorFor?: (row: Tally) => string;
 };
 
 /**
  * A distribution as labelled bars, each row carrying both its count and its bar.
  * Percentages are of the rows in the summary, so the total is derived here rather
  * than passed in.
+ *
+ * `colorFor` is what ties a bar to the ring segment beside it: without it every
+ * band is the same fill and the two have to be read separately.
  */
-export function SummaryBars({ rows, emptyTitle, emptyText, hrefFor }: SummaryBarsProps) {
+export function SummaryBars({ rows, emptyTitle, emptyText, hrefFor, colorFor }: SummaryBarsProps) {
   const total = rows.reduce((sum, row) => sum + row.count, 0);
 
   if (!total) {
@@ -40,7 +45,7 @@ export function SummaryBars({ rows, emptyTitle, emptyText, hrefFor }: SummaryBar
               role="img"
               aria-label={`${titleCase(row.label)}: ${row.count} of ${total}, ${share} percent`}
             >
-              <div className="summary-bar-fill" style={{ width: `${share}%` }} />
+              <div className="summary-bar-fill" style={{ width: `${share}%`, background: colorFor?.(row) }} />
             </div>
           </>
         );

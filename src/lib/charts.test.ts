@@ -50,3 +50,19 @@ describe('axisTicks', () => {
     }
   });
 });
+
+describe('percentage scales', () => {
+  // The rate bars on the admin dashboard feed whole percents through `niceMax`,
+  // so the top of the track is a round figure just above the worst barangay
+  // rather than that barangay itself.
+  it('tops a rate axis just above the data, not at it', () => {
+    expect(niceMax(34)).toBe(50);
+    expect(niceMax(8)).toBe(10);
+    expect(niceMax(3)).toBe(5);
+  });
+
+  it('labels a rate axis without repeating fractions', () => {
+    expect(axisTicks(niceMax(34))).toEqual([0, 25, 50]);
+    expect(axisTicks(niceMax(8))).toEqual([0, 5, 10]);
+  });
+});

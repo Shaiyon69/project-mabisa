@@ -2710,6 +2710,18 @@ tbody tr:hover {
   background: var(--danger);
 }
 
+/* A zero rate draws nothing at all — the fill's minimum width is there to keep a
+   low rate visible, and lending it to a zero paints a reading that was not taken. */
+.summary-bar-fill[data-zero] {
+  min-width: 0;
+}
+
+/* The rate list writes its value into every row's label, so the axis has no
+   value column to clear the way the grouped bars do. */
+.barangay-rate-axis {
+  padding-right: 0;
+}
+
 /* Charts -------------------------------------------------------------------
    The donut, line and grouped-bar marks in src/components/admin/Charts.tsx.
    Series colours come from the component as inline styles — they are data, not
