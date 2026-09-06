@@ -110,6 +110,14 @@ const trendColumns: CsvColumn<TrendPoint>[] = [
 function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
   const points = monthlyTrend(snapshot.assessments, filters);
   const recorded = points.reduce((sum, point) => sum + point.assessments, 0);
+  // The chart's own figures. A line carries its numbers in a hover, which a
+  // phone has no way to ask for — and the note below has always promised a table.
+  const columns: TableColumn<TrendPoint>[] = [
+    { key: 'month', header: 'Month', render: (row) => row.label },
+    { key: 'assessments', header: 'Assessments', numeric: true, render: (row) => row.assessments },
+    { key: 'underweight', header: 'Underweight', numeric: true, render: (row) => row.underweight },
+    { key: 'rate', header: 'Underweight rate', numeric: true, render: (row) => percent(row.rate) },
+  ];
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
@@ -136,6 +144,15 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
           text="Try a wider date range, or wait for a health worker's phone to send its records."
         />
       )}
+      {recorded ? (
+        <Table
+          columns={columns}
+          rows={points}
+          getRowKey={(row) => row.month}
+          emptyTitle="No assessments in this period"
+          emptyText="Months appear here once a health worker's phone has sent its records."
+        />
+      ) : null}
       <p className="muted report-note">
         Both lines count assessments in the month: all of them, and the underweight readings among them. A month sitting
         at zero had none recorded at all. The underweight rate is in the table and the CSV, not on a second axis.
