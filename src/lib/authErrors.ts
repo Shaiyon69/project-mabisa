@@ -26,8 +26,26 @@ export function describeAuthError(rawMessage: string): string {
     return 'This account is not activated yet. Ask your administrator to finish setting it up.';
   }
 
-  if (message.includes('rate limit') || message.includes('too many requests')) {
-    return 'Too many sign-in attempts. Wait a few minutes, then try again.';
+  // Both raised while setting a new password from a reset link.
+  if (message.includes('password should be at least') || message.includes('password is too short')) {
+    return 'That password is too short. Use a longer one.';
+  }
+
+  if (message.includes('should be different from the old password')) {
+    return 'That is the password the account already has. Choose a different one.';
+  }
+
+  // The reset link opened a session that has since run out.
+  if (message.includes('session') && (message.includes('expired') || message.includes('missing'))) {
+    return 'That link has run out. Ask for a new one from the sign-in screen.';
+  }
+
+  if (
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('you can only request this after')
+  ) {
+    return 'Too many attempts. Wait a few minutes, then try again.';
   }
 
   if (message.includes('user not found')) {

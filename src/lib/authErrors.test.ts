@@ -21,6 +21,17 @@ describe('describeAuthError', () => {
 
   it('says to wait when the attempts are being throttled', () => {
     expect(describeAuthError('Email rate limit exceeded')).toContain('Wait a few minutes');
+    expect(describeAuthError('For security purposes, you can only request this after 51 seconds.')).toContain(
+      'Wait a few minutes',
+    );
+  });
+
+  // The three a reset link produces, where the person is choosing a new password
+  // and the sign-in wording would describe nothing they are doing.
+  it('answers the refusals raised while setting a new password', () => {
+    expect(describeAuthError('Password should be at least 6 characters.')).toContain('too short');
+    expect(describeAuthError('New password should be different from the old password.')).toContain('already has');
+    expect(describeAuthError('Auth session missing!')).toContain('run out');
   });
 
   it('matches whatever casing the client hands over', () => {

@@ -4,7 +4,8 @@ import type { Session } from '@supabase/supabase-js';
 import './App.css';
 import { AppRoutes, SurfaceNotice } from './app/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
-import { supabase } from './lib/supabase';
+import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
+import { authLinkError, supabase } from './lib/supabase';
 import { describeAuthError } from './lib/authErrors';
 import type { Handover } from './services/deviceHandover';
 import { clearPin } from './lib/devicePin';
@@ -62,8 +63,14 @@ export function App() {
     email: '',
     password: '',
   });
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authMessage, setAuthMessage] = useState<string | null>(
+    authLinkError && `That link did not work: ${authLinkError.toLowerCase()}. Ask for a new one below.`,
+  );
   const [authLoading, setAuthLoading] = useState(true);
+  // A session opened by an emailed reset link. It signs the person in, so without
+  // this the app would drop them straight into their records with the forgotten
+  // password still on the account.
+  const [recovering, setRecovering] = useState(false);
   const [cachedRole, setCachedRole] = useState<CachedRole | null>(readCachedRole);
   // Which account the profile lookup last answered for. An id, not a flag, so a
   // new session starts unchecked.
@@ -93,7 +100,11 @@ export function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecovering(true);
+      }
+
       setSession(nextSession);
     });
 
@@ -220,6 +231,58 @@ export function App() {
     });
   }
 
+  /**
+   * Mails a reset link. The answer is the same whether or not the address has an
+   * account, so the screen cannot be used to find out who is registered.
+   */
+  async function handleForgotPassword() {
+    const email = loginState.email.trim();
+
+    if (!email) {
+      setAuthMessage('Type your email address above first, then ask for the link.');
+      return;
+    }
+
+    setAuthLoading(true);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+
+    setAuthLoading(false);
+
+    if (error) {
+      logDev('Password reset request failed', error.message);
+      setAuthMessage(describeAuthError(error.message));
+      return;
+    }
+
+    setAuthMessage(
+      `If ${email} has an account, a link to set a new password is on its way. It works once, and only for a short while.`,
+    );
+  }
+
+  /** Replaces the forgotten password on the account the reset link signed in. */
+  async function handleNewPassword(password: string) {
+    setAuthMessage(null);
+    setAuthLoading(true);
+
+    const { error } = await supabase.auth.updateUser({ password });
+
+    setAuthLoading(false);
+
+    if (error) {
+      logDev('Password update failed', error.message);
+      setAuthMessage(describeAuthError(error.message));
+      return;
+    }
+
+    // The address bar still carries the link's tokens, and the session it opened
+    // is now a normal signed-in one.
+    window.history.replaceState(null, '', '/');
+    setRecovering(false);
+  }
+
   async function handleLogout() {
     // Clears the device PIN with the session, so the next person sets their own and
     // signing in again is the way back for someone who forgot theirs.
@@ -232,6 +295,23 @@ export function App() {
     // The sign-in screen renders outside the router, so nothing else resets the
     // address bar for the next person to sign in.
     window.history.replaceState(null, '', '/');
+  }
+
+  // Before the sign-in check below: the link has already opened a session, and
+  // nothing else on the way in would stop and ask for the new password.
+  if (recovering) {
+    return (
+      <ResetPasswordPage
+        message={authMessage}
+        saving={authLoading}
+        onSubmit={handleNewPassword}
+        onCancel={async () => {
+          setRecovering(false);
+          setAuthMessage(null);
+          await handleLogout();
+        }}
+      />
+    );
   }
 
   if (!bhwId) {
@@ -255,6 +335,7 @@ export function App() {
           }))
         }
         onSubmit={handleLogin}
+        onForgotPassword={handleForgotPassword}
       />
     );
   }
