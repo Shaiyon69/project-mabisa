@@ -23,6 +23,10 @@ const harness = vi.hoisted(() => ({
   /** One entry per executeSet, holding that transaction's statements. */
   sets: [] as string[][],
   savedToStore: 0,
+  /** Stands in for the plugin's native connection registry, which outlives the module. */
+  created: 0,
+  retrieved: 0,
+  opened: false,
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -58,6 +62,7 @@ vi.mock('@capacitor-community/sqlite', () => {
   const connection = {
     open: () => Promise.resolve(),
     close: () => Promise.resolve(),
+    isDBOpen: () => Promise.resolve({ result: harness.opened }),
     execute: (statement: string) => {
       harness.statements.push(statement);
       harness.database!.exec(statement);
@@ -104,6 +109,15 @@ vi.mock('@capacitor-community/sqlite', () => {
         return Promise.resolve();
       }
       createConnection() {
+        harness.created += 1;
+        harness.opened = true;
+        return Promise.resolve(connection);
+      }
+      isConnection() {
+        return Promise.resolve({ result: harness.created > 0 });
+      }
+      retrieveConnection() {
+        harness.retrieved += 1;
         return Promise.resolve(connection);
       }
     },
@@ -223,6 +237,18 @@ describe('the local store', () => {
 
     harness.statements = [];
     harness.sets = [];
+  });
+
+  it('reuses the native connection after a WebView reload instead of re-creating it', async () => {
+    const createdBefore = harness.created;
+
+    // A reload resets the module's own state; the plugin's registry keeps the name.
+    vi.resetModules();
+    const reloaded = await import('./localDatabase');
+    await reloaded.initializeLocalDatabase();
+
+    expect(harness.created).toBe(createdBefore);
+    expect(harness.retrieved).toBeGreaterThan(0);
   });
 
   async function seed() {
