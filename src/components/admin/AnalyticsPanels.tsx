@@ -161,8 +161,7 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
         />
       ) : null}
       <p className="muted report-note">
-        Both lines count assessments in the month: all of them, and the underweight readings among them. A month sitting
-        at zero had none recorded at all. The underweight rate is in the table and the CSV, not on a second axis.
+        A month at zero had nothing recorded, not nothing found.
       </p>
     </Card>
   );
@@ -328,9 +327,7 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
         <EmptyState title="Nothing stocked yet" text="A barangay administrator adds supplies from the Inventory screen." />
       )}
       <p className="muted report-note">
-        Unallocated stock only — what the barangay still holds, not what health workers are carrying. Stock is a current
-        position, so the selected period does not apply. An item whose reorder level is 0 has its warning switched off
-        and never counts as low.
+        Unallocated stock only — not what health workers are carrying.
       </p>
     </Card>
   );
@@ -441,11 +438,8 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
         <EmptyState title="No registered residents" text="Coverage is a share of the residents on file." />
       )}
       <p className="muted report-note">
-        Share of each barangay&apos;s registered residents with at least one assessment in this period. A thin ring is a
-        profiling gap, not a health finding.{' '}
-        {hidden > 0
-          ? `The ${shown.length} thinnest of ${ranked.length} barangays are drawn; the comparison table carries every one.`
-          : 'Every barangay this account can read gets a ring, whichever one the filter is set to.'}
+        A thin ring is a profiling gap, not a health finding.
+        {hidden > 0 ? ` Emptiest ${shown.length} of ${ranked.length} drawn; the table carries every one.` : ''}
       </p>
     </Card>
   );
@@ -539,9 +533,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
       />
       <TableMeta shown={Math.min(busiest.length, SUPPLY_ROWS)} total={busiest.length} label="items" />
       <p className="muted report-note">
-        &ldquo;At the barangay&rdquo; is what it still holds; &ldquo;with health workers&rdquo; is everything ever
-        handed out, so the two do not sum to a stock figure and neither is period-scoped. Released counts the selected
-        period only. Busiest items first — the Inventory screen lists every one, and the export carries them all.
+        &ldquo;At the barangay&rdquo; and &ldquo;with health workers&rdquo; do not sum to a stock figure.
       </p>
     </Card>
   );

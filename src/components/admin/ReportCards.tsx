@@ -102,7 +102,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
       {showsSection(filters, 'stock') ? (
         <ReportPanel
           title="Stock still at the barangay"
-          note={`${snapshot.inventoryItems.length} item(s) tracked, ${lowStock.length} at or below the low-stock threshold. This is what the barangay still holds to hand out — quantities already allocated to a health worker are counted against that worker, not here. Stock is a current position and ignores the period.`}
+          note={`${snapshot.inventoryItems.length} item(s), ${lowStock.length} at or below the low-stock level. Unallocated stock only — not what health workers are carrying.`}
           filters={filters}
           scope={snapshot}
           filterNote="none beyond the period (stock is current, not historical)"
@@ -186,10 +186,10 @@ function ReportPanel({ title, note, filters, scope, filterNote, onExport, childr
 function nutritionNote(snapshot: AdminSnapshot): string {
   const belowAge = assessmentsBelowAdultBmiAge(snapshot.assessments, snapshot.residents);
   const caveat = belowAge
-    ? ` ${belowAge} of them are of residents under ${ADULT_BMI_MIN_AGE}, whose measurements adult BMI does not classify — read those against the DOH/WHO growth charts, not these bands.`
+    ? ` ${belowAge} are under ${ADULT_BMI_MIN_AGE} — read those against the DOH/WHO growth charts, not these bands.`
     : '';
 
-  return `${snapshot.assessments.length} assessment(s) recorded in this period. A status is the reading the measurements produced, not a diagnosis.${caveat}`;
+  return `${snapshot.assessments.length} assessment(s) in this period. A status is a reading, not a diagnosis.${caveat}`;
 }
 
 type DemographicRow = { grouping: string; category: string; count: number };
