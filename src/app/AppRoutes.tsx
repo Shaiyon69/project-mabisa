@@ -72,6 +72,14 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
   }
 
   const home = isAdmin && buildsAdmin ? '/admin' : '/bhw';
+  // An unread role is not a health worker. Sending one to `/bhw` on a guess mounts
+  // the field shell, and an administrator meets its PIN prompt before the redirect
+  // to the portal lands.
+  const landing = roleChecked ? (
+    <Navigate to={home} replace />
+  ) : (
+    <SurfaceNotice title="Checking your account" body="One moment." />
+  );
 
   return (
     // On the phone the chunk is already on the filesystem, so this fallback is a
@@ -79,10 +87,21 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
     // engine. On the portal it is one request against a wired workstation.
     <Suspense fallback={<SurfaceNotice title="Loading" body="One moment." />}>
       <Routes>
-        <Route path="/" element={<Navigate to={home} replace />} />
+        <Route path="/" element={landing} />
 
         {buildsBhw ? (
-          <Route path="/bhw" element={isAdmin && buildsAdmin ? <Navigate to="/admin" replace /> : <BHWLayout logout={logout} fullName={fullName} />}>
+          <Route
+            path="/bhw"
+            element={
+              isAdmin && buildsAdmin ? (
+                <Navigate to="/admin" replace />
+              ) : buildsAdmin && !roleChecked ? (
+                <SurfaceNotice title="Checking your account" body="One moment." />
+              ) : (
+                <BHWLayout logout={logout} fullName={fullName} />
+              )
+            }
+          >
             <Route index element={<BHWHomePage />} />
             <Route path="register-resident" element={<RegisterResidentPage />} />
             <Route path="residents" element={<BhwResidentsPage />} />
@@ -117,7 +136,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
           </Route>
         ) : null}
 
-        <Route path="*" element={<Navigate to={home} replace />} />
+        <Route path="*" element={landing} />
       </Routes>
     </Suspense>
   );
