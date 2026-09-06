@@ -215,6 +215,14 @@
   background: var(--field-soft);
 }
 
+/* Someone recorded as gone is set apart but kept fully readable — the card is
+   still the place their status is put right. */
+.member-card.is-former {
+  border-color: var(--warning-line);
+  border-style: dashed;
+  background: var(--warning-surface);
+}
+
 /* The remove control sits on the member's own heading line, not above the card,
    so it is unmistakably attached to that one person. */
 .member-card-heading {

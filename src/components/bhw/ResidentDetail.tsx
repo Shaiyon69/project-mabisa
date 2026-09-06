@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RESIDENT_STATUSES, type HealthAssessment, type Individual, type InventoryItem, type SupplyDisbursement } from '../../types/database';
+import type { HealthAssessment, Individual, InventoryItem, SupplyDisbursement } from '../../types/database';
 import {
   ageInYears,
   emptyToNull,
@@ -20,10 +20,10 @@ import {
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { FormActions, SelectField } from '../common/FormField';
+import { FormActions } from '../common/FormField';
 import { Icon } from '../common/Icon';
 import { EmptyState } from '../common/StateMessage';
-import { MemberChoice, MemberFields } from './MemberFields';
+import { MemberChoice, MemberFields, MemberStatusField } from './MemberFields';
 
 type ResidentDetailProps = {
   residentId: string;
@@ -224,18 +224,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
               />
             </MemberFields>
 
-            <SelectField
-              label="Still in this household?"
-              hint="Someone who left stays on file — every check and supply you recorded for them stays with their record."
-              value={draft.status ?? 'active'}
-              onChange={(event) => setDraft({ ...draft, status: event.target.value as Individual['status'] })}
-            >
-              {RESIDENT_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status === 'active' ? 'Yes, still a member' : titleCase(status)}
-                </option>
-              ))}
-            </SelectField>
+            <MemberStatusField value={draft.status} onChange={(next) => setDraft({ ...draft, status: next })} />
 
             <FormActions>
               <Button

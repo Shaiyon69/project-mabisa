@@ -386,6 +386,19 @@ describe('the local store', () => {
       expect(members.map((person) => person.resident_id)).toEqual(['r3']);
     });
 
+    // What the re-visit form loads: a member who left has to appear on the card list,
+    // or the visit that found out has no way to record it.
+    it('keeps former members of a household when asked for them', async () => {
+      await seed();
+
+      const active = await store.readLocalIndividuals({ householdId: 'h1' });
+      const withFormer = await store.readLocalIndividuals({ householdId: 'h1', includeFormer: true });
+
+      expect(active.map((person) => person.resident_id)).toEqual(['r1', 'r2']);
+      expect(withFormer.map((person) => person.resident_id)).toEqual(['r4', 'r1', 'r2']);
+      expect(withFormer.find((person) => person.resident_id === 'r4')?.status).toBe('moved_out');
+    });
+
     it('orders by name and honours limit, offset, and an offset with no limit', async () => {
       await seed();
 
