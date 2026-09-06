@@ -10,6 +10,7 @@ import {
   lowStockItems,
   monthlyTrend,
   nutritionByBarangay,
+  rankByUnderweight,
   supplyUtilization,
   tally,
   type AdminFilters,
@@ -24,7 +25,7 @@ import { Button } from '../common/Button';
 import { BarChart, DonutChart, GaugeRing, LineChart } from './Charts';
 import { Card } from '../common/Card';
 import { EmptyState } from '../common/StateMessage';
-import { Table, type TableColumn } from '../common/Table';
+import { Table, TableMeta, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 /**
@@ -61,6 +62,15 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
     </div>
   );
 }
+
+/** Rings drawn before the grid stops being scannable. The comparison table lists every barangay. */
+const COVERAGE_RINGS = 12;
+
+/**
+ * Items a supply panel draws before deferring to the Inventory screen. An item row
+ * carries a barangay, so an RHU account reads all sixty-four barangays' stock here.
+ */
+const SUPPLY_ROWS = 12;
 
 type PanelProps = {
   filters: AdminFilters;
@@ -134,12 +144,24 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
   );
 }
 
-const comparisonColumns: CsvColumn<BarangayStats>[] = [
+const coverageColumns: CsvColumn<BarangayStats>[] = [
+  { header: 'Barangay', value: (row) => row.name },
+  { header: 'Residents', value: (row) => row.residents },
+  { header: 'Residents assessed', value: (row) => row.residentsAssessed },
+  { header: 'Coverage', value: (row) => (row.coverageRate === null ? '' : `${Math.round(row.coverageRate * 100)}%`) },
+];
+
+/** `mix` carries each barangay's four band counts in `NUTRITION_ORDER`. */
+const comparisonColumns = (mix: Map<string, number[]>): CsvColumn<BarangayStats>[] => [
   { header: 'Barangay', value: (row) => row.name },
   { header: 'Households', value: (row) => row.households },
   { header: 'Residents', value: (row) => row.residents },
   { header: 'Assessments in period', value: (row) => row.assessments },
   { header: 'Underweight', value: (row) => row.underweight },
+  ...NUTRITION_ORDER.slice(1).map((status, index) => ({
+    header: titleCase(status),
+    value: (row: BarangayStats) => mix.get(row.barangayId)?.[index + 1] ?? 0,
+  })),
   {
     header: 'Underweight rate',
     value: (row) => (row.underweightRate === null ? '' : `${Math.round(row.underweightRate * 100)}%`),
@@ -208,8 +230,7 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
         />
       )}
       <p className="muted report-note">
-        Counts active residents on the register right now, so the selected period does not apply. A resident whose
-        birthday is missing or in the future falls into no band and is left out of the age chart.
+        Counts active residents on the register right now.
       </p>
     </Card>
   );
@@ -291,17 +312,25 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
   );
 }
 
-/** Every barangay side by side, including the ones holding nothing. */
+/**
+ * Every barangay side by side, as one table. It was two grouped bar charts over
+ * the same table: at 75px and 89px of chart per barangay they cost more height
+ * than every figure they drew, and the three series of the first were three of
+ * these columns. The nutrition bands moved into the table rather than going with
+ * them, so the panel lost no figure at all.
+ */
 function ComparisonPanel({
   snapshot,
   stats,
   filters,
   scope,
 }: { snapshot: AdminSnapshot; stats: BarangayStats[] } & PanelProps) {
-  const plotted = stats.some((row) => row.residents || row.assessments || row.underweight);
-  // The whole nutrition mix per barangay, next to the single underweight share
-  // the bars and the table above carry.
-  const mix = nutritionByBarangay(snapshot.unscoped, snapshot.sessionBarangayId);
+  // Values run in `NUTRITION_ORDER`, underweight first — the column below reads
+  // the last three, the existing underweight column already carrying the first.
+  const mix = new Map(
+    nutritionByBarangay(snapshot.unscoped, snapshot.sessionBarangayId).map((row) => [row.key ?? '', row.values]),
+  );
+  const bandOf = (row: BarangayStats, index: number) => mix.get(row.barangayId)?.[index] ?? 0;
   const columns: TableColumn<BarangayStats>[] = [
     { key: 'name', header: 'Barangay', render: (row) => row.name },
     { key: 'households', header: 'Households', render: (row) => row.households },
@@ -312,6 +341,11 @@ function ComparisonPanel({
       header: 'Underweight',
       render: (row) => `${percent(row.underweightRate)} (${row.underweight})`,
     },
+    ...NUTRITION_ORDER.slice(1).map((status, index) => ({
+      key: status,
+      header: titleCase(status),
+      render: (row: BarangayStats) => bandOf(row, index + 1),
+    })),
     { key: 'released', header: 'Units released', render: (row) => row.unitsReleased },
   ];
 
@@ -319,60 +353,20 @@ function ComparisonPanel({
     <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead
         title="Barangay comparison"
-        onExport={() => exportReport(contextFor('Barangay Comparison', { filters, scope }), stats, comparisonColumns)}
+        onExport={() =>
+          exportReport(contextFor('Barangay Comparison', { filters, scope }), stats, comparisonColumns(mix))
+        }
       />
       <SummaryContext filters={filters} extra={scope} />
-      {/* Residents and assessments on one shared scale, which is the point of
-          the chart: a barangay with a tall resident bar and a short assessment
-          bar is a coverage gap, and two separately-scaled charts would hide it.
-          The table underneath carries the rates and the exact figures.
-
-          Guarded on the figures rather than on the barangay count: three
-          barangays holding nothing at all draw three empty tracks, which reads
-          as a chart that failed rather than as a scope with no records yet. */}
-      {plotted ? (
-        <BarChart
-          rows={stats.map((row) => ({
-            key: row.barangayId || 'unassigned',
-            label: row.name,
-            values: [row.residents, row.assessments, row.underweight],
-          }))}
-          series={[
-            { label: 'Residents', color: SERIES_COLORS[0] },
-            { label: 'Assessments', color: SERIES_COLORS[1] },
-            { label: 'Underweight', color: NUTRITION_COLORS.underweight },
-          ]}
-        />
-      ) : (
-        <EmptyState
-          title="Nothing to compare yet"
-          text="Barangay figures appear here once the phones have sent their households and checks."
-        />
-      )}
-      {/* Four bands per barangay on one scale. Only drawn when something was
-          assessed: four empty tracks per barangay is the same false "chart
-          failed" reading the guard above avoids. Band colours are the BMI
-          rail's, so a band is one colour on the phone and here. */}
-      {mix.some((row) => row.values.some((value) => value)) ? (
-        <>
-          <h4>Nutrition mix by barangay</h4>
-          <BarChart
-            rows={mix}
-            series={NUTRITION_ORDER.map((status) => ({ label: titleCase(status), color: NUTRITION_COLORS[status] }))}
-          />
-        </>
-      ) : null}
       <Table
         columns={columns}
-        rows={stats}
+        rows={rankByUnderweight(stats)}
         getRowKey={(row) => row.barangayId || 'unassigned'}
         emptyTitle="No barangays"
         emptyText="Barangay records appear here once one has been created."
       />
       <p className="muted report-note">
-        Households, residents and units released are counted through the household that records the barangay. Assessment
-        figures cover the selected period; the household and resident counts do not. Every barangay this account can
-        read is listed, whichever one the filter is set to — comparing them is what this panel is for.
+        Worst underweight share first.
       </p>
     </Card>
   );
@@ -383,22 +377,26 @@ function ComparisonPanel({
  * what the assessments found. Counts distinct residents, not assessments.
  */
 function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & PanelProps) {
-  const ranked = [...stats].filter((row) => row.residents > 0).sort((a, b) => (b.coverageRate ?? 0) - (a.coverageRate ?? 0));
+  // Emptiest first: a gap is what this panel is for, and at sixty-four barangays
+  // the best-covered ones pushed it off the bottom of the grid.
+  const ranked = [...stats].filter((row) => row.residents > 0).sort((a, b) => (a.coverageRate ?? 0) - (b.coverageRate ?? 0));
+  const shown = ranked.slice(0, COVERAGE_RINGS);
+  const hidden = ranked.length - shown.length;
 
   return (
     <Card className="activity-card report-card" as="article">
       <PanelHead
         title="Assessment coverage"
-        onExport={() => exportReport(contextFor('Assessment Coverage', { filters, scope }), stats, comparisonColumns)}
+        onExport={() => exportReport(contextFor('Assessment Coverage', { filters, scope }), ranked, coverageColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />
-      {/* A ring per barangay, ordered by coverage, so the gaps are the emptiest
-          rings and a reader finds them by shape before reading a number. One
-          hue across all of them: this is a magnitude, and a colour per barangay
-          would imply an identity the figure does not carry. */}
-      {ranked.length ? (
+      {/* A ring per barangay, emptiest first, so the gaps are the first rings read
+          and a reader finds them by shape before reading a number. One hue across
+          all of them: this is a magnitude, and a colour per barangay would imply
+          an identity the figure does not carry. */}
+      {shown.length ? (
         <div className="gauge-grid">
-          {ranked.map((row) => (
+          {shown.map((row) => (
             <GaugeRing
               key={row.barangayId || 'unassigned'}
               value={row.residentsAssessed}
@@ -412,9 +410,11 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
         <EmptyState title="No registered residents" text="Coverage is a share of the residents on file." />
       )}
       <p className="muted report-note">
-        Share of each barangay&apos;s registered residents with at least one assessment in this period. A low bar is a
-        profiling gap, not a health finding. Every barangay this account can read gets a ring, whichever one the filter
-        is set to.
+        Share of each barangay&apos;s registered residents with at least one assessment in this period. A thin ring is a
+        profiling gap, not a health finding.{' '}
+        {hidden > 0
+          ? `The ${shown.length} thinnest of ${ranked.length} barangays are drawn; the comparison table carries every one.`
+          : 'Every barangay this account can read gets a ring, whichever one the filter is set to.'}
       </p>
     </Card>
   );
@@ -429,20 +429,30 @@ const utilizationColumns: CsvColumn<ItemUtilization>[] = [
   { header: 'Reorder level', value: (row) => row.reorderLevel },
 ];
 
+/**
+ * The two halves of the stock position, each with the colour its segment and its
+ * swatch are drawn in. One list so a renamed label cannot strand its colour —
+ * which is what left both segments undefined and unpainted.
+ */
+const POSITIONS: { label: string; color: string; of: (row: ItemUtilization) => number }[] = [
+  { label: 'at the barangay', color: SERIES_COLORS[0], of: (row) => row.onHand },
+  { label: 'with health workers', color: SERIES_COLORS[2], of: (row) => row.allocated },
+];
+
 /** Where each item's stock sits, and how much of it moved in the period. */
 function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
   const rows = supplyUtilization(snapshot);
   // Two charts: the ring is where the stock stands now, the bars are what moved
   // in the period. One scale would read as if one were the remainder of the other.
-  const moved = rows.filter((row) => row.releasedInPeriod > 0);
-  const position: Tally[] = [
-    { label: 'at the barangay', count: rows.reduce((sum, row) => sum + row.onHand, 0) },
-    { label: 'with health workers', count: rows.reduce((sum, row) => sum + row.allocated, 0) },
-  ];
-  const positionColors: Record<string, string> = {
-    unallocated: SERIES_COLORS[0],
-    'with BHWs': SERIES_COLORS[2],
-  };
+  // Busiest first and capped: every barangay's items land in this one list, so the
+  // full register belongs on the Inventory screen and in the export, not here.
+  const busiest = [...rows].sort((a, b) => b.releasedInPeriod - a.releasedInPeriod || b.onHand - a.onHand);
+  const moved = busiest.filter((row) => row.releasedInPeriod > 0).slice(0, SUPPLY_ROWS);
+  const position: Tally[] = POSITIONS.map(({ label, of }) => ({
+    label,
+    count: rows.reduce((sum, row) => sum + of(row), 0),
+  }));
+  const colorFor = (row: Tally) => POSITIONS.find((entry) => entry.label === row.label)?.color ?? SERIES_COLORS[0];
   const columns: TableColumn<ItemUtilization>[] = [
     { key: 'item', header: 'Item', render: (row) => row.itemName },
     { key: 'on-hand', header: 'At the barangay', render: (row) => row.onHand },
@@ -454,7 +464,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
     <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead
         title="How supplies are used"
-        onExport={() => exportReport(contextFor('Supply Utilization', { filters, scope }), rows, utilizationColumns)}
+        onExport={() => exportReport(contextFor('Supply Utilization', { filters, scope }), busiest, utilizationColumns)}
       />
       <SummaryContext filters={filters} extra={scope} />
       {/* Ring left, bars right, on one row. The ring is where the stock stands
@@ -465,11 +475,11 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
         {position.some((row) => row.count) ? (
           <div>
             <h4>Where the stock sits</h4>
-            <DonutChart rows={position} colorFor={(row) => positionColors[row.label]} unit="units">
+            <DonutChart rows={position} colorFor={(row) => colorFor(row)} unit="units">
               <ul className="chart-breakdown">
                 {position.map((row) => (
                   <li key={row.label}>
-                    <span className="chart-swatch" style={{ background: positionColors[row.label] }} aria-hidden="true" />
+                    <span className="chart-swatch" style={{ background: colorFor(row) }} aria-hidden="true" />
                     <span>{titleCase(row.label)}</span>
                     <strong>{row.count}</strong>
                   </li>
@@ -490,14 +500,17 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
       </div>
       <Table
         columns={columns}
-        rows={rows}
+        rows={busiest}
         getRowKey={(row) => row.itemId}
         emptyTitle="No inventory items"
         emptyText="Items created for this barangay appear here."
+        limit={SUPPLY_ROWS}
       />
+      <TableMeta shown={Math.min(busiest.length, SUPPLY_ROWS)} total={busiest.length} label="items" />
       <p className="muted report-note">
-        Unallocated is what the barangay still holds; &ldquo;with BHWs&rdquo; is everything ever handed out, so the two
-        do not sum to a stock figure and neither is period-scoped. Released counts the selected period only.
+        &ldquo;At the barangay&rdquo; is what it still holds; &ldquo;with health workers&rdquo; is everything ever
+        handed out, so the two do not sum to a stock figure and neither is period-scoped. Released counts the selected
+        period only. Busiest items first — the Inventory screen lists every one, and the export carries them all.
       </p>
     </Card>
   );

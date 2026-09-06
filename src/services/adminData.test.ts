@@ -25,6 +25,7 @@ import {
   monthlyTrend,
   nutritionByBarangay,
   presetRange,
+  rankByUnderweight,
   readAllResidentPages,
   REPORT_SECTIONS,
   reorderLevelOf,
@@ -33,6 +34,7 @@ import {
   type AccountRow,
   type AdminFilters,
   type AdminSnapshot,
+  type BarangayStats,
 } from './adminData';
 import { filtersFromParams, paramsFromFilters } from '../hooks/useAdminData';
 import type { HealthAssessment, Individual, InventoryItem, NutritionStatus, SupplyDisbursement } from '../types/database';
@@ -863,5 +865,32 @@ describe('managesAccount', () => {
   it('gives a health worker and an unread role nothing', () => {
     expect(managesAccount('bhw', 'bhw')).toBe(false);
     expect(managesAccount(null, 'bhw')).toBe(false);
+  });
+});
+
+describe('rankByUnderweight', () => {
+  const row = (barangayId: string, underweight: number, assessments: number): BarangayStats => ({
+    barangayId,
+    name: barangayId,
+    households: 0,
+    residents: 0,
+    assessments,
+    residentsAssessed: 0,
+    underweight,
+    underweightRate: assessments ? underweight / assessments : null,
+    coverageRate: null,
+    unitsReleased: 0,
+  });
+
+  it('does not let a single reading outrank a barangay with a real denominator', () => {
+    const ranked = rankByUnderweight([row('thin', 1, 1), row('real', 27, 90), row('clean', 1, 50)]);
+
+    expect(ranked.map((entry) => entry.barangayId)).toEqual(['real', 'thin', 'clean']);
+  });
+
+  it('sorts barangays with no assessments last', () => {
+    const ranked = rankByUnderweight([row('silent', 0, 0), row('some', 2, 40)]);
+
+    expect(ranked.map((entry) => entry.barangayId)).toEqual(['some', 'silent']);
   });
 });
