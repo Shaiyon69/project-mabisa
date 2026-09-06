@@ -265,6 +265,10 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
         emptyTitle={loading ? 'Loading the records' : 'No residents found'}
         emptyText={loading ? 'One moment.' : "Try a different search, or wait for a health worker's phone to send its records."}
         limit={ITEMS_PER_PAGE}
+        numbered
+        // Paged on the server, so the count continues across pages rather than
+        // restarting at one on each.
+        startIndex={(page - 1) * ITEMS_PER_PAGE}
       />
 
       <TableMeta shown={rows.length} total={total} label="residents" />
