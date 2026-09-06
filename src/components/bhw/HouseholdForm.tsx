@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Household, Individual } from '../../types/database';
-import { createId, describeMissing, emptyToNull, hasLeftHousehold, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
+import type { Household, Individual, ResidentStatus } from '../../types/database';
+import { createId, describeMissing, emptyToNull, formatDate, hasLeftHousehold, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError, statusChangedOn, titleCase } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
   findLocalHouseholdByNumber,
@@ -8,7 +8,7 @@ import {
   saveHouseholdWithMembersLocally,
 } from '../../services/localDatabase';
 import { DuplicateWarningModal, type FlaggedMember } from './DuplicateWarningModal';
-import { MemberChoice, MemberFields } from './MemberFields';
+import { MemberChoice, MemberFields, MemberStatusField } from './MemberFields';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
@@ -112,6 +112,28 @@ function blankMember(isHead: boolean): Partial<Individual> {
   };
 }
 
+/** Anyone recorded as gone from this household, whatever the reason. */
+function isFormerMember(member: Partial<Individual>): boolean {
+  return (member.status ?? 'active') !== 'active';
+}
+
+/**
+ * A recorded household's members: head first, then everyone still living there,
+ * with those who left last. Former members are loaded rather than hidden — a
+ * re-visit is where the BHW finds out somebody is gone.
+ */
+async function loadMembers(householdId: string): Promise<Partial<Individual>[]> {
+  const existingMembers = await readLocalIndividuals({ householdId, includeFormer: true });
+
+  return existingMembers.length
+    ? [...existingMembers].sort(
+        (left, right) =>
+          Number(isFormerMember(left)) - Number(isFormerMember(right)) ||
+          Number(right.is_household_head) - Number(left.is_household_head),
+      )
+    : [blankMember(true)];
+}
+
 type HouseholdFormProps = {
   bhwId: string;
   onSaved: () => Promise<void>;
@@ -163,7 +185,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     !household.food_production?.length && 'food production',
     incompleteMembers.length > 0 &&
       `name, birthdate and sex for member${incompleteMembers.length > 1 ? 's' : ''} ${incompleteMembers.join(', ')}`,
-    !members.some((member) => member.is_household_head) && 'household head',
+    // An active one: marking the head moved out during this visit leaves the
+    // household headless, and the BHW is standing there to say who took over.
+    !members.some((member) => member.is_household_head && !isFormerMember(member)) &&
+      'a household head who still lives there',
     members.some((member) => isInFuture(member.birthday)) && 'birthdates on or before today',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
@@ -226,16 +251,11 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
 
   /** Loads a recorded household and its members into this form, turning it into an update. */
   async function openExisting(existing: Household) {
-    const existingMembers = await readLocalIndividuals({ householdId: existing.household_id });
+    const existingMembers = await loadMembers(existing.household_id);
 
     pendingIds.current = null;
     setHousehold(existing);
-    // Head first, matching how the form is filled in on paper; the read is ordered by name.
-    setMembers(
-      existingMembers.length
-        ? [...existingMembers].sort((left, right) => Number(right.is_household_head) - Number(left.is_household_head))
-        : members,
-    );
+    setMembers(existingMembers);
     setExistingMatch(null);
     setFlagged([]);
     setShowValidation(false);
@@ -273,6 +293,19 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   function updateMember(index: number, field: keyof Individual, value: unknown) {
     const updatedMembers = [...members];
     updatedMembers[index] = { ...updatedMembers[index], [field]: value };
+    setMembers(updatedMembers);
+  }
+
+  /** Marking a member gone stamps the day it happened; putting them back clears it. */
+  function updateMemberStatus(index: number, next: ResidentStatus) {
+    const member = members[index];
+    const updatedMembers = [...members];
+
+    updatedMembers[index] = {
+      ...member,
+      status: next,
+      status_changed_on: statusChangedOn(member.status, next, member.status_changed_on),
+    };
     setMembers(updatedMembers);
   }
 
@@ -320,6 +353,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
    * Only local SQLite is consulted, so cross-purok duplicates are the portal's to catch.
    */
   async function scanForDuplicates(): Promise<FlaggedMember[]> {
+    // Everyone the form already holds, former members included. Warning about a row
+    // that is visible two cards up is noise, and reclaiming it would put the same
+    // resident on the form twice.
+    const onTheForm = new Set(members.map((member) => member.resident_id).filter(Boolean));
     const scans = await Promise.all(
       members.map(async (member, index) => {
         // Former members included: someone who moved out and came back is who
@@ -330,9 +367,10 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
           // are worth raising.
           .filter(
             (candidate) =>
-              !household.household_id ||
-              candidate.household_id !== household.household_id ||
-              hasLeftHousehold(candidate.status),
+              !onTheForm.has(candidate.resident_id) &&
+              (!household.household_id ||
+                candidate.household_id !== household.household_id ||
+                hasLeftHousehold(candidate.status)),
           );
         const matches = findLikelyDuplicates(
           {
@@ -576,8 +614,8 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         {isRevisit ? (
           <p className="form-alert tone-info" role="status">
             <Icon name="save" size={18} />
-            You are updating a household already on file. People already recorded stay here — open a person's own
-            record to mark them moved out, deceased or transferred.
+            You are updating a household already on file. People already recorded stay here — use "Still in this
+            household?" on their card to mark someone moved out, deceased or transferred.
             <Button type="button" variant="ghost" onClick={startBlank}>Record a different household</Button>
           </p>
         ) : null}
@@ -625,9 +663,15 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         <h3>People in this Household</h3>
 
         {members.map((member, index) => (
-          <div key={index} className="member-card">
+          <div key={index} className={`member-card${isFormerMember(member) ? ' is-former' : ''}`}>
             <div className="member-card-heading">
               <h4>Member {index + 1} {member.is_household_head ? '(Head)' : ''}</h4>
+              {isFormerMember(member) ? (
+                <Badge
+                  label={`${titleCase(member.status ?? '')}${member.status_changed_on ? ` • ${formatDate(member.status_changed_on)}` : ''}`}
+                  tone="warning"
+                />
+              ) : null}
               {/* One member is the household itself — there is nothing to remove down to.
                   A member already on file has no removal path at all: nothing deletes
                   through the API, and dropping the row here would only orphan it. */}
@@ -650,7 +694,13 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
               />
             </MemberFields>
 
-            {showValidation && !members.some((entry) => entry.is_household_head) ? <small className="field-error"><b className="required-mark">*</b> Tick one person as the household head.</small> : null}
+            {/* Asked here so a member who has moved out, died or transferred is recorded
+                during the visit that found out, rather than on a screen of their own. */}
+            {member.resident_id ? (
+              <MemberStatusField value={member.status} onChange={(next) => updateMemberStatus(index, next)} />
+            ) : null}
+
+            {showValidation && !members.some((entry) => entry.is_household_head && !isFormerMember(entry)) ? <small className="field-error"><b className="required-mark">*</b> Tick one person who still lives here as the household head.</small> : null}
           </div>
         ))}
 

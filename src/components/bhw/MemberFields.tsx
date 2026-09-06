@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import type { Individual, IndividualSex, RelationshipToHead } from '../../types/database';
-import { RELATIONSHIPS_TO_HEAD } from '../../types/database';
+import type { Individual, IndividualSex, RelationshipToHead, ResidentStatus } from '../../types/database';
+import { RELATIONSHIPS_TO_HEAD, RESIDENT_STATUSES } from '../../types/database';
 import { isInFuture, titleCase, today } from '../../lib/utils';
 import { FormField, SelectField } from '../common/FormField';
 
@@ -32,6 +32,33 @@ export function MemberChoice({
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
+  );
+}
+
+/**
+ * Whether this person still lives in the household. Only for someone already on
+ * file: a row being typed for the first time has nobody to have left.
+ */
+export function MemberStatusField({
+  value,
+  onChange,
+}: {
+  value: ResidentStatus | null | undefined;
+  onChange: (next: ResidentStatus) => void;
+}) {
+  return (
+    <SelectField
+      label="Still in this household?"
+      hint="Someone who left stays on file — every check and supply you recorded for them stays with their record."
+      value={value ?? 'active'}
+      onChange={(event) => onChange(event.target.value as ResidentStatus)}
+    >
+      {RESIDENT_STATUSES.map((status) => (
+        <option key={status} value={status}>
+          {status === 'active' ? 'Yes, still a member' : titleCase(status)}
+        </option>
+      ))}
+    </SelectField>
   );
 }
 
