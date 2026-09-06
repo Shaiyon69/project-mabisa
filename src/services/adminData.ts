@@ -644,17 +644,54 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
 }
 
 /**
- * Whether this session may act on that account, which decides only whether the
- * Accounts table draws its buttons. Enforcement is
- * `private.assert_can_manage_bhw()`, which both account RPCs open with.
- * Barangay is absent because rows outside one never reach the client.
+ * Whether this session may put a health worker on a purok. The RHU may not:
+ * who covers which purok is the barangay's own fact, and `admin_assign_bhw_to_purok`
+ * refuses an RHU caller with 42501.
  */
-export function managesAccount(viewer: UserRole | null, account: UserRole): boolean {
-  if (viewer === 'admin') {
-    return true;
+export function canAssignPurok(viewer: UserRole | null, account: UserRole): boolean {
+  return viewer === 'barangay_admin' && account === 'bhw';
+}
+
+/**
+ * The accounts a role manages on the Accounts tab, which is narrower than what it
+ * may read: the RHU appoints barangay administrators, and a barangay administrator
+ * runs the health workers under one. Neither is shown a row it cannot act on, its
+ * own included.
+ *
+ * In purok order, which is how a barangay administrator thinks of their workers.
+ * Unassigned last: they are the rows to act on, and burying them under a purok
+ * heading they do not have would read as an assignment.
+ */
+export function visibleAccounts(viewer: UserRole | null, rows: AccountRow[]): AccountRow[] {
+  const managed: UserRole | null = viewer === 'admin' ? 'barangay_admin' : viewer === 'barangay_admin' ? 'bhw' : null;
+
+  if (!managed) {
+    return [];
   }
 
-  return viewer === 'barangay_admin' && account === 'bhw';
+  return rows
+    .filter((row) => row.profile.role === managed)
+    .sort(
+      (a, b) =>
+        Number(a.purokName === null) - Number(b.purokName === null) ||
+        (a.purokName ?? '').localeCompare(b.purokName ?? '') ||
+        a.profile.full_name.localeCompare(b.profile.full_name),
+    );
+}
+
+/**
+ * Barangays with nobody administering them. A health worker there can be created
+ * but never assigned a purok, so they can record nothing — and the RHU is the only
+ * account that can appoint the administrator who would fix it.
+ */
+export function barangaysMissingAdmin(barangays: Barangay[], rows: AccountRow[]): Barangay[] {
+  const administered = new Set(
+    rows
+      .filter((row) => row.profile.role === 'barangay_admin' && row.profile.is_active)
+      .map((row) => row.profile.barangay_id),
+  );
+
+  return barangays.filter((barangay) => !administered.has(barangay.barangay_id));
 }
 
 /** Account rows the Accounts tab's scope filters match: role, active state, barangay and purok. */
@@ -906,6 +943,49 @@ export async function allocateStockToBhw(itemId: string, bhwId: string, quantity
   if (error) {
     throw new Error(error.message);
   }
+}
+
+/** The barangays a new account can be posted to. `admin_create_profile` rejects inactive ones. */
+export async function fetchActiveBarangays(): Promise<Barangay[]> {
+  return readAllPages<Barangay>('Barangay', 'barangay_id', () =>
+    supabase.from('barangays').select('*').eq('is_active', true),
+  ).then((rows) => byText(rows, 'name'));
+}
+
+/**
+ * A new login and its profile in one call, through the `create-account` function:
+ * writing to `auth.users` needs the service role, which never reaches the browser.
+ */
+export async function createAccount(input: {
+  fullName: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  barangayId: string | null;
+}): Promise<void> {
+  const { error } = await supabase.functions.invoke('create-account', { body: input });
+
+  if (error) {
+    throw new Error(await functionFailure(error));
+  }
+}
+
+/**
+ * Why the function refused. `invoke` reports only that the call was not a 2xx and
+ * leaves the reason in the response it hangs off the error.
+ */
+async function functionFailure(error: unknown): Promise<string> {
+  const response = (error as { context?: unknown }).context;
+
+  if (response instanceof Response) {
+    const body: unknown = await response.json().catch(() => null);
+
+    if (body && typeof (body as { error?: unknown }).error === 'string') {
+      return (body as { error: string }).error;
+    }
+  }
+
+  return error instanceof Error ? error.message : 'The account was not created.';
 }
 
 /** The puroks an assignment can name. `admin_assign_bhw_to_purok` rejects inactive ones. */
