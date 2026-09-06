@@ -32,7 +32,7 @@ export function LoginPage({
   // Only the combined dev build needs the path — a single-surface build already knows which portal it is.
   const [showPassword, setShowPassword] = useState(false);
   const isAdminPortal = surface === 'admin' || (surface === 'both' && window.location.pathname.startsWith('/admin'));
-  const portalName = isAdminPortal ? 'BRHP-MSAM Admin Portal' : 'BRHP-MSAM BHW Mobile';
+  const portalName = 'BRHP-MSAM';
   // The reset link arrives by email and opens in a browser, which is nowhere the
   // installed app can be reached from. On a phone the health office is the path.
   const canEmailReset = Capacitor.getPlatform() === 'web';
@@ -50,11 +50,6 @@ export function LoginPage({
                 in full rather than leaving it as six letters. */}
             <p className="eyebrow">Barangay Residents Health Profiling and Medical Supply Allocation Monitoring System</p>
             <h1>{portalName}</h1>
-            <p className="muted">
-              {isAdminPortal
-                ? 'Sign in with your authorized administrator account to manage barangay health profiling and supply monitoring.'
-                : 'For Barangay Health Workers. Sign in once while online, then continue field work on your device.'}
-            </p>
           </div>
         </div>
 
