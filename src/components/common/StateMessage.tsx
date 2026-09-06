@@ -1,4 +1,4 @@
-type StateTone = 'empty' | 'error';
+type StateTone = 'empty' | 'warning' | 'error';
 
 type StateMessageProps = {
   title: string;
@@ -17,6 +17,11 @@ function StateMessage({ title, text, tone = 'empty' }: StateMessageProps) {
 
 export function EmptyState({ title, text }: Omit<StateMessageProps, 'tone'>) {
   return <StateMessage title={title} text={text} tone="empty" />;
+}
+
+/** Something to put right, but nothing has failed: the screen still works. */
+export function WarningState({ title, text }: Omit<StateMessageProps, 'tone'>) {
+  return <StateMessage title={title} text={text} tone="warning" />;
 }
 
 export function ErrorState({ title, text }: Omit<StateMessageProps, 'tone'>) {
