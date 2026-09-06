@@ -43,6 +43,9 @@ const ROLE_LABELS: Record<UserRole, string> = {
 /** Which dialog is open, and for whom. One value, so two cannot be open at once. */
 type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
 
+/** Rows per page. The filter drawer narrows the list; the pager reaches the rest. */
+const ROWS_PER_PAGE = 15;
+
 type AccountsTableProps = {
   /**
    * Who is looking, which decides which rows get controls. An `admin` manages
@@ -209,6 +212,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         columns={columns}
         rows={visible}
         getRowKey={(account) => account.profile.user_id}
+        pageSize={ROWS_PER_PAGE}
         numbered
         emptyTitle={loading ? 'Loading the accounts' : 'No accounts found'}
         emptyText={
