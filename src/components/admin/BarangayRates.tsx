@@ -20,7 +20,7 @@ function describeRate(row: BarangayStats): string {
     return 'no assessments in this period';
   }
 
-  return `${row.underweight} of ${row.assessments} (${Math.round(row.underweightRate * 100)}%)`;
+  return `${row.underweight} of ${row.residentsAssessed} (${Math.round(row.underweightRate * 100)}%)`;
 }
 
 /**

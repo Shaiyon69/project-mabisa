@@ -40,7 +40,9 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
   // Unscoped: this panel is also the barangay picker, so narrowing it to the
   // selected barangay would leave no row to switch to.
   const stats = barangayStats(snapshot.unscoped, snapshot.sessionBarangayId);
-  // One tally feeding both the ring and the bars, so the two cannot disagree.
+  // One tally feeding both the ring and the bars, so the two cannot disagree. Each
+  // resident counts once, under their latest check: this panel is the barangay's
+  // nutrition now, not a pile of every reading taken since January.
   const nutrition = nutritionTally(snapshot.assessments);
 
   // Every link carries the period and the barangay, so the screen it opens answers
@@ -145,18 +147,19 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
           <SummaryContext filters={filters} snapshot={snapshot} />
           {/* The ring is the mix and the bars are the counts, side by side rather
               than one instead of the other: a share answers "how lopsided" and a
-              count answers "how many", and an officer acts on the second. Each
-              band opens the residents it counted, over this same period. */}
+              count answers "how many", and an officer acts on the second. A band
+              opens everyone assessed into it over this period, which is the wider
+              follow-up list — a resident who has since improved is still on it. */}
           <div className="chart-with-bars">
             {/* No ring at all when nothing was recorded — an empty circle round a
                 zero reads as a chart that failed to load. `SummaryBars` says why. */}
             {nutrition.some((row) => row.count) ? (
-              <DonutChart rows={nutrition} colorFor={(row) => NUTRITION_COLORS[row.label]} unit="assessments" />
+              <DonutChart rows={nutrition} colorFor={(row) => NUTRITION_COLORS[row.label]} unit="residents" />
             ) : null}
             <SummaryBars
               rows={nutrition}
               colorFor={(row) => NUTRITION_COLORS[row.label]}
-              emptyTitle="No assessments in this period"
+              emptyTitle="No residents checked in this period"
               emptyText="Try a wider date range, or wait for a health worker's phone to send its records."
               hrefFor={(row) => `/admin/residents?status=${row.label}&${period}`}
             />

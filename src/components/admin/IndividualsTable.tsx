@@ -241,12 +241,18 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
 
       {/* The filter arrived in a link, so it has to be visible and removable on
           the screen it lands on — otherwise a partial registry looks like the
-          whole one, which is the worst way a drill-down can fail. */}
+          whole one, which is the worst way a drill-down can fail.
+
+          "At any point" is the difference from the dashboard band that links here,
+          which counts each resident once under their latest check. This list is
+          wider on purpose: it is who to follow up on, so someone who has since
+          improved belongs on it. */}
       {statusFilter ? (
         <div className="filter-chip">
           <span>
-            Nutrition status <strong>{titleCase(statusFilter.status)}</strong>, assessed {formatDate(statusFilter.from)} –{' '}
-            {formatDate(statusFilter.to)}
+            Assessed <strong>{titleCase(statusFilter.status)}</strong> at any point between{' '}
+            {formatDate(statusFilter.from)} and {formatDate(statusFilter.to)} — including residents a later check has
+            since moved to another band.
           </span>
           <Button variant="ghost" onClick={clearStatusFilter}>
             Clear
