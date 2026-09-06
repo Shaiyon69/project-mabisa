@@ -3,6 +3,7 @@ import type { Household, Individual, ResidentStatus } from '../../types/database
 import { createId, describeMissing, emptyToNull, formatDate, hasLeftHousehold, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError, statusChangedOn, titleCase } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
+  findLocalHouseholdById,
   findLocalHouseholdByNumber,
   readLocalIndividuals,
   saveHouseholdWithMembersLocally,
@@ -137,11 +138,19 @@ async function loadMembers(householdId: string): Promise<Partial<Individual>[]> 
 type HouseholdFormProps = {
   bhwId: string;
   onSaved: () => Promise<void>;
+  /** A household picked from the list, loaded into the form as a re-visit. Absent means a new one. */
+  householdId?: string;
 };
 
-export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
+export function HouseholdForm({ bhwId, onSaved, householdId }: HouseholdFormProps) {
   // Read once, on the first render only — later renders must not fight the BHW's typing.
-  const [restored] = useState(() => readDraft(bhwId));
+  // A draft belongs to the household it was typed into: an interrupted re-visit is
+  // offered back on that household's screen, never on a different one or on a new record.
+  const [restored] = useState(() => {
+    const draft = readDraft(bhwId);
+
+    return draft && (draft.household.household_id ?? undefined) === householdId ? draft : null;
+  });
   const [restoredNotice, setRestoredNotice] = useState(restored !== null);
   const [household, setHousehold] = useState<Partial<Household>>(restored?.household ?? blankHousehold());
   const [members, setMembers] = useState<Partial<Individual>[]>(restored?.members ?? [blankMember(true)]);
@@ -236,6 +245,44 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     setExistingMatch(null);
     setReclaimed([]);
   }
+
+  /**
+   * Pulls in the household picked from the list, so a re-visit opens on what was
+   * recorded last time. Skipped when a draft for it was restored — those are the
+   * newer entries.
+   */
+  useEffect(() => {
+    if (!householdId || restored) {
+      return;
+    }
+
+    let current = true;
+
+    void (async () => {
+      try {
+        const existing = await findLocalHouseholdById(householdId);
+
+        if (!existing) {
+          return;
+        }
+
+        const existingMembers = await loadMembers(householdId);
+
+        if (current) {
+          setHousehold(existing);
+          setMembers(existingMembers);
+        }
+      } catch {
+        if (current) {
+          setFormError('Could not open this household from the phone. Go back and pick it again.');
+        }
+      }
+    })();
+
+    return () => {
+      current = false;
+    };
+  }, [householdId, restored]);
 
   /** Looks for an existing record under the number just typed, so a re-visit is offered. */
   async function checkForExisting() {
@@ -616,7 +663,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
             <Icon name="save" size={18} />
             You are updating a household already on file. People already recorded stay here — use "Still in this
             household?" on their card to mark someone moved out, deceased or transferred.
-            <Button type="button" variant="ghost" onClick={startBlank}>Record a different household</Button>
+            {householdId ? null : (
+              <Button type="button" variant="ghost" onClick={startBlank}>Record a different household</Button>
+            )}
           </p>
         ) : null}
 
