@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Button } from '../../components/common/Button';
 import { FormField } from '../../components/common/FormField';
 import { surface } from '../../app/surface';
@@ -13,6 +14,8 @@ type LoginPageProps = {
   onEmailChange: (email: string) => void;
   onPasswordChange: (password: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  /** Mails a reset link to the address typed above. */
+  onForgotPassword: () => Promise<void>;
 };
 
 export function LoginPage({
@@ -24,11 +27,15 @@ export function LoginPage({
   onEmailChange,
   onPasswordChange,
   onSubmit,
+  onForgotPassword,
 }: LoginPageProps) {
   // Only the combined dev build needs the path — a single-surface build already knows which portal it is.
   const [showPassword, setShowPassword] = useState(false);
   const isAdminPortal = surface === 'admin' || (surface === 'both' && window.location.pathname.startsWith('/admin'));
   const portalName = isAdminPortal ? 'BRHP-MSAM Admin Portal' : 'BRHP-MSAM BHW Mobile';
+  // The reset link arrives by email and opens in a browser, which is nowhere the
+  // installed app can be reached from. On a phone the health office is the path.
+  const canEmailReset = Capacitor.getPlatform() === 'web';
 
   return (
     <main className={`mobile-shell auth-shell ${isAdminPortal ? 'admin-auth' : 'bhw-auth'}`}>
@@ -91,6 +98,20 @@ export function LoginPage({
           <Button type="submit" disabled={authLoading}>
             {authLoading ? 'Checking Access' : isAdminPortal ? 'Sign in as Admin' : 'Sign in as BHW'}
           </Button>
+
+          {canEmailReset ? (
+            <Button variant="ghost" disabled={authLoading} onClick={() => void onForgotPassword()}>
+              I forgot my password
+            </Button>
+          ) : null}
+
+          {/* The honest half of the answer: a reset link only reaches an account
+              whose email address is a real one somebody can open. */}
+          <p className="muted">
+            {canEmailReset
+              ? 'We will email you a link to set a new one. If no email arrives, ask the health office to reset it for you.'
+              : 'Forgot your password? Ask the health office to reset it for you — it cannot be changed from this phone.'}
+          </p>
         </form>
       </section>
     </main>

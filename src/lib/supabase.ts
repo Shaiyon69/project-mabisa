@@ -5,6 +5,16 @@ import { secureStorage } from './secureStorage';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+/**
+ * What an expired or already-used reset link left in the address bar. Read here,
+ * before `createClient` below strips the fragment, or the person lands on the
+ * sign-in screen with nothing to say why the link did not work.
+ */
+export const authLinkError =
+  typeof window === 'undefined'
+    ? null
+    : new URLSearchParams(window.location.hash.slice(1)).get('error_description');
+
 // The <Database> generic makes every .from() return a typed row, so a renamed
 // Postgres column is a build error rather than a runtime dead-letter.
 //
