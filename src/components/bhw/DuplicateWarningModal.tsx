@@ -1,5 +1,6 @@
+import type { Individual } from '../../types/database';
 import type { DuplicateMatch } from '../../lib/duplicates';
-import { ageInYears } from '../../lib/utils';
+import { ageInYears, hasLeftHousehold, titleCase } from '../../lib/utils';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Icon } from '../common/Icon';
@@ -22,6 +23,8 @@ type DuplicateWarningModalProps = {
   onReasonChange: (memberNumber: number, reason: string) => void;
   onCancel: () => void;
   onOverride: () => void;
+  /** Takes this member row back to the record of someone who left and returned. */
+  onReclaim: (memberNumber: number, person: Individual) => void;
 };
 
 /**
@@ -37,6 +40,7 @@ export function DuplicateWarningModal({
   onReasonChange,
   onCancel,
   onOverride,
+  onReclaim,
 }: DuplicateWarningModalProps) {
   // Every flagged member needs its own: the reason is stored on that member's
   // record, so one sentence covering three of them misdescribes two.
@@ -46,6 +50,7 @@ export function DuplicateWarningModal({
     <Modal open={open} title="Someone here may already be registered" onClose={onCancel}>
       <p className="duplicate-lede">
         Check these records before saving. If this is a different person, say so and the app will keep your reason with the new record.
+        If someone left this household and has come back, use the button under their old record instead.
       </p>
 
       {flagged.map((member) => (
@@ -68,6 +73,22 @@ export function DuplicateWarningModal({
                   label={match.confidence === 'exact' ? 'Same name and birthdate' : 'Same name'}
                   tone={match.confidence === 'exact' ? 'danger' : 'warning'}
                 />
+                {/* The one-tap path for a returning member. Without it the BHW
+                    either saves a second row over this warning, or walks to the
+                    resident's own record and sets them active again. */}
+                {hasLeftHousehold(match.person.status) ? (
+                  <>
+                    <Badge label={titleCase(match.person.status ?? '')} tone="warning" />
+                    <Button
+                      variant="secondary"
+                      disabled={saving}
+                      onClick={() => onReclaim(member.memberNumber, match.person)}
+                    >
+                      <Icon name="user" size={17} />
+                      Same person — they are back
+                    </Button>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -4,6 +4,7 @@ import {
   calculateBmi,
   emptyToNull,
   getNutritionStatus,
+  hasLeftHousehold,
   HEIGHT_CM_RANGE,
   isCalendarDate,
   isInFuture,
@@ -107,6 +108,20 @@ describe('statusChangedOn', () => {
 
   it('clears the date when the member is active again', () => {
     expect(statusChangedOn('moved_out', 'active', '2026-07-01', '2026-08-29')).toBeNull();
+  });
+});
+
+// Decides which duplicate matches get the "they are back" control on the warning.
+describe('hasLeftHousehold', () => {
+  it('is true for the two statuses someone can return from', () => {
+    expect(hasLeftHousehold('moved_out')).toBe(true);
+    expect(hasLeftHousehold('transferred')).toBe(true);
+  });
+
+  it('is false for a member still on file and for one who died', () => {
+    expect(hasLeftHousehold('active')).toBe(false);
+    expect(hasLeftHousehold('deceased')).toBe(false);
+    expect(hasLeftHousehold(undefined)).toBe(false);
   });
 });
 

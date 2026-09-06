@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Household, Individual } from '../../types/database';
-import { createId, describeMissing, emptyToNull, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
+import { createId, describeMissing, emptyToNull, hasLeftHousehold, HOUSEHOLD_DRAFT_PREFIX, ignoreImplicitSubmit, isInFuture, philhealthDigits, scrollToFirstError } from '../../lib/utils';
 import { findLikelyDuplicates } from '../../lib/duplicates';
 import {
   findLocalHouseholdByNumber,
@@ -133,6 +133,9 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
   // Keyed by member number: each flagged member's reason is stored on that
   // member's own record, so they cannot share one.
   const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
+  // Members taken back to a record they already had, named so the BHW can see the
+  // warning turned into a link rather than a second row.
+  const [reclaimed, setReclaimed] = useState<string[]>([]);
   // The household already recorded under the number being typed. Offered, never
   // forced.
   const [existingMatch, setExistingMatch] = useState<Household | null>(null);
@@ -206,6 +209,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     setShowValidation(false);
     setRestoredNotice(false);
     setExistingMatch(null);
+    setReclaimed([]);
   }
 
   /** Looks for an existing record under the number just typed, so a re-visit is offered. */
@@ -237,6 +241,33 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     setShowValidation(false);
     setFormError(null);
     setRestoredNotice(false);
+    setReclaimed([]);
+  }
+
+  /**
+   * Points this member row at the record of someone who left and came back, so
+   * the save updates that person and their history follows them, rather than
+   * minting a second profile for the same resident.
+   */
+  function reclaimMember(memberNumber: number, person: Individual) {
+    setMembers((current) =>
+      current.map((member, index) =>
+        index + 1 === memberNumber
+          ? {
+              // What was typed on this visit wins; the identity, the recorded
+              // date and any earlier duplicate decision come from the old record.
+              ...person,
+              ...member,
+              resident_id: person.resident_id,
+              status: 'active',
+              status_changed_on: null,
+            }
+          : member,
+      ),
+    );
+
+    setFlagged((current) => current.filter((member) => member.memberNumber !== memberNumber));
+    setReclaimed((current) => [...current, `${person.first_name} ${person.last_name}`.trim()]);
   }
 
   function updateMember(index: number, field: keyof Individual, value: unknown) {
@@ -294,11 +325,20 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         // Former members included: someone who moved out and came back is who
         // this warning exists to catch.
         const candidates = (await readLocalIndividuals({ searchQuery: member.last_name?.trim(), includeFormer: true }))
-          // On a re-visit every member matches themselves, so only people outside
-          // this household are worth raising.
-          .filter((candidate) => !household.household_id || candidate.household_id !== household.household_id);
+          // Someone still recorded here is either this row or a namesake already on
+          // the form, so only people outside the household — and those who left it —
+          // are worth raising.
+          .filter(
+            (candidate) =>
+              !household.household_id ||
+              candidate.household_id !== household.household_id ||
+              hasLeftHousehold(candidate.status),
+          );
         const matches = findLikelyDuplicates(
           {
+            // Passed so a row already linked to a record does not match it and
+            // re-raise the warning it just answered.
+            resident_id: member.resident_id,
             first_name: member.first_name ?? '',
             last_name: member.last_name ?? '',
             birthday: member.birthday ?? '',
@@ -384,6 +424,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
     pendingIds.current = null;
     discardDraft();
     setRestoredNotice(false);
+    setReclaimed([]);
   }
 
   /**
@@ -510,6 +551,16 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
           </p>
         ) : null}
 
+        {/* Says the warning was answered by linking, not by adding a second record,
+            and that the visit is not saved yet. */}
+        {reclaimed.length ? (
+          <p className="form-alert tone-info" role="status">
+            <Icon name="user" size={18} />
+            {reclaimed.join(', ')} {reclaimed.length > 1 ? 'are' : 'is'} back in this household, using the record they
+            already had. Press Save Household to finish.
+          </p>
+        ) : null}
+
         {/* The same house, already on this device. Offered rather than applied: only the
             BHW standing at the door can say whether this is that household. */}
         {existingMatch ? (
@@ -627,6 +678,7 @@ export function HouseholdForm({ bhwId, onSaved }: HouseholdFormProps) {
         // discarding the reasons on a stray tap costs the whole answer.
         onCancel={() => setFlagged([])}
         onOverride={() => void handleOverride()}
+        onReclaim={reclaimMember}
       />
 
       <Modal
