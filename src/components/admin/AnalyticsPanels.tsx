@@ -26,7 +26,7 @@ import { Button } from '../common/Button';
 import { BarChart, DonutChart, GaugeRing, LineChart } from './Charts';
 import { Card } from '../common/Card';
 import { EmptyState } from '../common/StateMessage';
-import { Table, TableMeta, TablePager, type TableColumn } from '../common/Table';
+import { ROWS_PER_PAGE, Table, TableMeta, TablePager, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 /**
@@ -75,16 +75,10 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
 }
 
 /** Rings per page. The grid stops being scannable past this, so the rest are a page away. */
-const COVERAGE_RINGS = 12;
+const COVERAGE_RINGS = 6;
 
-/** Barangay rows per page in the comparison table. */
-const COMPARISON_ROWS = 12;
-
-/**
- * Item rows per page. An item row carries a barangay, so an RHU account reads all
- * sixty-four barangays' stock here.
- */
-const SUPPLY_ROWS = 12;
+/** Bars for the busiest items. The table below pages through the rest. */
+const SUPPLY_BARS = 10;
 
 type PanelProps = {
   filters: AdminFilters;
@@ -399,7 +393,7 @@ function ComparisonPanel({
         getRowKey={(row) => row.barangayId || 'unassigned'}
         emptyTitle="No barangays"
         emptyText="Barangay records appear here once one has been created."
-        pageSize={COMPARISON_ROWS}
+        pageSize={ROWS_PER_PAGE}
         numbered
       />
       <p className="muted report-note">
@@ -484,7 +478,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
   // in the period. One scale would read as if one were the remainder of the other.
   // Busiest first: the table below pages through all of them, the bars draw the top few.
   const busiest = [...rows].sort((a, b) => b.releasedInPeriod - a.releasedInPeriod || b.onHand - a.onHand);
-  const moved = busiest.filter((row) => row.releasedInPeriod > 0).slice(0, SUPPLY_ROWS);
+  const moved = busiest.filter((row) => row.releasedInPeriod > 0).slice(0, SUPPLY_BARS);
   const position: Tally[] = POSITIONS.map(({ label, of }) => ({
     label,
     count: rows.reduce((sum, row) => sum + of(row), 0),
@@ -541,7 +535,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
         getRowKey={(row) => row.itemId}
         emptyTitle="No inventory items"
         emptyText="Items created for this barangay appear here."
-        pageSize={SUPPLY_ROWS}
+        pageSize={ROWS_PER_PAGE}
         numbered
       />
       <TableMeta shown={busiest.length} total={busiest.length} label="items" />

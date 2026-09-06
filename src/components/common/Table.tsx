@@ -4,6 +4,9 @@ import { Badge } from './Badge';
 import { Button } from './Button';
 import { EmptyState } from './StateMessage';
 
+/** Rows per page, everywhere. The search box above a table narrows the list; the pager reaches the rest. */
+export const ROWS_PER_PAGE = 10;
+
 export type TableColumn<Row> = {
   key: string;
   header: string;

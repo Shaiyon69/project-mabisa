@@ -3,11 +3,7 @@ import { formatDate, titleCase } from '../../lib/utils';
 import { fetchAccounts, fetchBhwStock } from '../../services/adminData';
 import type { BhwItemStock } from '../../types/database';
 import { ErrorState } from '../common/StateMessage';
-import { Table, TableMeta, type TableColumn } from '../common/Table';
-
-
-/** Rows per page: one per health worker per item, so this grows with both. */
-const ROWS_PER_PAGE = 15;
+import { ROWS_PER_PAGE, Table, TableMeta, type TableColumn } from '../common/Table';
 
 /**
  * What each health worker is still carrying, read from the `bhw_item_stock` view

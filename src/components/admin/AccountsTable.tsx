@@ -21,7 +21,7 @@ import { Button } from '../common/Button';
 import { FormField, SelectField, TextAreaField } from '../common/FormField';
 import { Modal } from '../common/Modal';
 import { ErrorState, WarningState } from '../common/StateMessage';
-import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
+import { ROWS_PER_PAGE, Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
 
 /** A purok is a health worker's, so the two assignment columns are dropped for the rows that never have one. */
 function exportColumnsFor(assigned: boolean): CsvColumn<AccountRow>[] {
@@ -53,9 +53,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 /** Which dialog is open, and for whom. One value, so two cannot be open at once. */
 type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
-
-/** Rows per page. The filter drawer narrows the list; the pager reaches the rest. */
-const ROWS_PER_PAGE = 15;
 
 type AccountsTableProps = {
   /**
