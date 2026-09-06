@@ -968,6 +968,13 @@ tbody tr:hover td:first-child {
   background: var(--muted-surface);
 }
 
+/* A panel waiting on a re-read keeps the figures it has, so nothing about them
+   says they are the previous minute's until this dims them. */
+[aria-busy='true'] {
+  opacity: 0.62;
+  transition: opacity 120ms ease;
+}
+
 /* Figures line up by digit position, which needs equal-width digits and a right
    edge to hang from. Nunito's default digits are proportional, so a column of
    them is ragged. */

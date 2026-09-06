@@ -221,7 +221,7 @@ export function ReportsPage() {
           <AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} sections />
         }
       />
-      <Card className="activity-panel">
+      <Card className="activity-panel" aria-busy={loading}>
         {error ? <ErrorState title="Could not load the records" text={error} /> : null}
         <Suspense fallback={null}>
           <ReportCards snapshot={snapshot} filters={filters} />
