@@ -155,6 +155,7 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
             ) : null}
             <SummaryBars
               rows={nutrition}
+              colorFor={(row) => NUTRITION_COLORS[row.label]}
               emptyTitle="No assessments in this period"
               emptyText="Try a wider date range, or wait for a health worker's phone to send its records."
               hrefFor={(row) => `/admin/residents?status=${row.label}&${period}`}

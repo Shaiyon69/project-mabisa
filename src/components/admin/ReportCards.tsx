@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ADULT_BMI_MIN_AGE, formatDate, titleCase } from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
+import { NUTRITION_COLORS } from '../../lib/charts';
 import {
   AGE_BANDS,
   ageBandOf,
@@ -91,6 +92,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
         >
           <SummaryBars
             rows={nutritionTally(snapshot.assessments)}
+            colorFor={(row) => NUTRITION_COLORS[row.label]}
             emptyTitle="No assessments in this period"
             emptyText="Try a wider date range, or wait for a health worker's phone to send its records."
           />
