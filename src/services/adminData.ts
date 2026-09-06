@@ -209,73 +209,64 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   newestRecordAt: null,
 };
 
+/** Display order a keyset read does not give: its pages arrive in primary-key order. */
+function byText<TRow>(rows: TRow[], field: keyof TRow): TRow[] {
+  return rows.sort((a, b) => String(a[field] ?? '').localeCompare(String(b[field] ?? '')));
+}
+
+/** Same, for the date columns an export leads with. */
+function newestFirst<TRow>(rows: TRow[], field: keyof TRow): TRow[] {
+  return rows.sort((a, b) => String(b[field] ?? '').localeCompare(String(a[field] ?? '')));
+}
+
 /**
  * Reads every table the admin portal summarises, then narrows to the filters.
  *
  * Every read is paged: a plain select stops at the server's row cap without
- * saying so, and a truncated count in an LGU report does not read as wrong. The
- * secondary sort is the primary key, so pages are a stable sequence.
+ * saying so, and a truncated count in an LGU report does not read as wrong. Pages
+ * come back in primary-key order, so the reads a screen or an export shows as a
+ * list are sorted here for it.
  */
 function readSnapshotRows(filters: AdminFilters) {
   return Promise.all([
-    readAllPages<Barangay>('Barangay', (from, to) =>
-      supabase.from('barangays').select('*').order('name').order('barangay_id').range(from, to),
+    readAllPages<Barangay>('Barangay', 'barangay_id', () => supabase.from('barangays').select('*')).then((rows) =>
+      byText(rows, 'name'),
     ),
     fetchActivePuroks(),
     // Rows rather than a count: `individuals` carries no barangay of its own, so
     // every per-barangay figure below joins through this list.
-    readAllPages<AdminHousehold>('Household', (from, to) =>
-      supabase
-        .from('households')
-        .select('household_id, purok_id, barangay_id, updated_at')
-        .order('household_id')
-        .range(from, to),
+    readAllPages<AdminHousehold>('Household', 'household_id', () =>
+      supabase.from('households').select('household_id, purok_id, barangay_id, updated_at'),
     ),
     // Active members only: someone who moved out or died is still on file, but
     // is not counted in the resident-facing demographics.
-    readAllPages<AdminResident>('Resident', (from, to) =>
-      supabase
-        .from('individuals')
-        .select('resident_id, household_id, sex, birthday, updated_at')
-        .eq('status', 'active')
-        .order('resident_id')
-        .range(from, to),
+    readAllPages<AdminResident>('Resident', 'resident_id', () =>
+      supabase.from('individuals').select('resident_id, household_id, sex, birthday, updated_at').eq('status', 'active'),
     ),
     // Every status, id columns only: scopes assessments/disbursements below, which
     // must not drop a record just because the resident later changed status.
-    readAllPages<Pick<AdminResident, 'resident_id' | 'household_id'>>('Resident (all statuses)', (from, to) =>
-      supabase.from('individuals').select('resident_id, household_id').order('resident_id').range(from, to),
+    readAllPages<Pick<AdminResident, 'resident_id' | 'household_id'>>('Resident (all statuses)', 'resident_id', () =>
+      supabase.from('individuals').select('resident_id, household_id'),
     ),
-    readAllPages<HealthAssessment>('Health assessment', (from, to) =>
+    readAllPages<HealthAssessment>('Health assessment', 'assessment_id', () =>
       supabase
         .from('health_assessments')
         .select('*')
         .gte('assessment_date', filters.from)
-        .lte('assessment_date', filters.to)
-        .order('assessment_date', { ascending: false })
-        .order('assessment_id')
-        .range(from, to),
-    ),
-    readAllPages<SupplyDisbursement>('Supply disbursement', (from, to) =>
+        .lte('assessment_date', filters.to),
+    ).then((rows) => newestFirst(rows, 'assessment_date')),
+    readAllPages<SupplyDisbursement>('Supply disbursement', 'log_id', () =>
       supabase
         .from('supply_disbursements')
         .select('*')
         .gte('disbursement_date', filters.from)
-        .lte('disbursement_date', filters.to)
-        .order('disbursement_date', { ascending: false })
-        .order('log_id')
-        .range(from, to),
+        .lte('disbursement_date', filters.to),
+    ).then((rows) => newestFirst(rows, 'disbursement_date')),
+    readAllPages<InventoryItem>('Inventory', 'item_id', () => supabase.from('inventory_items').select('*')).then(
+      (rows) => byText(rows, 'item_name'),
     ),
-    readAllPages<InventoryItem>('Inventory', (from, to) =>
-      supabase.from('inventory_items').select('*').order('item_name').order('item_id').range(from, to),
-    ),
-    readAllPages<InventoryAllocation>('Allocation', (from, to) =>
-      supabase
-        .from('inventory_allocations')
-        .select('*')
-        .order('allocated_at', { ascending: false })
-        .order('allocation_id')
-        .range(from, to),
+    readAllPages<InventoryAllocation>('Allocation', 'allocation_id', () =>
+      supabase.from('inventory_allocations').select('*'),
     ),
     // Returns the label and the session's own barangay together: which barangays
     // a rollup may name comes from the latter, not from the picker.
@@ -302,9 +293,11 @@ function fetchBarangayNames(): Promise<Map<string, string>> {
 }
 
 async function readBarangayNames(): Promise<Map<string, string>> {
-  const { data } = await supabase.from('barangays').select('barangay_id, name');
+  const barangays = await readAllPages<{ barangay_id: string; name: string }>('Barangay', 'barangay_id', () =>
+    supabase.from('barangays').select('barangay_id, name'),
+  );
 
-  return new Map((data ?? []).map((barangay) => [barangay.barangay_id, barangay.name]));
+  return new Map(barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
 }
 
 /**
@@ -421,8 +414,8 @@ export async function fetchBarangayScope(): Promise<{ label: string; barangayId:
   const [scope, barangays] = await Promise.all([
     // Null for an RHU account.
     supabase.rpc('current_barangay_id'),
-    readAllPages<{ barangay_id: string; name: string }>('Barangay', (from, to) =>
-      supabase.from('barangays').select('barangay_id, name').order('name').order('barangay_id').range(from, to),
+    readAllPages<{ barangay_id: string; name: string }>('Barangay', 'barangay_id', () =>
+      supabase.from('barangays').select('barangay_id, name'),
     ),
   ]);
 
@@ -623,15 +616,13 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
   // Paged: the accounts table reports its own row count as the total, so a
   // read stopping at the server's cap would look complete.
   const [profiles, assignments, puroks] = await Promise.all([
-    readAllPages<Profile>('Account', (from, to) =>
-      supabase.from('profiles').select('*').order('full_name').order('user_id').range(from, to),
+    readAllPages<Profile>('Account', 'user_id', () => supabase.from('profiles').select('*')).then((rows) =>
+      byText(rows, 'full_name'),
     ),
-    readAllPages<BhwPurokAssignment>('Purok assignment', (from, to) =>
-      supabase.from('bhw_purok_assignments').select('*').is('ended_at', null).order('assignment_id').range(from, to),
+    readAllPages<BhwPurokAssignment>('Purok assignment', 'assignment_id', () =>
+      supabase.from('bhw_purok_assignments').select('*').is('ended_at', null),
     ),
-    readAllPages<Purok>('Purok', (from, to) =>
-      supabase.from('puroks').select('*').order('purok_id').range(from, to),
-    ),
+    readAllPages<Purok>('Purok', 'purok_id', () => supabase.from('puroks').select('*')),
   ]);
 
   const purokNames = new Map(puroks.map((purok: Purok) => [purok.purok_id, purok.name]));
@@ -719,15 +710,13 @@ export type ResidentStatusFilter = {
 
 /** Resident ids with an assessment in the band over the period. Someone assessed twice appears under both bands. */
 async function residentIdsWithStatus(filter: ResidentStatusFilter): Promise<string[]> {
-  const rows = await readAllPages<{ resident_id: string; assessment_id: string }>('Assessment band', (from, to) =>
+  const rows = await readAllPages<{ resident_id: string; assessment_id: string }>('Assessment band', 'assessment_id', () =>
     supabase
       .from('health_assessments')
       .select('resident_id, assessment_id')
       .eq('nutrition_status', filter.status)
       .gte('assessment_date', filter.from)
-      .lte('assessment_date', filter.to)
-      .order('assessment_id')
-      .range(from, to),
+      .lte('assessment_date', filter.to),
   );
 
   return [...new Set(rows.map((row) => row.resident_id))];
@@ -800,13 +789,8 @@ export async function fetchResidentPage(
 
   if (search) {
     // Paged: past the server's cap the `.in()` clause below would lose household ids.
-    const households = await readAllPages<{ household_id: string }>('Household search', (from, to) =>
-      supabase
-        .from('households')
-        .select('household_id')
-        .ilike('household_number', `%${search}%`)
-        .order('household_id')
-        .range(from, to),
+    const households = await readAllPages<{ household_id: string }>('Household search', 'household_id', () =>
+      supabase.from('households').select('household_id').ilike('household_number', `%${search}%`),
     );
     const householdIds = households.map((household) => household.household_id);
     const clauses = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`];
@@ -932,8 +916,8 @@ export async function allocateStockToBhw(itemId: string, bhwId: string, quantity
 
 /** The puroks an assignment can name. `admin_assign_bhw_to_purok` rejects inactive ones. */
 export async function fetchActivePuroks(): Promise<Purok[]> {
-  return readAllPages<Purok>('Purok', (from, to) =>
-    supabase.from('puroks').select('*').eq('is_active', true).order('name').order('purok_id').range(from, to),
+  return readAllPages<Purok>('Purok', 'purok_id', () => supabase.from('puroks').select('*').eq('is_active', true)).then(
+    (rows) => byText(rows, 'name'),
   );
 }
 
@@ -1287,7 +1271,7 @@ export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
 
 /** What each BHW is still carrying, per item, from the `bhw_item_stock` view. */
 export async function fetchBhwStock(): Promise<BhwItemStock[]> {
-  return readAllPages<BhwItemStock>('Carried stock', (from, to) =>
-    supabase.from('bhw_item_stock').select('*').order('item_name').order('item_id').range(from, to),
+  return readAllPages<BhwItemStock>('Carried stock', 'item_id', () => supabase.from('bhw_item_stock').select('*')).then(
+    (rows) => byText(rows, 'item_name'),
   );
 }

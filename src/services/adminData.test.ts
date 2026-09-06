@@ -76,7 +76,11 @@ vi.mock('../lib/supabase', async (importOriginal) => {
             rows = rows.filter((row) => (row[column] as string) <= (value as string));
             return builder;
           },
-          range: () => Promise.resolve({ data: rows, error: null }),
+          gt: (column: string, value: unknown) => {
+            rows = rows.filter((row) => (row[column] as string) > (value as string));
+            return builder;
+          },
+          limit: () => Promise.resolve({ data: rows, error: null }),
         };
 
         return builder;

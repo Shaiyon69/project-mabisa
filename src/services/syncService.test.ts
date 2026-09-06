@@ -169,58 +169,97 @@ describe('quarantinedStockSpend', () => {
 });
 
 describe('readAllPages', () => {
-  /** A server holding `total` rows, answering each requested range like PostgREST does. */
+  /** A server holding `total` rows keyed on `id`, answering the keyset chain like PostgREST does. */
   function server(total: number) {
-    const rows = Array.from({ length: total }, (_, index) => ({ updated_at: `row-${index}` }));
-    const ranges: [number, number][] = [];
+    const rows = Array.from({ length: total }, (_, index) => ({ id: String(index).padStart(6, '0') }));
+    const cursors: (string | null)[] = [];
+    const answer = (after: string | null) => {
+      cursors.push(after);
+
+      return Promise.resolve({
+        data: rows.filter((row) => after === null || row.id > after).slice(0, PULL_PAGE_SIZE),
+        error: null,
+      });
+    };
 
     return {
-      ranges,
-      page: (from: number, to: number) => {
-        ranges.push([from, to]);
-        return Promise.resolve({ data: rows.slice(from, to + 1), error: null });
-      },
+      cursors,
+      query: () => ({
+        gt: (_column: string, value: string) => ({ order: () => ({ limit: () => answer(value) }) }),
+        order: () => ({ limit: () => answer(null) }),
+      }),
     };
   }
 
   it('reads a table shorter than one page in a single request', async () => {
-    const { page, ranges } = server(107);
+    const { query, cursors } = server(107);
 
-    await expect(readAllPages('Household', page)).resolves.toHaveLength(107);
-    expect(ranges).toEqual([[0, PULL_PAGE_SIZE - 1]]);
+    await expect(readAllPages('Household', 'id', query)).resolves.toHaveLength(107);
+    expect(cursors).toEqual([null]);
   });
 
   // A capped read returns PULL_PAGE_SIZE rows and says nothing about the rest, and
   // the watermark then advances past every row the cap cut.
   it('keeps asking past the row cap instead of stopping at the first full page', async () => {
-    const { page, ranges } = server(PULL_PAGE_SIZE * 2 + 3);
+    const { query, cursors } = server(PULL_PAGE_SIZE * 2 + 3);
 
-    const rows = await readAllPages('Individual', page);
+    const rows = await readAllPages<{ id: string }>('Individual', 'id', query);
 
     expect(rows).toHaveLength(PULL_PAGE_SIZE * 2 + 3);
-    expect(ranges).toEqual([
-      [0, PULL_PAGE_SIZE - 1],
-      [PULL_PAGE_SIZE, PULL_PAGE_SIZE * 2 - 1],
-      [PULL_PAGE_SIZE * 2, PULL_PAGE_SIZE * 3 - 1],
-    ]);
+    expect(rows.map((row) => row.id)).toEqual([...new Set(rows.map((row) => row.id))]);
+    expect(cursors).toEqual([null, String(PULL_PAGE_SIZE - 1).padStart(6, '0'), String(PULL_PAGE_SIZE * 2 - 1).padStart(6, '0')]);
   });
 
   it('asks once more when the last page lands exactly on the cap', async () => {
-    const { page, ranges } = server(PULL_PAGE_SIZE);
+    const { query, cursors } = server(PULL_PAGE_SIZE);
 
-    await expect(readAllPages('Household', page)).resolves.toHaveLength(PULL_PAGE_SIZE);
-    expect(ranges).toHaveLength(2);
+    await expect(readAllPages('Household', 'id', query)).resolves.toHaveLength(PULL_PAGE_SIZE);
+    expect(cursors).toHaveLength(2);
+  });
+
+  // A row inserted ahead of the cursor shifts every later offset down one, which
+  // is what an offset-paged read loses a row to.
+  it('does not skip a row inserted before the cursor mid-read', async () => {
+    const rows = Array.from({ length: PULL_PAGE_SIZE + 5 }, (_, index) => ({ id: String(index + 1).padStart(6, '0') }));
+    let inserted = false;
+    const answer = (after: string | null) => {
+      if (after !== null && !inserted) {
+        inserted = true;
+        rows.unshift({ id: '000000' });
+      }
+
+      return Promise.resolve({
+        data: rows.filter((row) => after === null || row.id > after).slice(0, PULL_PAGE_SIZE),
+        error: null,
+      });
+    };
+
+    const read = await readAllPages<{ id: string }>('Individual', 'id', () => ({
+      gt: (_column: string, value: string) => ({ order: () => ({ limit: () => answer(value) }) }),
+      order: () => ({ limit: () => answer(null) }),
+    }));
+
+    expect(read).toHaveLength(PULL_PAGE_SIZE + 5);
+  });
+
+  it('gives up rather than re-reading a page a server refuses to advance past', async () => {
+    const page = Array.from({ length: PULL_PAGE_SIZE }, (_, index) => ({ id: String(index).padStart(6, '0') }));
+    const stuck = () => ({
+      gt: () => ({ order: () => ({ limit: () => Promise.resolve({ data: page, error: null }) }) }),
+      order: () => ({ limit: () => Promise.resolve({ data: page, error: null }) }),
+    });
+
+    await expect(readAllPages('Individual', 'id', stuck)).rejects.toThrow('did not advance past');
   });
 
   it('fails the pass with the table name rather than returning a partial read', async () => {
-    const failing = (from: number) =>
-      Promise.resolve(
-        from === 0
-          ? { data: Array.from({ length: PULL_PAGE_SIZE }, () => ({})), error: null }
-          : { data: null, error: { message: 'connection reset' } },
-      );
+    const full = Array.from({ length: PULL_PAGE_SIZE }, (_, index) => ({ id: String(index).padStart(6, '0') }));
+    const failing = () => ({
+      gt: () => ({ order: () => ({ limit: () => Promise.resolve({ data: null, error: { message: 'connection reset' } }) }) }),
+      order: () => ({ limit: () => Promise.resolve({ data: full, error: null }) }),
+    });
 
-    await expect(readAllPages('Individual', failing)).rejects.toThrow('Individual Pull Error: connection reset');
+    await expect(readAllPages('Individual', 'id', failing)).rejects.toThrow('Individual Pull Error: connection reset');
   });
 });
 

@@ -1,5 +1,5 @@
 import { Network } from '@capacitor/network';
-import type { InventoryItem } from '../types/database';
+import type { BhwItemStock, HealthAssessment, Household, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
 import { logDev } from '../lib/utils';
 import { readAllPages, supabase } from '../lib/supabase';
 import {
@@ -635,29 +635,29 @@ async function pullRemoteUpdates(): Promise<void> {
     const changedSince = <TQuery extends { gte(column: string, value: string): TQuery }>(query: TQuery): TQuery =>
       pulledThrough ? query.gte('updated_at', pulledThrough) : query;
 
-    const cloudHouseholds = await readAllPages('Household', (from, to) =>
-      changedSince(supabase.from('households').select('*')).order('updated_at').order('household_id').range(from, to),
+    const cloudHouseholds = await readAllPages<Household>('Household', 'household_id', () =>
+      changedSince(supabase.from('households').select('*')),
     );
 
-    const cloudIndividuals = await readAllPages('Individual', (from, to) =>
-      changedSince(supabase.from('individuals').select('*')).order('updated_at').order('resident_id').range(from, to),
+    const cloudIndividuals = await readAllPages<Individual>('Individual', 'resident_id', () =>
+      changedSince(supabase.from('individuals').select('*')),
     );
 
     // Pulls `bhw_item_stock` (this BHW's allocations minus releases), not
     // `inventory_items` (the barangay's unallocated total). Unfiltered, since the
     // view is derived and its timestamps do not track the watermark.
-    const cloudStock = await readAllPages('Inventory', (from, to) =>
-      supabase.from('bhw_item_stock').select('*').order('updated_at').order('item_id').range(from, to),
+    const cloudStock = await readAllPages<BhwItemStock>('Inventory', 'item_id', () =>
+      supabase.from('bhw_item_stock').select('*'),
     );
 
     // Read back so a reinstalled device recovers its history, and so a resident's
     // record shows what another device recorded.
-    const cloudAssessments = await readAllPages('Health assessment', (from, to) =>
-      changedSince(supabase.from('health_assessments').select('*')).order('updated_at').order('assessment_id').range(from, to),
+    const cloudAssessments = await readAllPages<HealthAssessment>('Health assessment', 'assessment_id', () =>
+      changedSince(supabase.from('health_assessments').select('*')),
     );
 
-    const cloudDisbursements = await readAllPages('Supply disbursement', (from, to) =>
-      changedSince(supabase.from('supply_disbursements').select('*')).order('updated_at').order('log_id').range(from, to),
+    const cloudDisbursements = await readAllPages<SupplyDisbursement>('Supply disbursement', 'log_id', () =>
+      changedSince(supabase.from('supply_disbursements').select('*')),
     );
 
     // Drop rows whose local copy is quarantined — the server version is stale by definition.
