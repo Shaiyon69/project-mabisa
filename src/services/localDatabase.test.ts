@@ -468,6 +468,25 @@ describe('the local store', () => {
     });
   });
 
+  describe('finding a same-day health check', () => {
+    // What turns a second check on one date into a correction of the first. Without
+    // it a mistyped weight can only be answered by a second, contradictory row.
+    it('returns the check already recorded for that resident on that date', async () => {
+      await seed();
+      await store.saveHealthAssessmentLocally(
+        assessment({ assessment_id: 'a1', resident_id: 'r1', assessment_date: '2026-08-01' }),
+      );
+
+      const found = await store.findLocalAssessmentOnDate('r1', '2026-08-01');
+
+      expect(found?.assessment_id).toBe('a1');
+      // Numbers come back as numbers, not the text SQLite hands over.
+      expect(found?.bmi).toBe(23.44);
+      expect(await store.findLocalAssessmentOnDate('r1', '2026-08-02')).toBeNull();
+      expect(await store.findLocalAssessmentOnDate('r2', '2026-08-01')).toBeNull();
+    });
+  });
+
   describe('the households browse list', () => {
     it('carries the head and active headcount of each household', async () => {
       await seed();

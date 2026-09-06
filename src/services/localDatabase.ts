@@ -1245,6 +1245,27 @@ export async function readLocalHealthAssessments(residentId?: string, limit?: nu
   })) as HealthAssessment[];
 }
 
+/**
+ * The check already recorded for this resident on this date, or null. A second
+ * check the same day is a correction of the first, not a new reading, so the form
+ * saves over the row instead of leaving two contradictory ones on the record.
+ */
+export async function findLocalAssessmentOnDate(
+  residentId: string,
+  assessmentDate: string,
+): Promise<HealthAssessment | null> {
+  const database = await initializeLocalDatabase();
+  const result = await database.query(
+    'select * from health_assessments where resident_id = ? and assessment_date = ? limit 1',
+    [residentId, assessmentDate],
+  );
+  const row = result.values?.[0];
+
+  return row
+    ? ({ ...row, weight: Number(row.weight), height: Number(row.height), bmi: Number(row.bmi) } as HealthAssessment)
+    : null;
+}
+
 export async function readLocalInventoryItems(): Promise<InventoryItem[]> {
   const database = await initializeLocalDatabase();
   const result = await database.query('select * from inventory_items order by item_name asc');
