@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
 import { formatCount, titleCase } from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
@@ -38,7 +39,13 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
   // Read off `unscoped` and the session's own barangay, so picking one barangay
   // narrows the panels below but never deletes the others from a comparison.
   // An RHU account compares every barangay; a barangay administrator has one.
-  const stats = barangayStats(snapshot.unscoped, snapshot.sessionBarangayId);
+  // Held across a render that changed neither: this walks every household,
+  // resident, assessment and release the account can read, and the sixty-second
+  // re-read bumps its token before the rows it asks for come back.
+  const stats = useMemo(
+    () => barangayStats(snapshot.unscoped, snapshot.sessionBarangayId),
+    [snapshot.unscoped, snapshot.sessionBarangayId],
+  );
   const scope = describeScope(filters, snapshot);
   // What those two panels actually cover, which is not what the picker says.
   const everyBarangay = snapshot.barangayLabel;
@@ -344,8 +351,13 @@ function ComparisonPanel({
 }: { snapshot: AdminSnapshot; stats: BarangayStats[] } & PanelProps) {
   // Values run in `NUTRITION_ORDER`, underweight first — the column below reads
   // the last three, the existing underweight column already carrying the first.
-  const mix = new Map(
-    nutritionByBarangay(snapshot.unscoped, snapshot.sessionBarangayId).map((row) => [row.key ?? '', row.values]),
+  // A second walk of the same rows, so it is held on the same terms as `stats`.
+  const mix = useMemo(
+    () =>
+      new Map(
+        nutritionByBarangay(snapshot.unscoped, snapshot.sessionBarangayId).map((row) => [row.key ?? '', row.values]),
+      ),
+    [snapshot.unscoped, snapshot.sessionBarangayId],
   );
   const bandOf = (row: BarangayStats, index: number) => mix.get(row.barangayId)?.[index] ?? 0;
   const columns: TableColumn<BarangayStats>[] = [
