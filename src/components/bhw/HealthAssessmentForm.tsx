@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { HealthAssessment, Individual, NutritionStatus } from '../../types/database';
 import {
   ADULT_BMI_MIN_AGE,
@@ -6,6 +6,7 @@ import {
   calculateBmi,
   createId,
   describeMissing,
+  formatDate,
   getNutritionStatus,
   HEIGHT_CM_RANGE,
   ignoreImplicitSubmit,
@@ -16,7 +17,7 @@ import {
   today,
   WEIGHT_KG_RANGE,
 } from '../../lib/utils';
-import { saveHealthAssessmentLocally } from '../../services/localDatabase';
+import { findLocalAssessmentOnDate, saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
@@ -87,6 +88,9 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  // The check already on file for this person on this date. Its presence turns the
+  // save into a correction of that row rather than a second reading for one day.
+  const [sameDay, setSameDay] = useState<HealthAssessment | null>(null);
   
   const bmi = calculateBmi(Number(weight), Number(height));
   const nutritionStatus = getNutritionStatus(bmi);
@@ -108,6 +112,31 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   // assessment rather than recording the visit twice.
   const pendingId = useRef<string | null>(null);
 
+  // Looks for a check already recorded for this person on this date, so the BHW is
+  // told before saving rather than finding two readings on the record afterwards.
+  useEffect(() => {
+    let current = true;
+    const lookup =
+      residentId && assessmentDate ? findLocalAssessmentOnDate(residentId, assessmentDate) : Promise.resolve(null);
+
+    void lookup
+      .then((existing) => {
+        if (current) {
+          setSameDay(existing);
+        }
+      })
+      .catch(() => {
+        // A failed lookup must not block the check. The save runs it again.
+        if (current) {
+          setSameDay(null);
+        }
+      });
+
+    return () => {
+      current = false;
+    };
+  }, [residentId, assessmentDate]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setShowValidation(true);
@@ -121,8 +150,19 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
 
     setSaving(true);
     const timestamp = new Date().toISOString();
-    
-    pendingId.current ??= createId();
+
+    // Read again rather than trusting the banner: the date can change between the
+    // lookup and the save, and a stale null would mint a second row for one day.
+    let existing: HealthAssessment | null = null;
+
+    try {
+      existing = await findLocalAssessmentOnDate(residentId, assessmentDate);
+    } catch {
+      // Unreadable means unknown, and a second row is recoverable where a lost
+      // check is not. Fall through and insert.
+    }
+
+    pendingId.current ??= existing?.assessment_id ?? createId();
 
     const assessment: HealthAssessment = {
       assessment_id: pendingId.current,
@@ -132,12 +172,12 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       height: Number(height),
       bmi,
       nutrition_status: nutritionStatus,
-      created_at: timestamp,
+      created_at: existing?.created_at ?? timestamp,
       updated_at: timestamp,
     };
 
     try {
-      await saveHealthAssessmentLocally(assessment);
+      await saveHealthAssessmentLocally(assessment, existing ? 'UPDATE' : 'INSERT');
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'This health check was not saved.');
       scrollToFirstError();
@@ -153,6 +193,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     setAssessmentDate(today());
     setResidentId('');
     setResident(null);
+    setSameDay(null);
     setSaving(false);
 
     try {
@@ -224,6 +265,18 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             error={showValidation && !isMeasurementInRange(height, HEIGHT_CM_RANGE) ? 'Enter a height from 30 to 250 cm.' : undefined}
           />
         </div>
+        {/* Overwriting a check is the right move for a mistyped weight and the wrong
+            one for a second real reading, and only the BHW knows which. Says what is
+            on file so she can change the date instead. */}
+        {sameDay ? (
+          <p className="form-alert tone-warning" role="status">
+            <Icon name="warning" size={18} />
+            A check for this person on {formatDate(sameDay.assessment_date)} is already recorded — {sameDay.weight} kg,{' '}
+            {sameDay.height} cm, {sameDay.bmi.toFixed(2)} BMI. Saving replaces it. If this is a separate check, change
+            the date first.
+          </p>
+        ) : null}
+
         <BmiRail bmi={bmi} status={nutritionStatus} />
         {/* Shown against the selected resident only — an always-on caveat reads as decoration by week two. */}
         {caveats.map((caveat) => (
@@ -235,7 +288,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />
-            {saving ? 'Saving...' : 'Save Assessment'}
+            {saving ? 'Saving...' : sameDay ? 'Replace this check' : 'Save Assessment'}
           </Button>
         </FormActions>
       </form>
