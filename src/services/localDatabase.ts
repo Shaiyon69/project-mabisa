@@ -368,16 +368,23 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
     }
   }
 
-  // Create & open connection
+  // Create & open connection. The plugin's connection registry is native and outlives
+  // this module, so a WebView reload or a half-finished open leaves the name taken.
   const encryption = await prepareEncryption();
-  const database = await sqlite.createConnection(
-    'mabisa_local',
-    encryption !== 'no-encryption',
-    encryption,
-    1,
-    false,
-  );
-  await database.open();
+  const existing = await sqlite.isConnection('mabisa_local', false);
+  const database = existing.result
+    ? await sqlite.retrieveConnection('mabisa_local', false)
+    : await sqlite.createConnection(
+        'mabisa_local',
+        encryption !== 'no-encryption',
+        encryption,
+        1,
+        false,
+      );
+
+  if (!(await database.isDBOpen()).result) {
+    await database.open();
+  }
   await database.execute('pragma foreign_keys = on');
 
   for (const statement of migrations) {
