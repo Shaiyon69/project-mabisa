@@ -328,6 +328,13 @@ export function invalidateAdminSnapshot(): void {
   barangayNames = null;
 }
 
+// Both caches above hold rows RLS narrowed to whoever was signed in, and signing
+// out never reloads the page. Without this, an admin signing in after a barangay
+// admin reads the barangay admin's rows until the TTL runs out.
+supabase.auth.onAuthStateChange(() => {
+  invalidateAdminSnapshot();
+});
+
 /**
  * The portal's numbers for one screen, over one period, at one scope.
  *
