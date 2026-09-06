@@ -264,9 +264,10 @@ type RowDefinition<Row, Insert, Update, Relationships extends unknown[] = never[
 };
 
 /**
- * The one foreign key a query embeds. `fetchResidentPage` filters residents by
- * barangay through `households!inner`, and PostgREST only resolves that embed if
- * the relationship is declared here.
+ * The foreign keys a query embeds. `fetchResidentPage` filters residents by
+ * barangay through `households!inner` and by nutrition band through
+ * `health_assessments!inner`, and PostgREST only resolves an embed if the
+ * relationship is declared here.
  */
 type IndividualRelationships = [
   {
@@ -275,6 +276,16 @@ type IndividualRelationships = [
     isOneToOne: false;
     referencedRelation: 'households';
     referencedColumns: ['household_id'];
+  },
+];
+
+type HealthAssessmentRelationships = [
+  {
+    foreignKeyName: 'health_assessments_resident_id_fkey';
+    columns: ['resident_id'];
+    isOneToOne: false;
+    referencedRelation: 'individuals';
+    referencedColumns: ['resident_id'];
   },
 ];
 
@@ -287,7 +298,12 @@ export type Database = {
       bhw_purok_assignments: RowDefinition<BhwPurokAssignment, never, never>;
       households: RowDefinition<Household, HouseholdInsert, HouseholdUpdate>;
       individuals: RowDefinition<Individual, IndividualInsert, IndividualUpdate, IndividualRelationships>;
-      health_assessments: RowDefinition<HealthAssessment, HealthAssessmentInsert, HealthAssessmentUpdate>;
+      health_assessments: RowDefinition<
+        HealthAssessment,
+        HealthAssessmentInsert,
+        HealthAssessmentUpdate,
+        HealthAssessmentRelationships
+      >;
       inventory_items: RowDefinition<InventoryItem, InventoryItemInsert, InventoryItemUpdate>;
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
       // Written only by barangay_admin_allocate_stock — never for both write shapes.

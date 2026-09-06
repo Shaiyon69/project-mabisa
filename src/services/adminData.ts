@@ -708,20 +708,6 @@ export type ResidentStatusFilter = {
   to: string;
 };
 
-/** Resident ids with an assessment in the band over the period. Someone assessed twice appears under both bands. */
-async function residentIdsWithStatus(filter: ResidentStatusFilter): Promise<string[]> {
-  const rows = await readAllPages<{ resident_id: string; assessment_id: string }>('Assessment band', 'assessment_id', () =>
-    supabase
-      .from('health_assessments')
-      .select('resident_id, assessment_id')
-      .eq('nutrition_status', filter.status)
-      .gte('assessment_date', filter.from)
-      .lte('assessment_date', filter.to),
-  );
-
-  return [...new Set(rows.map((row) => row.resident_id))];
-}
-
 /**
  * One page of the central resident registry, with the household number and
  * barangay name joined in from `households` by a second query.
@@ -741,9 +727,19 @@ export async function fetchResidentPage(
   // an inner join is what drops residents outside the scope. Filtering here
   // instead of sending household ids keeps the URL a fixed length — the id list
   // this replaced grew with the barangay and was refused past a few hundred.
-  let request = supabase
-    .from('individuals')
-    .select('*, households!inner(household_number, barangay_id, purok_id)', { count: 'exact' });
+  // The band is a second `!inner`, for the same reason: an embed nests its matches
+  // under one parent row, so a resident assessed twice in the band is still one row.
+  // Two literal selects rather than one built string — the client types the shape
+  // from the text, and cannot parse one assembled at runtime.
+  let request = statusFilter
+    ? supabase
+        .from('individuals')
+        .select('*, households!inner(household_number, barangay_id, purok_id), health_assessments!inner(assessment_id)', {
+          count: 'exact',
+        })
+    : supabase.from('individuals').select('*, households!inner(household_number, barangay_id, purok_id)', {
+        count: 'exact',
+      });
 
   if (filters.barangayId) {
     request = request.eq('households.barangay_id', filters.barangayId);
@@ -774,17 +770,10 @@ export async function fetchResidentPage(
   }
 
   if (statusFilter) {
-    const residentIds = await residentIdsWithStatus(statusFilter);
-
-    // Nobody in the band means an empty page, not an unfiltered one.
-    if (!residentIds.length) {
-      return { rows: [], total: 0 };
-    }
-
-    // ponytail: the ids ride in the URL, so a barangay-scale band (hundreds) is
-    // fine and tens of thousands would not be. Move to an RPC or a view joining
-    // the two tables if a period ever returns that many.
-    request = request.in('resident_id', residentIds);
+    request = request
+      .eq('health_assessments.nutrition_status', statusFilter.status)
+      .gte('health_assessments.assessment_date', statusFilter.from)
+      .lte('health_assessments.assessment_date', statusFilter.to);
   }
 
   if (search) {
@@ -819,12 +808,17 @@ export async function fetchResidentPage(
 
   return {
     // `households` is the join above rather than a column of the row, so it is
-    // lifted into the two fields the registry shows and dropped.
-    rows: rows.map(({ households, ...row }) => ({
-      ...row,
-      household_number: households?.household_number,
-      barangay_name: households?.barangay_id ? names.get(households.barangay_id) : undefined,
-    })),
+    // lifted into the two fields the registry shows and dropped. `health_assessments`
+    // is present only on the banded query, and rides along unread.
+    rows: rows.map(({ households, ...row }) => {
+      delete (row as { health_assessments?: unknown }).health_assessments;
+
+      return {
+        ...row,
+        household_number: households?.household_number,
+        barangay_name: households?.barangay_id ? names.get(households.barangay_id) : undefined,
+      };
+    }),
     total: count ?? 0,
   };
 }
