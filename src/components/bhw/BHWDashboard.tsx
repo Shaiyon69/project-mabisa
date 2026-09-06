@@ -81,9 +81,15 @@ export function BHWDashboard({
       />
 
       <section className="metric-grid" aria-label="BHW metrics">
-        <Metric label="Households" value={snapshot.householdCount} detail="Houses recorded" tone="blue" />
-        {/* The one metric with somewhere to go. There is no sixth slot on the
-            bottom nav, so the registry is reached from the count of it. */}
+        {/* Both counts open the same registry: the Residents tab lists households,
+            and a person is found by name inside it. */}
+        <Metric
+          label="Households"
+          value={snapshot.householdCount}
+          detail="Houses recorded"
+          tone="blue"
+          to="/bhw/residents"
+        />
         <Metric
           label="Residents"
           value={snapshot.individualCount}

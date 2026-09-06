@@ -1130,6 +1130,62 @@ export async function readLocalHouseholds(options?: PaginatedQuery): Promise<Hou
   return (result.values || []).map(toHousehold);
 }
 
+/** One row of the households list: enough to recognise a house without opening it. */
+export type HouseholdSummary = {
+  household_id: string;
+  household_number: string;
+  /** "Dela Cruz, Juan", or null for a household whose head is not an active member. */
+  head_name: string | null;
+  member_count: number;
+  updated_at: string;
+};
+
+/**
+ * Households for the browse list, newest edit first, each with its head and
+ * headcount. A search matches the household number or any member's name, because
+ * a BHW knows a house by the family living in it, not by its number.
+ */
+export async function readLocalHouseholdSummaries(options?: Pick<PaginatedQuery, 'searchQuery' | 'limit'>): Promise<HouseholdSummary[]> {
+  const db = await initializeLocalDatabase();
+  const term = options?.searchQuery?.trim();
+  const params: SqlValue[] = [];
+  let filter = '';
+
+  if (term) {
+    const pattern = likePattern(term);
+
+    filter = `WHERE h.household_number LIKE ? ESCAPE '\\'
+                 OR EXISTS (SELECT 1 FROM individuals m
+                            WHERE m.household_id = h.household_id
+                              AND (m.first_name LIKE ? ESCAPE '\\' OR m.last_name LIKE ? ESCAPE '\\'))`;
+    params.push(pattern, pattern, pattern);
+  }
+
+  const page = pageBounds(options);
+  // Former members are left out of both the count and the head, matching every
+  // other list; the join carries that filter so a household of only ex-members
+  // still lists, with a count of zero.
+  const result = await db.query(
+    `SELECT h.household_id, h.household_number, h.updated_at,
+            COUNT(i.resident_id) AS member_count,
+            MAX(CASE WHEN i.is_household_head = 1 THEN i.last_name || ', ' || i.first_name END) AS head_name
+     FROM households h
+     LEFT JOIN individuals i ON i.household_id = h.household_id AND i.status = 'active'
+     ${filter}
+     GROUP BY h.household_id
+     ORDER BY h.updated_at DESC${page.clause}`,
+    [...params, ...page.params],
+  );
+
+  return (result.values || []).map((row) => ({
+    household_id: String(row.household_id),
+    household_number: String(row.household_number),
+    head_name: row.head_name ? String(row.head_name) : null,
+    member_count: Number(row.member_count ?? 0),
+    updated_at: String(row.updated_at),
+  }));
+}
+
 /** Translates the JSON-text columns back into arrays. Shared so a read cannot forget one. */
 function toHousehold(row: Record<string, unknown>): Household {
   return {
@@ -1138,6 +1194,15 @@ function toHousehold(row: Record<string, unknown>): Household {
     water_source: JSON.parse(String(row.water_source || '[]')),
     food_production: JSON.parse(String(row.food_production || '[]')),
   } as unknown as Household;
+}
+
+/** One household by id, or null if this device has never seen it. */
+export async function findLocalHouseholdById(householdId: string): Promise<Household | null> {
+  const db = await initializeLocalDatabase();
+  const result = await db.query('select * from households where household_id = ? limit 1', [householdId]);
+  const row = result.values?.[0];
+
+  return row ? toHousehold(row) : null;
 }
 
 /**

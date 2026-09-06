@@ -468,6 +468,34 @@ describe('the local store', () => {
     });
   });
 
+  describe('the households browse list', () => {
+    it('carries the head and active headcount of each household', async () => {
+      await seed();
+
+      const summaries = await store.readLocalHouseholdSummaries();
+      const byNumber = Object.fromEntries(summaries.map((row) => [row.household_number, row]));
+
+      // Ana moved out, so she is off the count; Pedro is no household's head.
+      expect(byNumber['HH-001'].head_name).toBe('Dela Cruz, Juan');
+      expect(byNumber['HH-001'].member_count).toBe(2);
+      expect(byNumber['HH-002'].head_name).toBeNull();
+      expect(byNumber['HH-002'].member_count).toBe(1);
+    });
+
+    // A BHW knows a house by the family in it, not by its number.
+    it('matches on a member name as well as the household number', async () => {
+      await seed();
+
+      const numbers = async (searchQuery: string) =>
+        (await store.readLocalHouseholdSummaries({ searchQuery })).map((row) => row.household_number);
+
+      expect(await numbers('HH-002')).toEqual(['HH-002']);
+      expect(await numbers('Bautista')).toEqual(['HH-002']);
+      expect(await numbers('Santos')).toEqual(['HH-001']);
+      expect(await numbers('%')).toEqual([]);
+    });
+  });
+
   describe('finding a household by its number', () => {
     // The re-visit lookup. A capped LIKE search returns the newer near-misses
     // (HH-10, HH-100) and cuts the exact match, so the house gets recorded twice.
