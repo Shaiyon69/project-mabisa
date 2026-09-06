@@ -64,7 +64,11 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
       <StockPanel snapshot={snapshot} filters={filters} scope={scope} />
       <CoveragePanel stats={stats} filters={filters} scope={everyBarangay} />
       <TrendPanel snapshot={snapshot} filters={filters} scope={scope} />
-      <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={everyBarangay} />
+      {/* Nothing to compare against on a barangay administrator's account: it reads
+          one barangay, so the panel would rank it against itself. */}
+      {snapshot.sessionBarangayId ? null : (
+        <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={everyBarangay} />
+      )}
       <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
     </div>
   );
