@@ -1097,6 +1097,28 @@ export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: strin
   );
 }
 
+// ponytail: a barangay is ranked halfway between its own rate and the district's
+// at this many readings. Guessed, not measured — retune once a quarter of real
+// assessments is in.
+const RANK_PRIOR = 20;
+
+/**
+ * Barangays worst-first by underweight rate, each rate pulled towards the overall
+ * one by `RANK_PRIOR` imagined average readings so `1 of 1` cannot outrank
+ * `27 of 90`. Barangays with no assessments in the period sort last. Only the
+ * order uses the adjusted figure; every rate reported stays the barangay's own.
+ */
+export function rankByUnderweight(stats: BarangayStats[]): BarangayStats[] {
+  const totalUnderweight = stats.reduce((sum, row) => sum + row.underweight, 0);
+  const totalAssessments = stats.reduce((sum, row) => sum + row.assessments, 0);
+  const overall = totalAssessments ? totalUnderweight / totalAssessments : 0;
+  const score = (row: BarangayStats) =>
+    row.underweightRate === null ? -1 : (row.underweight + RANK_PRIOR * overall) / (row.assessments + RANK_PRIOR);
+
+  return [...stats].sort((a, b) => score(b) - score(a));
+}
+
+
 /** One `ChartRow` per barangay the session may read, its four values in `NUTRITION_ORDER`, for the Analytics nutrition mix. */
 export function nutritionByBarangay(snapshot: BarangayRollup, sessionBarangayId: string | null = null): ChartRow[] {
   const residentBarangay = residentBarangayMap(snapshot);
