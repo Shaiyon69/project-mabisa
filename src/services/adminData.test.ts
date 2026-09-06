@@ -96,6 +96,8 @@ vi.mock('../lib/supabase', async (importOriginal) => {
       },
       // Every account here is an RHU read (`current_barangay_id` null).
       rpc: () => Promise.resolve({ data: null, error: null }),
+      // The module registers a sign-out listener as it loads.
+      auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
     },
   };
 });
