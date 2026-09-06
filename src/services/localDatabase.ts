@@ -1037,15 +1037,15 @@ function buildIndividualFilter(options?: IndividualFilter): { clause: string; pa
 // Read Operations (Loading data into the React UI)
 // -----------------------------------------------------------------------------
 
-/**
- * The LIMIT/OFFSET tail of a paginated read. SQLite rejects OFFSET without a
- * preceding LIMIT, so an offset-only call gets one supplied (-1 is "no limit").
- */
 /** An optional single-column WHERE, for reads scoped to one resident or to everyone. */
 function scopedTo(column: string, value?: string): { clause: string; params: SqlValue[] } {
   return value ? { clause: ` where ${column} = ?`, params: [value] } : { clause: '', params: [] };
 }
 
+/**
+ * The LIMIT/OFFSET tail of a paginated read. SQLite rejects OFFSET without a
+ * preceding LIMIT, so an offset-only call gets one supplied (-1 is "no limit").
+ */
 function pageBounds(options?: Pick<PaginatedQuery, 'limit' | 'offset'>): { clause: string; params: SqlValue[] } {
   if (options?.limit === undefined && options?.offset === undefined) {
     return { clause: '', params: [] };
