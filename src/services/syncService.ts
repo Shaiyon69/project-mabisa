@@ -11,6 +11,7 @@ import {
   readSyncQueue,
   removeSyncQueueEntry,
   type LocalTableName,
+  type SyncOperationType,
   type SyncQueueEntry,
   pullInventoryFromServer,
   pullHouseholdsFromServer,
@@ -533,50 +534,64 @@ function withoutPrimaryKey(payload: object, key: string): Record<string, unknown
 // Pull Remote Updates Logic
 // -----------------------------------------------------------------------------
 
-/**
- * Primary keys of dead-lettered records, grouped by table — the only rows where
- * the device can be ahead of the server, so a pull must not overwrite them.
- */
-async function readQuarantinedKeys(): Promise<Map<LocalTableName, Set<string>>> {
-  const quarantined = new Map<LocalTableName, Set<string>>();
+/** What the dead letter means for the pull: rows it must not overwrite, and stock it has already spent. */
+type QuarantinedState = {
+  /**
+   * Primary keys of dead-lettered records, grouped by table — the only rows where
+   * the device can be ahead of the server, so a pull must not overwrite them.
+   */
+  held: Map<LocalTableName, Set<string>>;
+  stockSpend: Map<string, number>;
+};
 
-  const hold = (table: LocalTableName, key: string) => {
-    const keys = quarantined.get(table) ?? new Set<string>();
-    keys.add(key);
-    quarantined.set(table, keys);
-  };
+async function readQuarantinedState(): Promise<QuarantinedState> {
+  const entries = await readDeadLetterEntries();
+  const held = new Map<LocalTableName, Set<string>>();
 
-  for (const entry of await readDeadLetterEntries()) {
+  for (const entry of entries) {
     const payload = entry.payload as Record<string, unknown>;
     const value = payload[primaryKeys[entry.target_table]];
 
     if (typeof value === 'string') {
-      hold(entry.target_table, value);
-    }
-
-    for (const derived of derivedEntityKeys(entry)) {
-      hold(derived.table, derived.key);
+      const keys = held.get(entry.target_table) ?? new Set<string>();
+      keys.add(value);
+      held.set(entry.target_table, keys);
     }
   }
 
-  return quarantined;
+  return { held, stockSpend: quarantinedStockSpend(entries) };
 }
 
 /**
- * Rows whose server value is derived from this entry, so pulling one back while it
- * is quarantined would double-release stock. Narrower than `parentEntityKeys`.
+ * Stock a quarantined release has already taken off this device's figure, by item.
+ * The server never saw those releases, so its `bhw_item_stock` still counts them as
+ * held: the pull subtracts them rather than holding the whole item back, or a later
+ * allocation of that item never reaches the phone.
  */
-export function derivedEntityKeys(entry: {
-  target_table: LocalTableName;
-  payload: SyncQueueEntry['payload'];
-}): { table: LocalTableName; key: string }[] {
-  if (entry.target_table !== 'supply_disbursements') {
-    return [];
+export function quarantinedStockSpend(
+  entries: {
+    target_table: LocalTableName;
+    operation_type: SyncOperationType;
+    payload: SyncQueueEntry['payload'];
+  }[],
+): Map<string, number> {
+  const spend = new Map<string, number>();
+
+  for (const entry of entries) {
+    // Only a new release moves stock — see saveSupplyDisbursementLocally.
+    if (entry.target_table !== 'supply_disbursements' || entry.operation_type !== 'INSERT') {
+      continue;
+    }
+
+    const payload = entry.payload as Record<string, unknown>;
+    const { item_id: itemId, quantity } = payload;
+
+    if (typeof itemId === 'string' && typeof quantity === 'number') {
+      spend.set(itemId, (spend.get(itemId) ?? 0) + quantity);
+    }
   }
 
-  const itemId = (entry.payload as Record<string, unknown>).item_id;
-
-  return typeof itemId === 'string' ? [{ table: 'inventory_items', key: itemId }] : [];
+  return spend;
 }
 
 /**
@@ -645,20 +660,21 @@ async function pullRemoteUpdates(): Promise<void> {
       changedSince(supabase.from('supply_disbursements').select('*')).order('updated_at').order('log_id').range(from, to),
     );
 
+    // Drop rows whose local copy is quarantined — the server version is stale by definition.
+    const { held: quarantined, stockSpend } = await readQuarantinedState();
+
     // `created_at` is not on the view and is not mutable on conflict, so it only
-    // stamps a row seen for the first time.
+    // stamps a row seen for the first time. The server's figure still counts a
+    // quarantined release as held, so it is taken off here.
     const cloudInventory: InventoryItem[] = cloudStock.map((stock) => ({
       item_id: stock.item_id,
       item_name: stock.item_name,
       type: stock.type,
-      current_stock: stock.current_stock,
+      current_stock: Math.max(0, stock.current_stock - (stockSpend.get(stock.item_id) ?? 0)),
       barangay_id: stock.barangay_id,
       created_at: stock.updated_at,
       updated_at: stock.updated_at,
     }));
-
-    // Drop rows whose local copy is quarantined — the server version is stale by definition.
-    const quarantined = await readQuarantinedKeys();
 
     const withoutQuarantined = <TRow>(table: LocalTableName, rows: TRow[] | null): TRow[] => {
       const held = quarantined.get(table);
@@ -693,15 +709,8 @@ async function pullRemoteUpdates(): Promise<void> {
     );
     await pullInventoryFromServer(withoutQuarantined('inventory_items', cloudInventory));
 
-    // The stock read is unfiltered, so what it did not return is no longer
-    // allocated here. Quarantined items are kept: their local figure is ahead of
-    // the server's, which is the whole reason they are held back.
-    await reconcileInventory(
-      new Set([
-        ...cloudInventory.map((item) => item.item_id),
-        ...(quarantined.get('inventory_items') ?? []),
-      ]),
-    );
+    // The stock read is unfiltered, so what it did not return is no longer allocated here.
+    await reconcileInventory(new Set(cloudInventory.map((item) => item.item_id)));
 
     // Parents are read after the writes above, so a row that arrived in this same pass counts as held.
     const [residentIds, itemIds] = await Promise.all([

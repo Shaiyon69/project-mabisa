@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   idleResult,
-  derivedEntityKeys,
+  quarantinedStockSpend,
   nextAttemptTimestamp,
   newestUpdatedAt,
   ownEntityKey,
@@ -133,30 +133,38 @@ describe('newestUpdatedAt', () => {
   });
 });
 
-describe('derivedEntityKeys', () => {
+describe('quarantinedStockSpend', () => {
+  const release = (log_id: string, item_id: string, quantity: number) =>
+    entry('supply_disbursements', { log_id, item_id, resident_id: 'r1', quantity });
+
   // A release is subtracted from the device's stock when logged, but a quarantined
   // one never reaches the server, so `bhw_item_stock` still counts it as held.
-  it('holds back the stock figure a quarantined release has already spent', () => {
-    expect(derivedEntityKeys(entry('supply_disbursements', { log_id: 'l1', item_id: 'i1', resident_id: 'r1' }))).toEqual([
-      { table: 'inventory_items', key: 'i1' },
-    ]);
+  it('reports what a quarantined release has already spent', () => {
+    expect(quarantinedStockSpend([release('l1', 'i1', 3)])).toEqual(new Map([['i1', 3]]));
   });
 
-  it('does not hold back the resident, whose profile is not derived from a release', () => {
-    const derived = derivedEntityKeys(entry('supply_disbursements', { log_id: 'l1', item_id: 'i1', resident_id: 'r1' }));
-
-    expect(derived.some((row) => row.table === 'individuals')).toBe(false);
+  it('adds up two quarantined releases of the same item', () => {
+    expect(quarantinedStockSpend([release('l1', 'i1', 3), release('l2', 'i1', 2)])).toEqual(new Map([['i1', 5]]));
   });
 
-  it('holds nothing back for the tables whose server value is not computed', () => {
-    expect(derivedEntityKeys(entry('households', { household_id: 'h1' }))).toEqual([]);
-    expect(derivedEntityKeys(entry('individuals', { resident_id: 'r1', household_id: 'h1' }))).toEqual([]);
-    expect(derivedEntityKeys(entry('health_assessments', { assessment_id: 'a1', resident_id: 'r1' }))).toEqual([]);
-    expect(derivedEntityKeys(entry('inventory_items', { item_id: 'i1' }))).toEqual([]);
+  // Only a new release moves local stock, so only a new release is owed back.
+  it('ignores an edit to a release already recorded', () => {
+    const edit = { ...release('l1', 'i1', 3), operation_type: 'UPDATE' as const };
+
+    expect(quarantinedStockSpend([edit])).toEqual(new Map());
   });
 
-  it('holds nothing back when the release carries no item', () => {
-    expect(derivedEntityKeys(entry('supply_disbursements', { log_id: 'l1', resident_id: 'r1' }))).toEqual([]);
+  it('reports nothing for the tables that do not move stock', () => {
+    expect(quarantinedStockSpend([entry('households', { household_id: 'h1' })])).toEqual(new Map());
+    expect(quarantinedStockSpend([entry('individuals', { resident_id: 'r1', household_id: 'h1' })])).toEqual(new Map());
+    expect(quarantinedStockSpend([entry('health_assessments', { assessment_id: 'a1', resident_id: 'r1' })])).toEqual(
+      new Map(),
+    );
+  });
+
+  it('reports nothing when the release carries no item or no quantity', () => {
+    expect(quarantinedStockSpend([entry('supply_disbursements', { log_id: 'l1', quantity: 3 })])).toEqual(new Map());
+    expect(quarantinedStockSpend([entry('supply_disbursements', { log_id: 'l1', item_id: 'i1' })])).toEqual(new Map());
   });
 });
 
