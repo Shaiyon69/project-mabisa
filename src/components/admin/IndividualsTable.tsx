@@ -18,9 +18,7 @@ import { PULL_PAGE_SIZE } from '../../lib/supabase';
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
-import { Table, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
-
-const ITEMS_PER_PAGE = 10;
+import { ROWS_PER_PAGE, Table, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
 
 const columns: TableColumn<Individual>[] = [
   {
@@ -169,7 +167,7 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
     let current = true;
 
     const timeoutId = setTimeout(() => {
-      fetchResidentPage(query, ITEMS_PER_PAGE, (page - 1) * ITEMS_PER_PAGE, filters, statusFilter)
+      fetchResidentPage(query, ROWS_PER_PAGE, (page - 1) * ROWS_PER_PAGE, filters, statusFilter)
         .then((next) => {
           if (current) {
             setResult({ rows: next.rows, total: next.total, error: null, settledFor: requestKey });
@@ -192,7 +190,7 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
     };
   }, [query, page, statusFilter, filters, requestKey]);
 
-  const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
+  const totalPages = Math.ceil(total / ROWS_PER_PAGE) || 1;
 
   /**
    * Exports the whole filtered set, not the rows on screen. Paged, since asking
@@ -264,11 +262,11 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
         getRowKey={(individual) => individual.resident_id}
         emptyTitle={loading ? 'Loading the records' : 'No residents found'}
         emptyText={loading ? 'One moment.' : "Try a different search, or wait for a health worker's phone to send its records."}
-        limit={ITEMS_PER_PAGE}
+        limit={ROWS_PER_PAGE}
         numbered
         // Paged on the server, so the count continues across pages rather than
         // restarting at one on each.
-        startIndex={(page - 1) * ITEMS_PER_PAGE}
+        startIndex={(page - 1) * ROWS_PER_PAGE}
       />
 
       <TableMeta shown={rows.length} total={total} label="residents" />
