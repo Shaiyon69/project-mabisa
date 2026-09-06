@@ -410,6 +410,21 @@ export async function persistLocalDatabase(): Promise<void> {
   await sqlite.saveToStore('mabisa_local');
 }
 
+/**
+ * One statement per row, values flat. The plugin's multi-row path builds the SQL
+ * by pasting values into it instead of binding them, which silently drops every
+ * literal in a `values (...)` clause and binds nothing at all to a statement
+ * without one.
+ */
+async function executeRows(
+  database: SQLiteDBConnection,
+  set: { statement: string; values: SqlValue[][] }[],
+): Promise<void> {
+  await database.executeSet(
+    set.flatMap((entry) => entry.values.map((values) => ({ statement: entry.statement, values }))),
+  );
+}
+
 // -----------------------------------------------------------------------------
 // Sync Queue Management
 // -----------------------------------------------------------------------------
@@ -513,7 +528,7 @@ export async function moveSyncQueueEntryToDeadLetter(entry: SyncQueueEntry, erro
 
   // One transaction: a kill between the insert and the delete would leave the
   // record in both tables.
-  await database.executeSet([
+  await executeRows(database, [
     {
       statement: `insert into sync_dead_letter
      (original_queue_id, operation_type, target_table, payload, created_at, attempts, last_error, failed_at, base_version)
@@ -570,7 +585,7 @@ export async function requeueDeadLetterEntries(): Promise<number> {
   // child pushed before its requeued parent fails on the server and succeeds on
   // a later retry, costing attempts rather than records. Reserve the original
   // `queue_id`s if that retry cost ever shows up in the field.
-  await database.executeSet([
+  await executeRows(database, [
     {
       statement: `insert into sync_queue (operation_type, target_table, payload, created_at, attempts, last_error, next_attempt_at, base_version)
        values (?, ?, ?, ?, 0, null, null, ?)`,
@@ -764,7 +779,7 @@ async function writeAndQueue<TTable extends LocalTableName, TOperation extends S
       ? await readRowVersion(targetTable, (payload as Record<string, unknown>)[primaryKeys[targetTable]])
       : null;
 
-  await database.executeSet([
+  await executeRows(database, [
     ...rows.map((row) => ({ statement: row.statement, values: [row.values] })),
     queueStatement(targetTable, operationType, payload, baseVersion),
   ]);
@@ -826,7 +841,7 @@ export async function saveHouseholdWithMembersLocally(
     ),
   );
 
-  await database.executeSet([
+  await executeRows(database, [
     { statement: householdUpsert.statement, values: [householdUpsert.values(household.row)] },
     queueStatement('households', household.operationType, household.row, householdBase),
     ...members.flatMap((member, index) => [
@@ -1240,7 +1255,7 @@ async function pullRowsFromServer<TRow>(
   const db = await initializeLocalDatabase();
 
   try {
-    await db.executeSet([{ statement: upsert.statement, values: cloudRows.map(upsert.values) }]);
+    await executeRows(db, [{ statement: upsert.statement, values: cloudRows.map(upsert.values) }]);
   } catch (error) {
     console.error(`Failed to pull ${label} into SQLite:`, error);
     throw error;
@@ -1280,7 +1295,7 @@ export async function reconcileInventory(keepIds: Set<string>): Promise<void> {
   const removable = stale.filter((id) => !held.has(id));
   const zeroable = stale.filter((id) => held.has(id));
 
-  await database.executeSet([
+  await executeRows(database, [
     ...(removable.length
       ? [{ statement: 'delete from inventory_items where item_id = ?', values: removable.map((id) => [id]) }]
       : []),

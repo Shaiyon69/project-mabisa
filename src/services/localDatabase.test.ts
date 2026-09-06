@@ -77,15 +77,18 @@ vi.mock('@capacitor-community/sqlite', () => {
       harness.statements.push(statement);
       return Promise.resolve({ values: rowsOf(statement, values) });
     },
-    executeSet: (set: { statement: string; values: unknown[][] }[]) => {
+    executeSet: (set: { statement: string; values: unknown[] }[]) => {
       harness.sets.push(set.map((item) => item.statement));
 
       for (const item of set) {
-        harness.statements.push(item.statement);
-
-        for (const row of item.values) {
-          harness.database!.run(item.statement, row);
+        // Nested values take the plugin's multi-row path, which pastes values into
+        // the SQL rather than binding them. sql.js binds either shape, Android does not.
+        if (item.values.some((value) => Array.isArray(value))) {
+          throw new Error(`executeSet was handed a nested row: ${item.statement}`);
         }
+
+        harness.statements.push(item.statement);
+        harness.database!.run(item.statement, item.values);
       }
 
       return Promise.resolve({ changes: { changes: 0 } });
