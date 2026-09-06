@@ -876,8 +876,12 @@ button:active,
   border-color: var(--danger-line);
 }
 
+/* Scrolls in both axes: `overflow-x: auto` computes `overflow-y` to auto anyway,
+   and the sticky header below needs a scrollport with a bounded height to stick
+   inside. The cap only binds on a long table — a ten-row one is unchanged. */
 .ui-table-wrap {
-  overflow-x: auto;
+  max-height: min(70svh, 760px);
+  overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--panel);
@@ -922,7 +926,15 @@ td {
   font-size: 14px;
 }
 
+/* Held at the top of the scrollport: sixty-four barangays of comparison scroll
+   past the header otherwise, and a column of bare figures says nothing without
+   it. The bottom rule is a shadow because a collapsed border does not paint on
+   a sticky cell. */
 th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  box-shadow: 0 1px 0 var(--border);
   color: var(--muted);
   background: var(--muted-surface);
   font-size: 12px;
@@ -930,11 +942,29 @@ th {
   text-transform: uppercase;
 }
 
+/* The row's own label, held against a sideways scroll: the comparison table is
+   nine columns wide and the barangay name is the only thing naming the row.
+   Both cells need their own fill — a transparent one lets the scrolled columns
+   show through. */
+th:first-child,
+td:first-child {
+  position: sticky;
+  left: 0;
+  box-shadow: 1px 0 0 var(--border);
+  background: var(--panel);
+}
+
+th:first-child {
+  z-index: 3;
+  background: var(--muted-surface);
+}
+
 tr:last-child td {
   border-bottom: 0;
 }
 
-tbody tr:hover {
+tbody tr:hover,
+tbody tr:hover td:first-child {
   background: var(--muted-surface);
 }
 
