@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import type { NutritionStatus } from '../types/database';
+import type { NutritionStatus, ResidentStatus } from '../types/database';
 
 export function calculateBmi(weightKg: number, heightCm: number): number | null {
   if (weightKg <= 0 || heightCm <= 0) {
@@ -128,6 +128,11 @@ export function statusChangedOn(
   }
 
   return next === previous ? existing ?? on : on;
+}
+
+/** Recorded as gone from their household, and so someone who can come back to one. Deceased cannot. */
+export function hasLeftHousehold(status: ResidentStatus | null | undefined): boolean {
+  return status === 'moved_out' || status === 'transferred';
 }
 
 /**
