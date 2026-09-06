@@ -870,6 +870,12 @@ button:active,
   color: var(--text-h);
 }
 
+.ui-state-warning {
+  color: var(--warning-ink);
+  background: var(--warning-surface);
+  border-color: var(--warning-line);
+}
+
 .ui-state-error {
   color: var(--danger-ink);
   background: var(--danger-surface);
