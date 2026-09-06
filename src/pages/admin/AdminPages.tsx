@@ -129,7 +129,11 @@ export function InventoryPage() {
         {/* `filterInventory` rather than a filter of its own, so the type and
             stock-level narrowing here decides "low" by the same rule as the
             table's own badge and the dashboard's alert count. */}
-        <InventoryTable inventoryItems={filterInventory(snapshot.inventoryItems, filters)} loading={loading} />
+        <InventoryTable
+          inventoryItems={filterInventory(snapshot.inventoryItems, filters)}
+          barangays={snapshot.barangays}
+          loading={loading}
+        />
       </Card>
       <Card className="admin-monitor">
         <div className="panel-heading">
