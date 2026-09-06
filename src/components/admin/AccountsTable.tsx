@@ -248,14 +248,34 @@ type AccountActionFormProps = {
   onDone: () => void;
 };
 
+/** The reasons an action is usually taken, offered before the free-text box. */
+const REASONS: Record<'assign' | 'deactivate' | 'reactivate', string[]> = {
+  assign: [
+    'New health worker',
+    'Reassigned to another purok',
+    'Covering for another health worker',
+    'Rebalancing workload',
+    'Returned from leave',
+  ],
+  deactivate: ['Resigned', 'On extended leave', 'Transferred out of the barangay', 'End of contract', 'No longer active in the field'],
+  reactivate: ['Returned from leave', 'Rehired', 'Reinstated after review'],
+};
+
+const OTHER = 'Other';
+
 /** One dialog for both mutations: a reason, plus a purok when it is an assignment. */
 function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFormProps) {
   const { kind, account } = pending;
   const deactivating = account.profile.is_active;
   const [purokId, setPurokId] = useState('');
+  const [choice, setChoice] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+
+  const offered = REASONS[kind === 'assign' ? 'assign' : deactivating ? 'deactivate' : 'reactivate'];
+  // The audit trail takes one string either way: the picked reason, or what was typed under "Other".
+  const recorded = choice === OTHER ? reason : choice;
 
   const title =
     kind === 'assign'
@@ -264,7 +284,7 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
 
   // Submit is withheld rather than validated on click, so the missing reason (and
   // purok, on an assignment) shows before the round trip.
-  const ready = reason.trim().length > 0 && (kind !== 'assign' || purokId !== '');
+  const ready = recorded.trim().length > 0 && (kind !== 'assign' || purokId !== '');
 
   async function submit() {
     setBusy(true);
@@ -272,9 +292,9 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
 
     try {
       if (kind === 'assign') {
-        await assignBhwToPurok(account.profile.user_id, purokId, reason.trim());
+        await assignBhwToPurok(account.profile.user_id, purokId, recorded.trim());
       } else {
-        await setProfileActive(account.profile.user_id, !deactivating, reason.trim());
+        await setProfileActive(account.profile.user_id, !deactivating, recorded.trim());
       }
 
       onDone();
@@ -305,13 +325,29 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
         </SelectField>
       ) : null}
 
-      <TextAreaField
+      <SelectField
         label="Reason"
         hint="Recorded in the audit trail beside your name and the time."
-        rows={3}
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
-      />
+        value={choice}
+        onChange={(event) => setChoice(event.target.value)}
+      >
+        <option value="">Select a reason</option>
+        {offered.map((entry) => (
+          <option key={entry} value={entry}>
+            {entry}
+          </option>
+        ))}
+        <option value={OTHER}>{OTHER}</option>
+      </SelectField>
+
+      {choice === OTHER ? (
+        <TextAreaField
+          label="Reason in your own words"
+          rows={3}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+        />
+      ) : null}
 
       {failure ? <ErrorState title="The change was not applied" text={failure} /> : null}
 
