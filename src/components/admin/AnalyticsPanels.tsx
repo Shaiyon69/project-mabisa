@@ -1,5 +1,5 @@
 import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
-import { titleCase } from '../../lib/utils';
+import { formatCount, titleCase } from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   AGE_BANDS,
@@ -333,20 +333,22 @@ function ComparisonPanel({
   const bandOf = (row: BarangayStats, index: number) => mix.get(row.barangayId)?.[index] ?? 0;
   const columns: TableColumn<BarangayStats>[] = [
     { key: 'name', header: 'Barangay', render: (row) => row.name },
-    { key: 'households', header: 'Households', render: (row) => row.households },
-    { key: 'residents', header: 'Residents', render: (row) => row.residents },
-    { key: 'assessments', header: 'Assessments', render: (row) => row.assessments },
+    { key: 'households', header: 'Households', numeric: true, render: (row) => row.households },
+    { key: 'residents', header: 'Residents', numeric: true, render: (row) => row.residents },
+    { key: 'assessments', header: 'Assessments', numeric: true, render: (row) => row.assessments },
     {
       key: 'underweight',
       header: 'Underweight',
-      render: (row) => `${percent(row.underweightRate)} (${row.underweight})`,
+      numeric: true,
+      render: (row) => `${percent(row.underweightRate)} (${formatCount(row.underweight)})`,
     },
     ...NUTRITION_ORDER.slice(1).map((status, index) => ({
       key: status,
       header: titleCase(status),
+      numeric: true,
       render: (row: BarangayStats) => bandOf(row, index + 1),
     })),
-    { key: 'released', header: 'Units released', render: (row) => row.unitsReleased },
+    { key: 'released', header: 'Units released', numeric: true, render: (row) => row.unitsReleased },
   ];
 
   return (
@@ -455,9 +457,9 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
   const colorFor = (row: Tally) => POSITIONS.find((entry) => entry.label === row.label)?.color ?? SERIES_COLORS[0];
   const columns: TableColumn<ItemUtilization>[] = [
     { key: 'item', header: 'Item', render: (row) => row.itemName },
-    { key: 'on-hand', header: 'At the barangay', render: (row) => row.onHand },
-    { key: 'allocated', header: 'With health workers', render: (row) => row.allocated },
-    { key: 'released', header: 'Released', render: (row) => row.releasedInPeriod },
+    { key: 'on-hand', header: 'At the barangay', numeric: true, render: (row) => row.onHand },
+    { key: 'allocated', header: 'With health workers', numeric: true, render: (row) => row.allocated },
+    { key: 'released', header: 'Released', numeric: true, render: (row) => row.releasedInPeriod },
   ];
 
   return (

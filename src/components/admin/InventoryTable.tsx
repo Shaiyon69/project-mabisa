@@ -26,11 +26,13 @@ export function InventoryTable({ inventoryItems, loading = false }: InventoryTab
     {
       key: 'current-stock',
       header: 'At the barangay',
+      numeric: true,
       render: (item) => item.current_stock,
     },
     {
       key: 'reorder-level',
       header: 'Warn at',
+      numeric: true,
       // 0 is a real setting, not a missing one — the office turned the warning off.
       render: (item) => (item.reorder_level === 0 ? 'Off' : reorderLevelOf(item)),
     },

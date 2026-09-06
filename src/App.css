@@ -938,6 +938,27 @@ tbody tr:hover {
   background: var(--muted-surface);
 }
 
+/* Figures line up by digit position, which needs equal-width digits and a right
+   edge to hang from. Nunito's default digits are proportional, so a column of
+   them is ragged. */
+[data-numeric] {
+  text-align: right;
+}
+
+th,
+td,
+.metric strong,
+.ui-table-meta,
+.summary-bar-label strong,
+.chart-breakdown strong,
+.chart-tick,
+.donut-total,
+.gauge-value,
+.bar-chart-row small,
+.bar-chart-axis {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Pinned to the foot of the scrollport, which is what the class has always been
    named for. A household with five members runs past 20,000px, and Save sitting
    at the bottom of that meant scrolling the whole form to reach it.

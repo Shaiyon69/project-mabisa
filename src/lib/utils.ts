@@ -167,6 +167,11 @@ export function titleCase(value: string): string {
     .join(' ');
 }
 
+/** A count as it is read on screen. Exports keep the raw digits, which a CSV cell needs. */
+export function formatCount(value: number): string {
+  return new Intl.NumberFormat('en-PH').format(value);
+}
+
 export function formatDate(value: string): string {
   return new Intl.DateTimeFormat('en-PH', {
     month: 'short',
