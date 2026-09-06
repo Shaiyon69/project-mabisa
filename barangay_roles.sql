@@ -1466,3 +1466,148 @@ create policy profiles_select_foundation
       )
     )
   );
+
+
+-- =============================================================================
+-- A HEALTH WORKER'S ACCOUNT BELONGS TO A BARANGAY BEFORE ITS FIRST ASSIGNMENT
+--   (applied 2026-09-06, migration `bhw_profile_home_barangay`)
+--
+-- `bhw_home_barangay_id` could only resolve a BHW through their assignments, so
+-- one who had never been assigned belonged to nobody. Both gates read that NULL
+-- and neither is wrong on its own: `profiles_select_foundation` compares with
+-- `=`, so the row is not in a barangay administrator's read at all, and
+-- `private.assert_can_manage_bhw` compares with `is distinct from`, which is
+-- null-safe and so raises 42501. The account was invisible and unmanageable at
+-- once, and only the RHU could make that first assignment.
+--
+-- Both gates are unchanged. What changes is that the answer they ask for exists
+-- before the first assignment does: the profile may carry a barangay for a `bhw`
+-- too. The alternative -- letting any barangay administrator manage a BHW whose
+-- barangay is NULL -- would let every administrator claim every unassigned
+-- account, because NULL belongs to nobody and so matches everyone.
+--
+-- The barangay on the profile is a fallback, not the truth. An assignment still
+-- decides where a health worker is, which is why both resolvers now read the
+-- assignment first; without that ordering a BHW moved to another barangay would
+-- keep the scope their account was created with.
+--
+-- Verified against the live project in rolled-back transactions: with the
+-- assignments deleted and a barangay on the profile, `bhw_home_barangay_id`
+-- returns that barangay; with both present, the assignment's wins; all six
+-- existing health workers resolve exactly as they did before.
+-- =============================================================================
+
+alter table public.profiles drop constraint if exists profiles_barangay_scope;
+alter table public.profiles add constraint profiles_barangay_scope check (
+  case role
+    when 'barangay_admin' then barangay_id is not null
+    when 'bhw' then true
+    else barangay_id is null
+  end
+);
+
+-- Where a health worker is now: their assignment, falling back to the barangay
+-- their account was created under while they have none.
+create or replace function public.current_barangay_id()
+returns uuid
+language sql
+stable security definer
+set search_path to 'pg_catalog'
+as $function$
+  select coalesce(
+    (select purok.barangay_id
+       from public.bhw_purok_assignments as assignment
+       join public.puroks as purok on purok.purok_id = assignment.purok_id and purok.is_active
+       join public.profiles as profile on profile.user_id = assignment.bhw_id
+        and profile.is_active and profile.role = 'bhw'::public.app_role
+      where assignment.bhw_id = auth.uid() and assignment.ended_at is null limit 1),
+    (select profile.barangay_id from public.profiles as profile
+      where profile.user_id = auth.uid() and profile.is_active)
+  );
+$function$;
+
+revoke execute on function public.current_barangay_id() from public, anon;
+grant execute on function public.current_barangay_id() to authenticated;
+
+-- Whose account this is. Falls back to the most recent assignment rather than the
+-- active one, so disabling a worker does not hide them from the administrator who
+-- disabled them, and to the profile's barangay when there has never been one.
+create or replace function public.bhw_home_barangay_id(target_user_id uuid)
+returns uuid
+language sql
+stable security definer
+set search_path to 'pg_catalog'
+as $function$
+  select coalesce(
+    (select purok.barangay_id
+       from public.bhw_purok_assignments as assignment
+       join public.puroks as purok on purok.purok_id = assignment.purok_id
+      where assignment.bhw_id = target_user_id
+      order by (assignment.ended_at is null) desc, assignment.started_at desc
+      limit 1),
+    (select profile.barangay_id from public.profiles as profile where profile.user_id = target_user_id)
+  );
+$function$;
+
+revoke execute on function public.bhw_home_barangay_id(uuid) from public, anon;
+grant execute on function public.bhw_home_barangay_id(uuid) to authenticated;
+
+-- A BHW may now be given a barangay at creation. It stays optional: every account
+-- created before this one has none, and an assignment still supersedes it.
+create or replace function public.admin_create_profile(
+  target_user_id uuid,
+  target_role public.app_role,
+  target_full_name text,
+  target_barangay_id uuid default null
+)
+returns public.profiles
+language plpgsql
+security definer
+set search_path to 'pg_catalog'
+as $function$
+declare
+  actor_id uuid := private.assert_admin();
+  created_profile public.profiles;
+begin
+  if not exists (select 1 from auth.users as auth_user where auth_user.id = target_user_id) then
+    raise foreign_key_violation using message = 'The target Auth user does not exist';
+  end if;
+
+  if nullif(btrim(target_full_name), '') is null then
+    raise check_violation using message = 'Profile full name is required';
+  end if;
+
+  -- `profiles_barangay_scope` enforces this shape, but a raw constraint violation
+  -- is not an answer anybody can act on. Say which argument is wrong.
+  if target_role = 'barangay_admin'::public.app_role then
+    if target_barangay_id is null then
+      raise check_violation using message = 'A barangay administrator must be given a barangay';
+    end if;
+  elsif target_role = 'admin'::public.app_role and target_barangay_id is not null then
+    raise check_violation using message =
+      'An RHU administrator is not confined to a barangay.';
+  end if;
+
+  if target_barangay_id is not null
+     and not exists (select 1 from public.barangays where barangay_id = target_barangay_id and is_active) then
+    raise check_violation using message = 'That barangay does not exist or is not active';
+  end if;
+
+  insert into public.profiles (user_id, role, full_name, barangay_id, is_active, created_by)
+  values (target_user_id, target_role, btrim(target_full_name), target_barangay_id, true, actor_id)
+  returning * into created_profile;
+
+  perform private.write_audit_event(
+    'profile.created',
+    'profiles',
+    target_user_id,
+    null,
+    jsonb_build_object('role', target_role, 'barangay_id', target_barangay_id)
+  );
+
+  return created_profile;
+end;
+$function$;
+
+revoke execute on function public.admin_create_profile(uuid, public.app_role, text, uuid) from public, anon;
+grant execute on function public.admin_create_profile(uuid, public.app_role, text, uuid) to authenticated;
