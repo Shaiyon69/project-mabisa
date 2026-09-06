@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { titleCase } from '../../lib/utils';
+import { formatCount, titleCase } from '../../lib/utils';
 import { EmptyState } from '../common/StateMessage';
 import type { Tally } from '../../services/adminData';
 
@@ -37,13 +37,13 @@ export function SummaryBars({ rows, emptyTitle, emptyText, hrefFor, colorFor }: 
             <div className="summary-bar-label">
               <span>{titleCase(row.label)}</span>
               <strong>
-                {row.count} <small>({share}%)</small>
+                {formatCount(row.count)} <small>({share}%)</small>
               </strong>
             </div>
             <div
               className="summary-bar-track"
               role="img"
-              aria-label={`${titleCase(row.label)}: ${row.count} of ${total}, ${share} percent`}
+              aria-label={`${titleCase(row.label)}: ${formatCount(row.count)} of ${formatCount(total)}, ${share} percent`}
             >
               <div className="summary-bar-fill" style={{ width: `${share}%`, background: colorFor?.(row) }} />
             </div>

@@ -47,7 +47,7 @@ export function BhwStockTable({ reloadToken }: { reloadToken: number }) {
     },
     { key: 'item', header: 'Item', render: (row) => row.item_name },
     { key: 'type', header: 'Type', render: (row) => titleCase(row.type) },
-    { key: 'carried', header: 'Still carried', render: (row) => row.current_stock },
+    { key: 'carried', header: 'Still carried', numeric: true, render: (row) => row.current_stock },
     { key: 'updated', header: 'Last movement', render: (row) => formatDate(row.updated_at) },
   ];
 

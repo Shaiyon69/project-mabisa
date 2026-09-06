@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { axisTicks, niceMax, type ChartRow, type ChartSeries } from '../../lib/charts';
-import { titleCase } from '../../lib/utils';
+import { formatCount, titleCase } from '../../lib/utils';
 import type { Tally } from '../../services/adminData';
 
 /**
@@ -81,7 +81,7 @@ export function DonutChart({
           ) : null;
         })}
         <text className="donut-total" x="100" y="98">
-          {total}
+          {formatCount(total)}
         </text>
         <text className="donut-unit" x="100" y="120">
           {unit}
@@ -126,7 +126,7 @@ export function LineChart({ rows, series }: { rows: ChartRow[]; series: ChartSer
               y2={y(max * fraction)}
             />
             <text className="chart-tick" x={pad.left - 8} y={y(max * fraction) + 4} textAnchor="end">
-              {Math.round(max * fraction)}
+              {formatCount(Math.round(max * fraction))}
             </text>
           </g>
         ))}
@@ -219,7 +219,7 @@ export function BarChart({ rows, series }: { rows: ChartRow[]; series: ChartSeri
                       title={`${row.label} — ${entry.label}: ${row.values[index]}`}
                     />
                   </div>
-                  <small>{row.values[index]}</small>
+                  <small>{formatCount(row.values[index])}</small>
                 </div>
               ))}
             </div>
@@ -231,7 +231,7 @@ export function BarChart({ rows, series }: { rows: ChartRow[]; series: ChartSeri
           every bar already carries its own value in its label. */}
       <div className="bar-chart-axis" aria-hidden="true">
         {ticks.map((tick, index) => (
-          <span key={index}>{tick}</span>
+          <span key={index}>{formatCount(tick)}</span>
         ))}
       </div>
       {series.length > 1 ? <Legend series={series} /> : null}

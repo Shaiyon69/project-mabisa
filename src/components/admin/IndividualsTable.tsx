@@ -36,6 +36,7 @@ const columns: TableColumn<Individual>[] = [
   {
     key: 'age',
     header: 'Age',
+    numeric: true,
     render: (individual) => ageInYears(individual.birthday) ?? '—',
   },
   {

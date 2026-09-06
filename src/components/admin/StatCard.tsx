@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { formatCount } from '../../lib/utils';
 import { Icon } from '../common/Icon';
 
 type StatCardProps = {
@@ -23,7 +24,7 @@ export function StatCard({ label, value, tone, icon, to }: StatCardProps) {
         <Icon name={icon} size={17} />
         {label}
       </span>
-      <strong>{value}</strong>
+      <strong>{formatCount(value)}</strong>
       {to ? <Icon name="chevron" size={16} className="metric-caret" /> : null}
     </>
   );
