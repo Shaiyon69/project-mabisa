@@ -3,32 +3,43 @@ import { formatDate, titleCase } from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   assignBhwToPurok,
+  barangaysMissingAdmin,
+  canAssignPurok,
+  createAccount,
   fetchAccounts,
+  fetchActiveBarangays,
   fetchActivePuroks,
   fetchBarangayScope,
   filterAccounts,
-  managesAccount,
   setProfileActive,
+  visibleAccounts,
   type AccountRow,
   type AdminFilters,
 } from '../../services/adminData';
-import type { Purok, UserRole } from '../../types/database';
+import type { Barangay, Purok, UserRole } from '../../types/database';
 import { Button } from '../common/Button';
-import { SelectField, TextAreaField } from '../common/FormField';
+import { FormField, SelectField, TextAreaField } from '../common/FormField';
 import { Modal } from '../common/Modal';
-import { ErrorState } from '../common/StateMessage';
+import { ErrorState, WarningState } from '../common/StateMessage';
 import { Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
 
-const exportColumns: CsvColumn<AccountRow>[] = [
-  { header: 'User ID', value: (row) => row.profile.user_id },
-  { header: 'Name', value: (row) => row.profile.full_name },
-  { header: 'Role', value: (row) => titleCase(row.profile.role) },
-  { header: 'Assigned purok', value: (row) => row.purokName },
-  { header: 'Assigned since', value: (row) => row.assignedSince },
-  { header: 'Active', value: (row) => (row.profile.is_active ? 'Yes' : 'No') },
-  { header: 'Deactivated at', value: (row) => row.profile.disabled_at },
-  { header: 'Created at', value: (row) => row.profile.created_at },
-];
+/** A purok is a health worker's, so the two assignment columns are dropped for the rows that never have one. */
+function exportColumnsFor(assigned: boolean): CsvColumn<AccountRow>[] {
+  return [
+    { header: 'User ID', value: (row) => row.profile.user_id },
+    { header: 'Name', value: (row) => row.profile.full_name },
+    { header: 'Role', value: (row) => titleCase(row.profile.role) },
+    ...(assigned
+      ? [
+          { header: 'Assigned purok', value: (row: AccountRow) => row.purokName },
+          { header: 'Assigned since', value: (row: AccountRow) => row.assignedSince },
+        ]
+      : []),
+    { header: 'Active', value: (row) => (row.profile.is_active ? 'Yes' : 'No') },
+    { header: 'Deactivated at', value: (row) => row.profile.disabled_at },
+    { header: 'Created at', value: (row) => row.profile.created_at },
+  ];
+}
 
 /**
  * What each role is called on screen. `admin` is the RHU account that reads every
@@ -48,10 +59,10 @@ const ROWS_PER_PAGE = 15;
 
 type AccountsTableProps = {
   /**
-   * Who is looking, which decides which rows get controls. An `admin` manages
-   * every account; a `barangay_admin` manages the health workers in their own
-   * barangay and nothing else. The rule is enforced in
-   * `private.assert_can_manage_bhw()`; this only decides which buttons to draw.
+   * Who is looking, which decides whose accounts the tab is: an `admin` appoints
+   * barangay administrators, a `barangay_admin` runs the health workers in their
+   * own barangay. The rules are enforced in `private.assert_can_manage_bhw()` and
+   * `private.assert_admin()`; this only decides what is drawn.
    */
   role: UserRole | null;
   /** The page's filter drawer, applied in memory over the accounts already read. */
@@ -67,39 +78,56 @@ type AccountsTableProps = {
  * admin and writes the audit event in the same transaction. Both take a reason,
  * which the form requires.
  *
- * Creating an account and resetting a password are absent: both need the auth user
- * to exist first, which a browser holding a publishable key cannot do.
+ * Creating an account goes through the `create-account` function, which holds the
+ * service role a browser cannot: writing to `auth.users` is not a publishable-key
+ * operation. Resetting a password is still absent.
  */
 export function AccountsTable({ role, filters }: AccountsTableProps) {
-  // Whether the Actions column is drawn at all, and whether this row gets buttons.
-  // Two questions: a barangay administrator owns the column but not most rows.
   const managesAnyone = role === 'admin' || role === 'barangay_admin';
-  const manages = (account: AccountRow) => managesAccount(role, account.profile.role);
+  // Every row on this tab holds one role, so the purok columns and the purok
+  // button are the same question asked of the table and of a row.
+  const assignsAnyone = canAssignPurok(role, 'bhw');
+  const assigns = (account: AccountRow) => canAssignPurok(role, account.profile.role);
 
   const [pending, setPending] = useState<PendingAction>(null);
+  const [creating, setCreating] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [result, setResult] = useState<{
     rows: AccountRow[];
     puroks: Purok[];
+    barangays: Barangay[];
+    /** The session's own barangay, which a new health worker is created into. Null for the RHU. */
+    sessionBarangayId: string | null;
     error: string | null;
     settledFor: number;
-  }>({ rows: [], puroks: [], error: null, settledFor: -1 });
+  }>({ rows: [], puroks: [], barangays: [], sessionBarangayId: null, error: null, settledFor: -1 });
 
   // `loading` is the difference between the read this render wants and the one the
   // state last settled against, the same shape `useAdminData` uses.
-  const { rows, puroks, error } = result;
+  const { rows, puroks, barangays, sessionBarangayId, error } = result;
   const loading = result.settledFor !== reloadToken;
-  // What the drawer left. `rows` stays the whole set, so the count can say how
-  // much was filtered away and a mutation refreshes against everything.
-  const visible = filterAccounts(rows, filters);
+  // The accounts this role runs, before the drawer narrows them: the count below
+  // reads against this rather than against every row the API returned, which for
+  // an RHU is every profile in the municipality.
+  const scoped = visibleAccounts(role, rows);
+  const visible = filterAccounts(scoped, filters);
+  // Only the RHU can appoint one, so only the RHU is told one is missing.
+  const unadministered = role === 'admin' ? barangaysMissingAdmin(barangays, rows) : [];
 
   useEffect(() => {
     let current = true;
 
-    Promise.all([fetchAccounts(), fetchActivePuroks()])
-      .then(([accounts, activePuroks]) => {
+    Promise.all([fetchAccounts(), fetchActivePuroks(), fetchActiveBarangays(), fetchBarangayScope()])
+      .then(([accounts, activePuroks, activeBarangays, scope]) => {
         if (current) {
-          setResult({ rows: accounts, puroks: activePuroks, error: null, settledFor: reloadToken });
+          setResult({
+            rows: accounts,
+            puroks: activePuroks,
+            barangays: activeBarangays,
+            sessionBarangayId: scope.barangayId,
+            error: null,
+            settledFor: reloadToken,
+          });
         }
       })
       .catch((cause: unknown) => {
@@ -128,19 +156,24 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
       header: 'Role',
       render: (account) => ROLE_LABELS[account.profile.role],
     },
-    {
-      key: 'assigned-purok',
-      header: 'Assigned Purok',
-      // A BHW with no active assignment can neither read nor write a field row, so
-      // an empty cell here explains a device that signs in and sees nothing.
-      render: (account) =>
-        account.purokName ?? (account.profile.role === 'bhw' ? 'None — cannot receive records' : 'Not assigned to a purok'),
-    },
-    {
-      key: 'assigned-since',
-      header: 'Assigned Since',
-      render: (account) => (account.assignedSince ? formatDate(account.assignedSince) : '—'),
-    },
+    // A barangay administrator holds no purok, so the RHU's tab has no column for
+    // one. On a health worker an empty cell is the answer: without an assignment
+    // they can neither read nor write a field row, which explains a device that
+    // signs in and sees nothing.
+    ...(assignsAnyone
+      ? [
+          {
+            key: 'assigned-purok',
+            header: 'Assigned Purok',
+            render: (account: AccountRow) => account.purokName ?? 'None — cannot receive records',
+          },
+          {
+            key: 'assigned-since',
+            header: 'Assigned Since',
+            render: (account: AccountRow) => (account.assignedSince ? formatDate(account.assignedSince) : '—'),
+          },
+        ]
+      : []),
     {
       key: 'status',
       header: 'Status',
@@ -157,23 +190,20 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     columns.push({
       key: 'actions',
       header: 'Actions',
-      // Empty for a row this account may look at but not touch.
-      render: (account) =>
-        manages(account) ? (
-          <div className="table-actions">
-            {/* An admin covers every purok by policy, so there is no assignment to
-                make for one — the button would open a form whose only outcome is
-                an error from the RPC. */}
-            {account.profile.role === 'bhw' ? (
-              <Button variant="ghost" onClick={() => setPending({ kind: 'assign', account })}>
-                {account.purokName ? 'Reassign' : 'Assign purok'}
-              </Button>
-            ) : null}
-            <Button variant="ghost" onClick={() => setPending({ kind: 'active', account })}>
-              {account.profile.is_active ? 'Deactivate' : 'Reactivate'}
+      render: (account) => (
+        <div className="table-actions">
+          {/* The barangay administrator's alone: the RHU may not assign a purok,
+              so the button would open a form whose only outcome is an error. */}
+          {assigns(account) ? (
+            <Button variant="ghost" onClick={() => setPending({ kind: 'assign', account })}>
+              {account.purokName ? 'Reassign' : 'Assign purok'}
             </Button>
-          </div>
-        ) : null,
+          ) : null}
+          <Button variant="ghost" onClick={() => setPending({ kind: 'active', account })}>
+            {account.profile.is_active ? 'Deactivate' : 'Reactivate'}
+          </Button>
+        </div>
+      ),
     });
   }
 
@@ -194,19 +224,37 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         ],
       },
       visible,
-      exportColumns,
+      exportColumnsFor(assignsAnyone),
     );
   }
 
   return (
     <div className="ui-table-stack">
       <TableToolbar>
+        {managesAnyone ? (
+          <Button onClick={() => setCreating(true)} disabled={loading}>
+            {role === 'admin' ? 'Create account' : 'Create health worker'}
+          </Button>
+        ) : null}
         <Button variant="ghost" onClick={() => void exportAccounts()} disabled={loading || !visible.length}>
           Export CSV
         </Button>
       </TableToolbar>
 
       {error ? <ErrorState title="Could not read accounts" text={error} /> : null}
+
+      {/* Named, not counted: the point of the warning is which barangay to appoint
+          someone for. Health workers there can be created and never assigned. */}
+      {unadministered.length ? (
+        <WarningState
+          title={
+            unadministered.length === 1
+              ? '1 barangay has no administrator'
+              : `${unadministered.length} barangays have no administrator`
+          }
+          text={`${unadministered.map((barangay) => barangay.name).join(', ')} — nobody there can assign a health worker to a purok, so nobody there can record anything.`}
+        />
+      ) : null}
 
       <Table
         columns={columns}
@@ -218,13 +266,15 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         emptyText={
           loading
             ? 'One moment.'
-            : rows.length
+            : scoped.length
               ? 'No account matches the filters. Widen them in the drawer above.'
-              : 'Accounts are created through the administrative RPCs; see the foundation bootstrap procedure.'
+              : role === 'admin'
+                ? 'No barangay administrator yet. Create one with the button above.'
+                : 'No health worker in this barangay yet. Create one with the button above, then assign them a purok.'
         }
       />
 
-      <TableMeta shown={visible.length} total={rows.length} label="accounts" />
+      <TableMeta shown={visible.length} total={scoped.length} label={role === 'admin' ? 'barangay administrators' : 'health workers'} />
 
       {/* Keyed on the account and the action so the fields reset between
           openings: a reason typed for one account must never be carried into
@@ -241,7 +291,137 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
           }}
         />
       ) : null}
+
+      {creating ? (
+        <CreateAccountForm
+          viewer={role}
+          barangays={barangays}
+          sessionBarangayId={sessionBarangayId}
+          onClose={() => setCreating(false)}
+          onDone={() => {
+            setCreating(false);
+            setReloadToken((token) => token + 1);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+type CreateAccountFormProps = {
+  viewer: UserRole | null;
+  barangays: Barangay[];
+  sessionBarangayId: string | null;
+  onClose: () => void;
+  onDone: () => void;
+};
+
+/**
+ * A new login and its profile. The RHU appoints anybody; a barangay administrator
+ * creates health workers for their own barangay, which is the whole of their lane
+ * and so is not a choice the form offers. `admin_create_profile` enforces both.
+ */
+function CreateAccountForm({ viewer, barangays, sessionBarangayId, onClose, onDone }: CreateAccountFormProps) {
+  const appoints = viewer === 'admin';
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<UserRole>(appoints ? 'barangay_admin' : 'bhw');
+  const [barangayId, setBarangayId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  // An RHU account is not confined to a barangay and the RPC refuses one with a
+  // barangay set; every other role must name theirs. A barangay administrator has
+  // only their own to give, so there is nothing to pick.
+  const needsBarangay = role !== 'admin';
+  const chosenBarangay = appoints ? barangayId : sessionBarangayId ?? '';
+  const ready =
+    fullName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    password.length >= 8 &&
+    (!needsBarangay || chosenBarangay !== '');
+
+  async function submit() {
+    setBusy(true);
+    setFailure(null);
+
+    try {
+      await createAccount({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+        role,
+        barangayId: needsBarangay ? chosenBarangay : null,
+      });
+
+      onDone();
+    } catch (cause: unknown) {
+      setFailure(cause instanceof Error ? cause.message : 'The account was not created.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open title={appoints ? 'Create an account' : 'Create a health worker'} onClose={onClose}>
+      <p className="muted">
+        {appoints
+          ? 'The person signs in with this email and password. Give the password to them directly and have them change it.'
+          : 'A health worker for your barangay. They sign in with this email and password — hand it to them directly, then assign them a purok.'}
+      </p>
+
+      <FormField label="Full name" value={fullName} onChange={(event) => setFullName(event.target.value)} />
+      <FormField
+        label="Email"
+        type="email"
+        autoComplete="off"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+      />
+      <FormField
+        label="Initial password"
+        type="text"
+        autoComplete="off"
+        hint="At least 8 characters. It is shown here so it can be written down and handed over."
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+
+      {appoints ? (
+        <SelectField label="Role" value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
+          <option value="barangay_admin">{ROLE_LABELS.barangay_admin}</option>
+          <option value="bhw">{ROLE_LABELS.bhw}</option>
+          <option value="admin">{ROLE_LABELS.admin}</option>
+        </SelectField>
+      ) : null}
+
+      {appoints && needsBarangay ? (
+        <SelectField
+          label="Barangay"
+          hint="A health worker with no barangay cannot be reached by any administrator."
+          value={barangayId}
+          onChange={(event) => setBarangayId(event.target.value)}
+        >
+          <option value="">Select a barangay</option>
+          {barangays.map((barangay) => (
+            <option key={barangay.barangay_id} value={barangay.barangay_id}>
+              {barangay.name}
+            </option>
+          ))}
+        </SelectField>
+      ) : null}
+
+      {failure ? <ErrorState title="The account was not created" text={failure} /> : null}
+
+      <div className="modal-actions">
+        <Button variant="secondary" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={() => void submit()} disabled={!ready || busy}>
+          {busy ? 'Creating…' : appoints ? 'Create account' : 'Create health worker'}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

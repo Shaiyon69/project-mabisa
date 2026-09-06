@@ -160,8 +160,8 @@ export function AccountsPage() {
         title="Account Management"
         description={
           role === 'admin'
-            ? 'Roles and purok assignments as the database enforces them.'
-            : 'Health workers in your barangay: assign a purok, or take an account out of service. Roles, other barangays and new accounts are an LGU administrator action.'
+            ? 'The barangay administrators the office appoints. Health workers are theirs to run.'
+            : 'The health workers in your barangay, by purok: create one, assign a purok, or take an account out of service.'
         }
         actions={
           <AdminFilterBar
@@ -170,7 +170,7 @@ export function AccountsPage() {
             loading={loading}
             snapshot={snapshot}
             role={role}
-            fields={['accountRole', 'accountActive']}
+            fields={['accountActive']}
           />
         }
       />

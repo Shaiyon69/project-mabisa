@@ -1753,3 +1753,85 @@ alter table public.audit_events add constraint audit_events_entity_table_check c
     'inventory_allocations'
   ])
 );
+
+
+-- =============================================================================
+-- PUROK ASSIGNMENT IS THE BARANGAY ADMINISTRATOR'S, AND THE RHU CREATES ACCOUNTS
+--   (applied 2026-09-07, migrations `purok_assignment_is_barangay_admin_only`
+--    and `health_worker_profile_requires_a_barangay`)
+--
+-- Two halves of one division of labour. The RHU appoints the barangay
+-- administrator; the barangay administrator decides which of their health
+-- workers covers which purok. The LGU does not hold that second fact, so the
+-- office was making a call it could only get wrong.
+--
+--   * `admin_assign_bhw_to_purok` now raises 42501 for an RHU caller. Its
+--     destination-purok check drops the `if not public.is_admin()` wrapper it
+--     used to sit behind, since every caller that now reaches it has a barangay.
+--     `assert_can_manage_bhw` is unchanged, and so is the RHU's reach over
+--     `admin_set_profile_active`.
+--   * `admin_create_profile` now requires a barangay for a `bhw`, not only for a
+--     `barangay_admin`. Without one the account is stranded: the RHU may no
+--     longer assign it a purok, and its barangay administrator cannot see a
+--     profile that names no barangay and holds no assignment yet.
+--
+-- Every health worker on file resolves a home barangay through an assignment, so
+-- nobody was stranded by the first change.
+--
+-- Verified against the live project in rolled-back transactions: the RHU is
+-- refused a Salay worker with 42501 and the new message; the Salay administrator
+-- assigns the same worker to the same purok; the Cabugao administrator is still
+-- refused it with 42501.
+--
+-- Section 11c and 11d above are superseded. An account is created from the
+-- Accounts screen (see below), and its purok is assigned by the barangay
+-- administrator from the same screen.
+
+
+-- =============================================================================
+-- A LOGIN IS CREATED FROM THE PORTAL
+--   (deployed 2026-09-07, Edge Function `create-account`)
+--
+-- Writing to `auth.users` needs the service role, which must never reach a
+-- browser, so onboarding was manual SQL plus a dashboard visit. The key now lives
+-- in an Edge Function's environment instead, and `supabase/functions/create-account`
+-- is its source.
+--
+-- The function is not a second authority. It checks the caller is an active
+-- `admin` before creating anything, then calls `admin_create_profile` **as the
+-- caller** rather than with the service key, so `assert_admin()` still decides and
+-- the audit row still names the administrator who asked. A profile write that
+-- fails takes the login with it: an auth user with no profile signs in and sees an
+-- empty app, with nothing on screen to say why.
+--
+-- No role-change RPC exists still. Creating an account is not promoting one.
+
+
+-- =============================================================================
+-- A BARANGAY ADMINISTRATOR CREATES THEIR OWN HEALTH WORKERS
+--   (applied 2026-09-07, migration `barangay_admin_creates_health_worker_accounts`)
+--
+-- `admin_create_profile` opened with `private.assert_admin()`, so a health worker
+-- had to be created by the office and then handed to the barangay administrator
+-- who is, since the migration above, the account's only manager. The office was
+-- a step in the middle that decided nothing.
+--
+-- It now opens on two lanes:
+--
+--   * `is_admin()` appoints anybody.
+--   * `is_barangay_admin()` creates a `bhw`, and only with
+--     `target_barangay_id = current_barangay_id()`.
+--
+-- Anything else raises 42501. There is still no role-change RPC anywhere, so
+-- neither lane can promote an account after the fact, and a barangay
+-- administrator cannot create a second one beside themselves.
+--
+-- Verified against the live project in rolled-back transactions, using a target
+-- that already has a profile so a passed gate shows as 23505 and a refused one as
+-- 42501: the Salay administrator creating a Salay health worker reaches the
+-- insert; the same call naming Cabugao, the same administrator creating a
+-- barangay administrator, and a health worker calling at all are each refused;
+-- the RHU is unchanged.
+--
+-- The `create-account` function was widened to match: it admits an active `admin`
+-- or `barangay_admin` and leaves which role may create which account to the RPC.

@@ -16,11 +16,12 @@ import {
   emptyAdminSnapshot,
   fetchAdminSnapshot,
   invalidateAdminSnapshot,
+  barangaysMissingAdmin,
+  canAssignPurok,
   filterAccounts,
   filterInventory,
   LOW_STOCK_THRESHOLD,
   lowStockItems,
-  managesAccount,
   monthlyReleases,
   monthlyTrend,
   nutritionByBarangay,
@@ -31,13 +32,21 @@ import {
   reorderLevelOf,
   showsSection,
   tally,
+  visibleAccounts,
   type AccountRow,
   type AdminFilters,
   type AdminSnapshot,
   type BarangayStats,
 } from './adminData';
 import { filtersFromParams, paramsFromFilters } from '../hooks/useAdminData';
-import type { HealthAssessment, Individual, InventoryItem, NutritionStatus, SupplyDisbursement } from '../types/database';
+import type {
+  Barangay,
+  HealthAssessment,
+  Individual,
+  InventoryItem,
+  NutritionStatus,
+  SupplyDisbursement,
+} from '../types/database';
 import { PULL_PAGE_SIZE } from '../lib/supabase';
 
 // `fetchAdminSnapshot` is the one export here that talks to Supabase, so the
@@ -618,6 +627,65 @@ const account = (row: Partial<AccountRow> & { profile: AccountRow['profile'] }):
   ...row,
 });
 
+describe('visibleAccounts', () => {
+  const rows = [
+    account({ profile: accountProfile('rhu', 'admin', true) }),
+    account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' }),
+    account({ profile: accountProfile('worker', 'bhw', true), purokId: 'p1', barangayId: 'b1' }),
+  ];
+  const ids = (filtered: AccountRow[]) => filtered.map((row) => row.profile.user_id);
+
+  it('shows the RHU the administrators it appoints, and not itself', () => {
+    expect(ids(visibleAccounts('admin', rows))).toEqual(['ba']);
+  });
+
+  it('shows a barangay administrator the health workers, and not their own row', () => {
+    expect(ids(visibleAccounts('barangay_admin', rows))).toEqual(['worker']);
+  });
+
+  it('orders health workers by purok, with the unassigned last', () => {
+    const workers = [
+      account({ profile: accountProfile('no-purok', 'bhw', true, 'b1') }),
+      account({ profile: accountProfile('purok-2', 'bhw', true), purokName: 'Purok 2' }),
+      account({ profile: accountProfile('purok-1-b', 'bhw', true), purokName: 'Purok 1' }),
+      account({ profile: accountProfile('purok-1-a', 'bhw', true), purokName: 'Purok 1' }),
+    ];
+
+    expect(ids(visibleAccounts('barangay_admin', workers))).toEqual(['purok-1-a', 'purok-1-b', 'purok-2', 'no-purok']);
+  });
+
+  it('shows a health worker nothing', () => {
+    expect(visibleAccounts('bhw', rows)).toEqual([]);
+    expect(visibleAccounts(null, rows)).toEqual([]);
+  });
+});
+
+describe('barangaysMissingAdmin', () => {
+  const barangay = (barangay_id: string): Barangay => ({
+    barangay_id,
+    name: barangay_id,
+    code: barangay_id,
+    is_active: true,
+    created_at: '',
+    updated_at: '',
+    created_by: null,
+  });
+  const barangays = [barangay('b1'), barangay('b2')];
+
+  it('names a barangay nobody administers', () => {
+    const rows = [account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' })];
+
+    expect(barangaysMissingAdmin(barangays, rows).map((row) => row.barangay_id)).toEqual(['b2']);
+  });
+
+  // A deactivated administrator administers nothing: every RLS helper starts from an active profile.
+  it('does not count a deactivated administrator', () => {
+    const rows = [account({ profile: accountProfile('ba', 'barangay_admin', false, 'b1'), barangayId: 'b1' })];
+
+    expect(barangaysMissingAdmin(barangays, rows).map((row) => row.barangay_id)).toEqual(['b1', 'b2']);
+  });
+});
+
 describe('filterAccounts', () => {
   const rows = [
     account({ profile: accountProfile('rhu', 'admin', true) }),
@@ -851,24 +919,15 @@ describe('useAdminData URL round trip', () => {
   });
 });
 
-describe('managesAccount', () => {
-  it('lets an RHU admin manage every role', () => {
-    expect(managesAccount('admin', 'admin')).toBe(true);
-    expect(managesAccount('admin', 'barangay_admin')).toBe(true);
-    expect(managesAccount('admin', 'bhw')).toBe(true);
+describe('canAssignPurok', () => {
+  it('is the barangay administrator’s alone, and only over a health worker', () => {
+    expect(canAssignPurok('barangay_admin', 'bhw')).toBe(true);
+    expect(canAssignPurok('barangay_admin', 'barangay_admin')).toBe(false);
   });
 
-  it('lets a barangay admin manage health workers and nobody else', () => {
-    expect(managesAccount('barangay_admin', 'bhw')).toBe(true);
-    // A barangay administrator gets no controls on another administrator's row,
-    // their own included.
-    expect(managesAccount('barangay_admin', 'barangay_admin')).toBe(false);
-    expect(managesAccount('barangay_admin', 'admin')).toBe(false);
-  });
-
-  it('gives a health worker and an unread role nothing', () => {
-    expect(managesAccount('bhw', 'bhw')).toBe(false);
-    expect(managesAccount(null, 'bhw')).toBe(false);
+  it('refuses the RHU, which appoints the administrator who does it', () => {
+    expect(canAssignPurok('admin', 'bhw')).toBe(false);
+    expect(canAssignPurok(null, 'bhw')).toBe(false);
   });
 });
 
