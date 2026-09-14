@@ -103,19 +103,20 @@ type TablePagerProps = {
   page: number;
   pageCount: number;
   onPage: (page: number) => void;
+  /** While a server-paged list is still reading the page asked for. */
+  disabled?: boolean;
 };
 
-/** Previous/next for a table paged in the browser. Server-paged screens bring their own. */
-export function TablePager({ page, pageCount, onPage }: TablePagerProps) {
+export function TablePager({ page, pageCount, onPage, disabled = false }: TablePagerProps) {
   return (
     <div className="admin-pager">
-      <Button variant="ghost" onClick={() => onPage(page - 1)} disabled={page <= 1}>
+      <Button variant="ghost" onClick={() => onPage(page - 1)} disabled={disabled || page <= 1}>
         Previous
       </Button>
       <span className="muted">
         Page {page} of {pageCount}
       </span>
-      <Button variant="ghost" onClick={() => onPage(page + 1)} disabled={page >= pageCount}>
+      <Button variant="ghost" onClick={() => onPage(page + 1)} disabled={disabled || page >= pageCount}>
         Next
       </Button>
     </div>

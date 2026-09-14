@@ -11,7 +11,6 @@ import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ErrorState } from '../../components/common/StateMessage';
 import { useAdminData } from '../../hooks/useAdminData';
-import { filterInventory } from '../../services/adminData';
 
 // The two biggest screens in the portal, and the two the officer opening the
 // dashboard has not asked for. Each has exactly one consumer below, so splitting
@@ -81,8 +80,7 @@ export function InventoryPage() {
   const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
   const role = useAdminRole();
   const canMoveStock = role === 'barangay_admin';
-  // Bumped after a movement so the carried-stock table re-reads `bhw_item_stock`
-  // along with the snapshot, which reads `inventory_items`.
+  // Bumped after a movement so both server-paged stock tables re-read, along with the snapshot.
   const [movementToken, setMovementToken] = useState(0);
 
   function handleChanged() {
@@ -127,14 +125,7 @@ export function InventoryPage() {
           What has not yet been handed to a health worker.
           {canMoveStock ? '' : ' Only a barangay administrator can move stock.'}
         </p>
-        {/* `filterInventory` rather than a filter of its own, so the type and
-            stock-level narrowing here decides "low" by the same rule as the
-            table's own badge and the dashboard's alert count. */}
-        <InventoryTable
-          inventoryItems={filterInventory(snapshot.inventoryItems, filters)}
-          barangays={snapshot.barangays}
-          loading={loading}
-        />
+        <InventoryTable filters={filters} spansBarangays={role === 'admin' && !filters.barangayId} reloadToken={movementToken} />
       </Card>
       <Card className="admin-monitor">
         <div className="panel-heading">

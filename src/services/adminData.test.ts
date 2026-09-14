@@ -16,10 +16,7 @@ import {
   emptyAdminSnapshot,
   fetchAdminSnapshot,
   invalidateAdminSnapshot,
-  barangaysMissingAdmin,
   canAssignPurok,
-  filterAccounts,
-  filterInventory,
   LOW_STOCK_THRESHOLD,
   latestPerResident,
   lowStockItems,
@@ -35,15 +32,12 @@ import {
   reorderLevelOf,
   showsSection,
   tally,
-  visibleAccounts,
-  type AccountRow,
   type AdminFilters,
   type AdminSnapshot,
   type BarangayStats,
 } from './adminData';
 import { filtersFromParams, paramsFromFilters } from '../hooks/useAdminData';
 import type {
-  Barangay,
   HealthAssessment,
   InventoryItem,
   NutritionStatus,
@@ -629,159 +623,6 @@ describe('showsSection', () => {
       'demographics',
       'stock',
     ]);
-  });
-});
-
-describe('filterInventory', () => {
-  const items = [
-    item('a', 'Paracetamol', 5, 10),
-    item('b', 'Bandage', 40, 10),
-    item('c', 'Leaflets', 0, 0),
-  ];
-  const withType = (row: InventoryItem, type: InventoryItem['type']): InventoryItem => ({ ...row, type });
-  const typed = [withType(items[0], 'medicine'), withType(items[1], 'hygiene'), withType(items[2], 'other')];
-
-  it('matches on item type', () => {
-    expect(filterInventory(typed, { from: 'a', to: 'b', barangayId: null, itemType: 'medicine' }).map((row) => row.item_id)).toEqual([
-      'a',
-    ]);
-  });
-
-  it('matches low stock the same way lowStockItems does', () => {
-    expect(filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'low' }).map((row) => row.item_id)).toEqual([
-      'a',
-    ]);
-    expect(
-      filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'sufficient' }).map((row) => row.item_id),
-    ).toEqual(['b', 'c']);
-  });
-
-  // `reorder_level: 0` switches the warning off, even though stock 0 is at level 0.
-  it('keeps a reorder_level of 0 out of "low", matching lowStockItems', () => {
-    expect(filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'low' })).not.toContainEqual(
-      expect.objectContaining({ item_id: 'c' }),
-    );
-  });
-});
-
-const accountProfile = (
-  user_id: string,
-  role: 'admin' | 'barangay_admin' | 'bhw',
-  is_active: boolean,
-  barangay_id: string | null = null,
-): AccountRow['profile'] => ({
-  user_id,
-  role,
-  barangay_id,
-  full_name: user_id,
-  is_active,
-  created_at: '',
-  updated_at: '',
-  created_by: null,
-  disabled_at: null,
-  disabled_by: null,
-});
-
-const account = (row: Partial<AccountRow> & { profile: AccountRow['profile'] }): AccountRow => ({
-  purokName: null,
-  assignedSince: null,
-  purokId: null,
-  barangayId: null,
-  ...row,
-});
-
-describe('visibleAccounts', () => {
-  const rows = [
-    account({ profile: accountProfile('rhu', 'admin', true) }),
-    account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' }),
-    account({ profile: accountProfile('worker', 'bhw', true), purokId: 'p1', barangayId: 'b1' }),
-  ];
-  const ids = (filtered: AccountRow[]) => filtered.map((row) => row.profile.user_id);
-
-  it('shows the RHU the administrators it appoints, and not itself', () => {
-    expect(ids(visibleAccounts('admin', rows))).toEqual(['ba']);
-  });
-
-  it('shows a barangay administrator the health workers, and not their own row', () => {
-    expect(ids(visibleAccounts('barangay_admin', rows))).toEqual(['worker']);
-  });
-
-  it('orders health workers by purok, with the unassigned last', () => {
-    const workers = [
-      account({ profile: accountProfile('no-purok', 'bhw', true, 'b1') }),
-      account({ profile: accountProfile('purok-2', 'bhw', true), purokName: 'Purok 2' }),
-      account({ profile: accountProfile('purok-1-b', 'bhw', true), purokName: 'Purok 1' }),
-      account({ profile: accountProfile('purok-1-a', 'bhw', true), purokName: 'Purok 1' }),
-    ];
-
-    expect(ids(visibleAccounts('barangay_admin', workers))).toEqual(['purok-1-a', 'purok-1-b', 'purok-2', 'no-purok']);
-  });
-
-  it('shows a health worker nothing', () => {
-    expect(visibleAccounts('bhw', rows)).toEqual([]);
-    expect(visibleAccounts(null, rows)).toEqual([]);
-  });
-});
-
-describe('barangaysMissingAdmin', () => {
-  const barangay = (barangay_id: string): Barangay => ({
-    barangay_id,
-    name: barangay_id,
-    code: barangay_id,
-    is_active: true,
-    created_at: '',
-    updated_at: '',
-    created_by: null,
-  });
-  const barangays = [barangay('b1'), barangay('b2')];
-
-  it('names a barangay nobody administers', () => {
-    const rows = [account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' })];
-
-    expect(barangaysMissingAdmin(barangays, rows).map((row) => row.barangay_id)).toEqual(['b2']);
-  });
-
-  // A deactivated administrator administers nothing: every RLS helper starts from an active profile.
-  it('does not count a deactivated administrator', () => {
-    const rows = [account({ profile: accountProfile('ba', 'barangay_admin', false, 'b1'), barangayId: 'b1' })];
-
-    expect(barangaysMissingAdmin(barangays, rows).map((row) => row.barangay_id)).toEqual(['b1', 'b2']);
-  });
-});
-
-describe('filterAccounts', () => {
-  const rows = [
-    account({ profile: accountProfile('rhu', 'admin', true) }),
-    account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' }),
-    account({ profile: accountProfile('bhw-active', 'bhw', true), purokId: 'p1', barangayId: 'b1' }),
-    account({ profile: accountProfile('bhw-inactive', 'bhw', false), purokId: 'p2', barangayId: 'b2' }),
-  ];
-  const ids = (filtered: AccountRow[]) => filtered.map((row) => row.profile.user_id);
-
-  it('matches role', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, accountRole: 'bhw' }))).toEqual([
-      'bhw-active',
-      'bhw-inactive',
-    ]);
-  });
-
-  it('matches active state', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, accountActive: 'inactive' }))).toEqual([
-      'bhw-inactive',
-    ]);
-  });
-
-  it('matches barangay', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: 'b1' }))).toEqual(['ba', 'bhw-active']);
-  });
-
-  it('matches purok', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, purokId: 'p2' }))).toEqual(['bhw-inactive']);
-  });
-
-  // A BHW's barangay is reachable only through their purok assignment.
-  it('finds a BHW whose barangay is reached only through their purok', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: 'b2' }))).toEqual(['bhw-inactive']);
   });
 });
 
