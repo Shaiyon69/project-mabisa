@@ -21,10 +21,12 @@ import {
   filterAccounts,
   filterInventory,
   LOW_STOCK_THRESHOLD,
+  latestPerResident,
   lowStockItems,
   monthlyReleases,
   monthlyTrend,
   nutritionByBarangay,
+  nutritionTally,
   presetRange,
   rankByUnderweight,
   readAllResidentPages,
@@ -313,6 +315,55 @@ describe('barangay scope', () => {
   });
 });
 
+describe('latestPerResident', () => {
+  it('keeps one row per resident, the newest by date', () => {
+    const rows = latestPerResident([
+      assessment('a1', 'r1', '2026-03-04', 'underweight'),
+      assessment('a2', 'r1', '2026-08-04', 'normal'),
+      assessment('a3', 'r2', '2026-05-01', 'obese'),
+    ]);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.resident_id === 'r1')?.assessment_id).toBe('a2');
+    expect(rows.find((row) => row.resident_id === 'r2')?.assessment_id).toBe('a3');
+  });
+
+  // Two rows for one day predate the form refusing to make a second one; the later
+  // write is the correction.
+  it('breaks a same-day tie on the later write', () => {
+    const [row] = latestPerResident([
+      { ...assessment('a1', 'r1', '2026-03-04', 'underweight'), updated_at: '2026-03-04T01:00:00.000Z' },
+      { ...assessment('a2', 'r1', '2026-03-04', 'normal'), updated_at: '2026-03-04T09:00:00.000Z' },
+    ]);
+
+    expect(row.assessment_id).toBe('a2');
+  });
+
+  it('holds no opinion on an empty set', () => {
+    expect(latestPerResident([])).toEqual([]);
+  });
+});
+
+describe('nutritionTally', () => {
+  // The whole point: 30 residents checked underweight in February and normal in
+  // August must read as 30 normal, not 30 of each.
+  it('counts each resident once, under their latest check', () => {
+    const assessments = [
+      ...Array.from({ length: 30 }, (_, index) =>
+        assessment(`feb-${index}`, `r${index}`, '2026-02-10', 'underweight'),
+      ),
+      ...Array.from({ length: 30 }, (_, index) => assessment(`aug-${index}`, `r${index}`, '2026-08-10', 'normal')),
+    ];
+
+    expect(nutritionTally(assessments)).toEqual([
+      { label: 'underweight', count: 0 },
+      { label: 'normal', count: 30 },
+      { label: 'overweight', count: 0 },
+      { label: 'obese', count: 0 },
+    ]);
+  });
+});
+
 describe('nutrition order', () => {
   it('matches the statuses an assessment can carry', () => {
     const statuses: HealthAssessment['nutrition_status'][] = ['underweight', 'normal', 'overweight', 'obese'];
@@ -449,14 +500,17 @@ describe('barangayStats', () => {
       { resident_id: 'r3', household_id: 'h2', sex: 'male', birthday: '2000-01-01', updated_at: '' },
       { resident_id: 'r4', household_id: 'h3', sex: 'female', birthday: '2000-01-01', updated_at: '' },
       { resident_id: 'r5', household_id: 'h4', sex: 'male', birthday: '2000-01-01', updated_at: '' },
+      { resident_id: 'r6', household_id: 'h2', sex: 'female', birthday: '2000-01-01', updated_at: '' },
     ],
     assessments: [
       assessment('a1', 'r1', '2026-03-04', 'underweight'),
-      // r1 twice in the period: one resident covered, two assessments counted.
+      // r1 twice in the period: one resident covered, two assessments counted, and
+      // only the April reading bands them — this is the resident who improved.
       assessment('a2', 'r1', '2026-04-04', 'normal'),
       // r2 is never assessed, which is what keeps coverage below 100%.
       assessment('a4', 'r3', '2026-05-05', 'normal'),
       assessment('a5', 'r4', '2026-05-06', 'underweight'),
+      assessment('a6', 'r6', '2026-05-07', 'underweight'),
     ],
   };
 
@@ -464,21 +518,31 @@ describe('barangayStats', () => {
   const at = (id: string) => stats.find((row) => row.barangayId === id)!;
 
   it('reaches a barangay through the household, which is the only row that records it', () => {
-    expect(at('big').residents).toBe(3);
+    expect(at('big').residents).toBe(4);
     expect(at('big').households).toBe(2);
     expect(at('small').residents).toBe(1);
   });
 
   it('rates the small barangay worse than the large one on the same proportion', () => {
-    // 1 of 3 against 1 of 1. Shading by count would call them equal.
+    // 1 of 3 residents against 1 of 1. Shading by count would call them equal.
     expect(at('big').underweightRate).toBeCloseTo(1 / 3);
     expect(at('small').underweightRate).toBe(1);
   });
 
+  // The rate has to be able to fall, or a barangay that fixes its cases still
+  // reads as having them until the period rolls over.
+  it('drops a resident from the band once a later check moves them out of it', () => {
+    // r1 was underweight in March and normal in April: only r6 is left underweight,
+    // and the rate is over the 3 residents checked, not the 4 checks taken.
+    expect(at('big').underweight).toBe(1);
+    expect(at('big').assessments).toBe(4);
+    expect(at('big').residentsAssessed).toBe(3);
+  });
+
   it('counts distinct residents for coverage, not assessments', () => {
-    // r1 was assessed twice; two of the three residents were reached.
-    expect(at('big').residentsAssessed).toBe(2);
-    expect(at('big').coverageRate).toBeCloseTo(2 / 3);
+    // r1 was assessed twice; three of the four residents were reached.
+    expect(at('big').residentsAssessed).toBe(3);
+    expect(at('big').coverageRate).toBeCloseTo(3 / 4);
   });
 
   it('keeps a barangay that holds nothing, with no rate rather than a zero', () => {

@@ -6,6 +6,7 @@ import {
   AGE_BANDS,
   ageBandOf,
   assessmentsBelowAdultBmiAge,
+  latestPerResident,
   describeScope,
   disbursementsByItem,
   lowStockItems,
@@ -93,7 +94,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           <SummaryBars
             rows={nutritionTally(snapshot.assessments)}
             colorFor={(row) => NUTRITION_COLORS[row.label]}
-            emptyTitle="No assessments in this period"
+            emptyTitle="No residents checked in this period"
             emptyText="Try a wider date range, or wait for a health worker's phone to send its records."
           />
         </ReportPanel>
@@ -179,17 +180,19 @@ function ReportPanel({ title, note, filters, scope, filterNote, onExport, childr
 }
 
 /**
- * The nutrition panel's note: how many assessments are of residents the adult
- * cut-points do not classify. The bars cannot show it, since a child's reading
- * stacks into the same four bands as everyone else's.
+ * The nutrition panel's note. Says what the bars count — one band per resident,
+ * their latest — and how many of those residents the adult cut-points do not
+ * classify, which the bars cannot show since a child's reading stacks into the
+ * same four bands as everyone else's.
  */
 function nutritionNote(snapshot: AdminSnapshot): string {
-  const belowAge = assessmentsBelowAdultBmiAge(snapshot.assessments, snapshot.residents);
+  const latest = latestPerResident(snapshot.assessments);
+  const belowAge = assessmentsBelowAdultBmiAge(latest, snapshot.residents);
   const caveat = belowAge
     ? ` ${belowAge} are under ${ADULT_BMI_MIN_AGE} — read those against the DOH/WHO growth charts, not these bands.`
     : '';
 
-  return `${snapshot.assessments.length} assessment(s) in this period. A status is a reading, not a diagnosis.${caveat}`;
+  return `${latest.length} resident(s), each under their latest of ${snapshot.assessments.length} check(s) in this period. The export below carries every check. A status is a reading, not a diagnosis.${caveat}`;
 }
 
 type DemographicRow = { grouping: string; category: string; count: number };
