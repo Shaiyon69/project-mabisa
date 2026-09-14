@@ -9,8 +9,10 @@ import {
   isCalendarDate,
   isInFuture,
   isMeasurementInRange,
+  isWholeNumberInRange,
   philhealthDigits,
   statusChangedOn,
+  SYSTOLIC_BP_RANGE,
   titleCase,
   today,
   WEIGHT_KG_RANGE,
@@ -54,6 +56,15 @@ describe('isMeasurementInRange', () => {
     expect(isMeasurementInRange('49', HEIGHT_CM_RANGE)).toBe(true);
     expect(isMeasurementInRange('58.5', WEIGHT_KG_RANGE)).toBe(true);
     expect(isMeasurementInRange('161', HEIGHT_CM_RANGE)).toBe(true);
+  });
+});
+
+describe('isWholeNumberInRange', () => {
+  it('rejects a decimal a smallint column would refuse on sync', () => {
+    expect(isWholeNumberInRange('120', SYSTOLIC_BP_RANGE)).toBe(true);
+    expect(isWholeNumberInRange('120.5', SYSTOLIC_BP_RANGE)).toBe(false);
+    expect(isWholeNumberInRange('59', SYSTOLIC_BP_RANGE)).toBe(false);
+    expect(isWholeNumberInRange('', SYSTOLIC_BP_RANGE)).toBe(false);
   });
 });
 

@@ -75,6 +75,11 @@ export function isMeasurementInRange(value: string, range: { min: number; max: n
   return value.trim() !== '' && Number.isFinite(parsed) && parsed >= range.min && parsed <= range.max;
 }
 
+/** For a `smallint` column: a decimal passes the form but is rejected on every sync attempt. */
+export function isWholeNumberInRange(value: string, range: { min: number; max: number }): boolean {
+  return isMeasurementInRange(value, range) && Number.isInteger(Number(value));
+}
+
 /**
  * Below this age the bands below classify nobody: WHO reads under-20s off
  * BMI-for-age z-scores instead. Every surface showing a status to someone who did

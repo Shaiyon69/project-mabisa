@@ -5,6 +5,7 @@ import {
   describeMissing,
   ignoreImplicitSubmit,
   isInFuture,
+  isWholeNumberInRange,
   scrollToFirstError,
   today,
   VACCINE_OPTIONS,
@@ -16,6 +17,8 @@ import { Card } from '../common/Card';
 import { FormActions, FormField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
+
+const DOSE_NUMBER_RANGE = { min: 1, max: 10 };
 
 type ImmunizationFormProps = {
   individualCount: number;
@@ -34,7 +37,9 @@ export function ImmunizationForm({ individualCount, bhwId, onSaved }: Immunizati
   const [showValidation, setShowValidation] = useState(false);
 
   const hasIndividuals = individualCount > 0;
+  const doseOk = doseNumber.trim() === '' || isWholeNumberInRange(doseNumber, DOSE_NUMBER_RANGE);
   const missingRequirements = [
+    !doseOk && 'a dose number from 1 to 10',
     !hasIndividuals && 'a registered resident',
     !residentId && 'the resident given the dose',
     !vaccineName.trim() && 'the vaccine given',
@@ -134,11 +139,12 @@ export function ImmunizationForm({ individualCount, bhwId, onSaved }: Immunizati
           <FormField
             label="Dose number"
             type="number"
-            min={1}
-            max={10}
+            min={DOSE_NUMBER_RANGE.min}
+            max={DOSE_NUMBER_RANGE.max}
             value={doseNumber}
             onChange={(event) => setDoseNumber(event.target.value)}
             placeholder="(Optional)"
+            error={showValidation && !doseOk ? 'Enter a whole number from 1 to 10.' : undefined}
           />
           <FormField
             label="Date given"
