@@ -19,11 +19,9 @@ const adminNavItems = [
   { to: '/admin/residents', label: 'Residents', icon: 'users' as const },
   { to: '/admin/health', label: 'Health', icon: 'heart' as const },
   { to: '/admin/inventory', label: 'Inventory', icon: 'package' as const },
-  { to: '/admin/accounts', label: 'Accounts', icon: 'shield' as const },
-  // A separate item from Reports: that answers "how many, in this period", this
-  // answers "how is it moving, and where".
   { to: '/admin/analytics', label: 'Analytics', icon: 'chart' as const },
   { to: '/admin/reports', label: 'Reports', icon: 'clipboard' as const },
+  { to: '/admin/accounts', label: 'Accounts', icon: 'shield' as const },
 ];
 
 /** The rail: navigation, plus the account and the way out pinned to its foot. */
