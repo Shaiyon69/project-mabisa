@@ -140,6 +140,7 @@ export function describeScope(filters: AdminFilters, snapshot: Pick<AdminSnapsho
 /** Only the resident columns the summaries need. `household_id` is how a resident reaches a barangay. */
 type AdminResident = Pick<Individual, 'resident_id' | 'household_id' | 'sex' | 'birthday' | 'updated_at'>;
 
+
 /** Just enough of a household to place everything under it in a barangay. Both scope columns are trigger-stamped, so optional. */
 type AdminHousehold = {
   household_id: string;
@@ -1316,6 +1317,45 @@ export function monthlyTrend(assessments: HealthAssessment[], filters: AdminFilt
       assessments: bucket.assessments,
       underweight: bucket.underweight,
       rate: bucket.assessments ? bucket.underweight / bucket.assessments : null,
+    };
+  });
+}
+
+const VITALS = ['systolic_bp', 'diastolic_bp', 'temperature_c', 'pulse_rate'] as const;
+
+export type VitalsPoint = {
+  month: string;
+  label: string;
+  /** Checks that took at least one vital. */
+  readings: number;
+} & Record<(typeof VITALS)[number], number | null>;
+
+/** Each vital's monthly average over the checks that took it; null for a month where none did. */
+export function monthlyVitals(assessments: HealthAssessment[], filters: AdminFilters): VitalsPoint[] {
+  const byMonth = new Map<string, HealthAssessment[]>();
+
+  for (const assessment of assessments) {
+    const month = assessment.assessment_date.slice(0, 7);
+    const rows = byMonth.get(month) ?? [];
+    rows.push(assessment);
+    byMonth.set(month, rows);
+  }
+
+  return monthsIn(filters).map(({ month, label }) => {
+    const rows = byMonth.get(month) ?? [];
+    const average = (vital: (typeof VITALS)[number]) => {
+      const values = rows.map((row) => row[vital]).filter((value): value is number => value != null);
+      return values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10 : null;
+    };
+
+    return {
+      month,
+      label,
+      readings: rows.filter((row) => VITALS.some((vital) => row[vital] != null)).length,
+      systolic_bp: average('systolic_bp'),
+      diastolic_bp: average('diastolic_bp'),
+      temperature_c: average('temperature_c'),
+      pulse_rate: average('pulse_rate'),
     };
   });
 }

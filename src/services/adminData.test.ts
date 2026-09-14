@@ -25,6 +25,7 @@ import {
   lowStockItems,
   monthlyReleases,
   monthlyTrend,
+  monthlyVitals,
   nutritionByBarangay,
   nutritionTally,
   presetRange,
@@ -594,6 +595,22 @@ describe('monthlyTrend', () => {
     expect(points.map((point) => point.month)).toEqual(['2026-01', '2026-02', '2026-03']);
     expect(points[1]).toMatchObject({ assessments: 0, underweight: 0, rate: null });
     expect(points[0]).toMatchObject({ assessments: 1, underweight: 1, rate: 1 });
+  });
+});
+
+describe('monthlyVitals', () => {
+  it('averages each vital over only the checks that took it', () => {
+    const points = monthlyVitals(
+      [
+        { ...assessment('a1', 'r1', '2026-01-05', 'normal'), systolic_bp: 120, pulse_rate: 70 },
+        { ...assessment('a2', 'r2', '2026-01-20', 'normal'), systolic_bp: 131 },
+        assessment('a3', 'r3', '2026-01-25', 'normal'),
+      ],
+      { from: '2026-01-01', to: '2026-02-28', barangayId: null },
+    );
+
+    expect(points[0]).toMatchObject({ readings: 2, systolic_bp: 125.5, pulse_rate: 70, diastolic_bp: null });
+    expect(points[1]).toMatchObject({ readings: 0, systolic_bp: null });
   });
 });
 
