@@ -140,10 +140,13 @@ export function describeScope(filters: AdminFilters, snapshot: Pick<AdminSnapsho
 /** Only the resident columns the summaries need. `household_id` is how a resident reaches a barangay. */
 type AdminResident = Pick<Individual, 'resident_id' | 'household_id' | 'sex' | 'birthday' | 'updated_at'>;
 
+/** A resident of any membership status, named, so an assessment can be shown against a person. */
+export type AdminPerson = Pick<Individual, 'resident_id' | 'household_id' | 'first_name' | 'last_name' | 'sex' | 'birthday'>;
 
 /** Just enough of a household to place everything under it in a barangay. Both scope columns are trigger-stamped, so optional. */
 type AdminHousehold = {
   household_id: string;
+  household_number?: string;
   purok_id?: string;
   barangay_id?: string;
   updated_at: string;
@@ -169,6 +172,8 @@ export type AdminSnapshot = {
   householdCount: number;
   residentCount: number;
   residents: AdminResident[];
+  /** Every resident in scope whatever their status, for naming who an assessment belongs to. */
+  people: AdminPerson[];
   /** Period-scoped. */
   assessments: HealthAssessment[];
   disbursements: SupplyDisbursement[];
@@ -199,6 +204,7 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   householdCount: 0,
   residentCount: 0,
   residents: [],
+  people: [],
   assessments: [],
   disbursements: [],
   inventoryItems: [],
@@ -237,17 +243,17 @@ function readSnapshotRows(filters: AdminFilters) {
     // Rows rather than a count: `individuals` carries no barangay of its own, so
     // every per-barangay figure below joins through this list.
     readAllPages<AdminHousehold>('Household', 'household_id', () =>
-      supabase.from('households').select('household_id, purok_id, barangay_id, updated_at'),
+      supabase.from('households').select('household_id, household_number, purok_id, barangay_id, updated_at'),
     ),
     // Active members only: someone who moved out or died is still on file, but
     // is not counted in the resident-facing demographics.
     readAllPages<AdminResident>('Resident', 'resident_id', () =>
       supabase.from('individuals').select('resident_id, household_id, sex, birthday, updated_at').eq('status', 'active'),
     ),
-    // Every status, id columns only: scopes assessments/disbursements below, which
-    // must not drop a record just because the resident later changed status.
-    readAllPages<Pick<AdminResident, 'resident_id' | 'household_id'>>('Resident (all statuses)', 'resident_id', () =>
-      supabase.from('individuals').select('resident_id, household_id'),
+    // Every status: scopes assessments/disbursements below, which must not drop a
+    // record just because the resident later changed status.
+    readAllPages<AdminPerson>('Resident (all statuses)', 'resident_id', () =>
+      supabase.from('individuals').select('resident_id, household_id, first_name, last_name, sex, birthday'),
     ),
     readAllPages<HealthAssessment>('Health assessment', 'assessment_id', () =>
       supabase
@@ -384,9 +390,8 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
 
   // All statuses, not just active: a record made before a resident moved out or
   // died must still count in the period it happened.
-  const scopedResidentIds = new Set(
-    residentHouseholds.filter((resident) => inScope.has(resident.household_id)).map((resident) => resident.resident_id),
-  );
+  const people = residentHouseholds.filter((resident) => inScope.has(resident.household_id));
+  const scopedResidentIds = new Set(people.map((resident) => resident.resident_id));
 
   const assessmentRows = assessments.filter((row) => scopedResidentIds.has(row.resident_id));
   const disbursementRows = disbursements.filter((row) => scopedResidentIds.has(row.resident_id));
@@ -402,6 +407,7 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     householdCount: householdRows.length,
     residentCount: residentRows.length,
     residents: residentRows,
+    people,
     assessments: assessmentRows,
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
@@ -1358,6 +1364,51 @@ export function monthlyVitals(assessments: HealthAssessment[], filters: AdminFil
       pulse_rate: average('pulse_rate'),
     };
   });
+}
+
+export type ResidentHealthRow = {
+  person: AdminPerson;
+  householdNumber: string;
+  barangay: string;
+  /** Their most recent check in the period. */
+  latest: HealthAssessment;
+  checks: number;
+};
+
+/** One row per resident checked in the period, by last name. */
+export function residentHealthRows(
+  snapshot: Pick<AdminSnapshot, 'people' | 'households' | 'barangays' | 'assessments'>,
+): ResidentHealthRow[] {
+  const people = new Map(snapshot.people.map((person) => [person.resident_id, person]));
+  const households = new Map(snapshot.households.map((household) => [household.household_id, household]));
+  const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
+  const checks = tally(snapshot.assessments, (assessment) => assessment.resident_id);
+  const checkCount = new Map(checks.map((row) => [row.label, row.count]));
+
+  return latestPerResident(snapshot.assessments)
+    .flatMap((latest) => {
+      const person = people.get(latest.resident_id);
+      // An assessment whose resident is outside the scope has no one to show it against.
+      if (!person) {
+        return [];
+      }
+
+      const household = households.get(person.household_id);
+
+      return [
+        {
+          person,
+          householdNumber: household?.household_number ?? '',
+          barangay: (household?.barangay_id && barangays.get(household.barangay_id)) || 'Unassigned',
+          latest,
+          checks: checkCount.get(latest.resident_id) ?? 1,
+        },
+      ];
+    })
+    .sort(
+      (a, b) =>
+        a.person.last_name.localeCompare(b.person.last_name) || a.person.first_name.localeCompare(b.person.first_name),
+    );
 }
 
 /** Supply movement over the same months `monthsIn` gives the assessment trend. */
