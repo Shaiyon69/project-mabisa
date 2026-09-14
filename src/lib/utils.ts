@@ -17,6 +17,24 @@ export function calculateBmi(weightKg: number, heightCm: number): number | null 
  */
 export const WEIGHT_KG_RANGE = { min: 1, max: 300 };
 export const HEIGHT_CM_RANGE = { min: 30, max: 250 };
+export const SYSTOLIC_BP_RANGE = { min: 60, max: 260 };
+export const DIASTOLIC_BP_RANGE = { min: 40, max: 160 };
+export const TEMPERATURE_C_RANGE = { min: 30, max: 43 };
+export const PULSE_RATE_RANGE = { min: 30, max: 220 };
+
+/** Placeholders until the panel supplies the real ~10-condition list. */
+export const SICKNESS_OPTIONS = [
+  'Sickness 1',
+  'Sickness 2',
+  'Sickness 3',
+  'Sickness 4',
+  'Sickness 5',
+  'Sickness 6',
+  'Sickness 7',
+  'Sickness 8',
+  'Sickness 9',
+  'Sickness 10',
+];
 
 /**
  * Whether a measurement typed into a form is one the app will record. Takes the

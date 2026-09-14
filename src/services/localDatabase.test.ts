@@ -485,6 +485,40 @@ describe('the local store', () => {
       expect(await store.findLocalAssessmentOnDate('r1', '2026-08-02')).toBeNull();
       expect(await store.findLocalAssessmentOnDate('r2', '2026-08-01')).toBeNull();
     });
+
+    // Vitals are optional (null), sicknesses is an array — SQLite has neither type
+    // natively, so both are worth proving they survive the round trip unchanged.
+    it('round-trips vitals and the sicknesses array', async () => {
+      await seed();
+      await store.saveHealthAssessmentLocally(
+        assessment({
+          assessment_id: 'a1',
+          resident_id: 'r1',
+          assessment_date: '2026-08-01',
+          systolic_bp: 120,
+          diastolic_bp: 80,
+          temperature_c: 36.5,
+          pulse_rate: 72,
+          sicknesses: ['Sickness 1', 'Other'],
+          sickness_other_note: 'Chikungunya',
+        }),
+      );
+
+      const found = await store.findLocalAssessmentOnDate('r1', '2026-08-01');
+
+      expect(found?.systolic_bp).toBe(120);
+      expect(found?.pulse_rate).toBe(72);
+      expect(found?.sicknesses).toEqual(['Sickness 1', 'Other']);
+      expect(found?.sickness_other_note).toBe('Chikungunya');
+
+      await store.saveHealthAssessmentLocally(
+        assessment({ assessment_id: 'a2', resident_id: 'r1', assessment_date: '2026-08-02' }),
+      );
+      const unset = await store.findLocalAssessmentOnDate('r1', '2026-08-02');
+
+      expect(unset?.systolic_bp).toBeNull();
+      expect(unset?.sicknesses).toEqual([]);
+    });
   });
 
   describe('the households browse list', () => {
