@@ -233,8 +233,10 @@ const assessmentColumns: CsvColumn<HealthAssessment>[] = [
   { header: 'Diastolic BP', value: (row) => row.diastolic_bp },
   { header: 'Temperature (°C)', value: (row) => row.temperature_c },
   { header: 'Pulse rate', value: (row) => row.pulse_rate },
-  { header: 'Sicknesses', value: (row) => row.sicknesses?.join(', ') },
-  { header: 'Other sickness', value: (row) => row.sickness_other_note },
+  { header: 'Primary illness', value: (row) => (row.primary_illness ? titleCase(row.primary_illness) : '') },
+  { header: 'Other illness', value: (row) => row.illness_other },
+  { header: 'Health complications', value: (row) => row.health_complications?.map(titleCase).join(', ') },
+  { header: 'Vaccination status', value: (row) => (row.vaccination_status ? titleCase(row.vaccination_status) : '') },
 ];
 
 const inventoryColumns: CsvColumn<InventoryItem>[] = [

@@ -499,9 +499,9 @@ describe('the local store', () => {
       expect(await store.findLocalAssessmentOnDate('r2', '2026-08-01')).toBeNull();
     });
 
-    // Vitals are optional (null), sicknesses is an array — SQLite has neither type
+    // Vitals are optional (null), complications is an array — SQLite has neither type
     // natively, so both are worth proving they survive the round trip unchanged.
-    it('round-trips vitals and the sicknesses array', async () => {
+    it('round-trips vitals, the illness fields and the complications array', async () => {
       await seed();
       await store.saveHealthAssessmentLocally(
         assessment({
@@ -512,8 +512,10 @@ describe('the local store', () => {
           diastolic_bp: 80,
           temperature_c: 36.5,
           pulse_rate: 72,
-          sicknesses: ['Sickness 1', 'Other'],
-          sickness_other_note: 'Chikungunya',
+          vaccination_status: 'partial',
+          health_complications: ['anemia', 'chronic_cough'],
+          primary_illness: 'other',
+          illness_other: 'Chikungunya',
         }),
       );
 
@@ -521,8 +523,10 @@ describe('the local store', () => {
 
       expect(found?.systolic_bp).toBe(120);
       expect(found?.pulse_rate).toBe(72);
-      expect(found?.sicknesses).toEqual(['Sickness 1', 'Other']);
-      expect(found?.sickness_other_note).toBe('Chikungunya');
+      expect(found?.vaccination_status).toBe('partial');
+      expect(found?.health_complications).toEqual(['anemia', 'chronic_cough']);
+      expect(found?.primary_illness).toBe('other');
+      expect(found?.illness_other).toBe('Chikungunya');
 
       await store.saveHealthAssessmentLocally(
         assessment({ assessment_id: 'a2', resident_id: 'r1', assessment_date: '2026-08-02' }),
@@ -530,7 +534,11 @@ describe('the local store', () => {
       const unset = await store.findLocalAssessmentOnDate('r1', '2026-08-02');
 
       expect(unset?.systolic_bp).toBeNull();
-      expect(unset?.sicknesses).toEqual([]);
+      expect(unset?.health_complications).toEqual([]);
+      // The server's defaults, so a synced row satisfies its check constraints.
+      expect(unset?.primary_illness).toBe('none');
+      expect(unset?.vaccination_status).toBe('unknown');
+      expect(unset?.illness_other).toBeNull();
     });
   });
 

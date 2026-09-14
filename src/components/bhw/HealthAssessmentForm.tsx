@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import type { HealthAssessment, Individual, NutritionStatus } from '../../types/database';
+import type {
+  HealthAssessment,
+  HealthComplication,
+  Individual,
+  NutritionStatus,
+  PrimaryIllness,
+  VaccinationStatus,
+} from '../../types/database';
 import {
   ADULT_BMI_MIN_AGE,
   ageInYears,
@@ -9,24 +16,26 @@ import {
   DIASTOLIC_BP_RANGE,
   formatDate,
   getNutritionStatus,
+  HEALTH_COMPLICATION_OPTIONS,
   HEIGHT_CM_RANGE,
   ignoreImplicitSubmit,
   isInFuture,
   isMeasurementInRange,
+  PRIMARY_ILLNESS_OPTIONS,
   PULSE_RATE_RANGE,
   scrollToFirstError,
-  SICKNESS_OPTIONS,
   SYSTOLIC_BP_RANGE,
   TEMPERATURE_C_RANGE,
   titleCase,
   today,
+  VACCINATION_STATUS_OPTIONS,
   WEIGHT_KG_RANGE,
 } from '../../lib/utils';
 import { findLocalAssessmentOnDate, saveHealthAssessmentLocally } from '../../services/localDatabase';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
-import { FormActions, FormField } from '../common/FormField';
+import { FormActions, FormField, SelectField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
 import { MemberChoice } from './MemberFields';
@@ -100,9 +109,10 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   const [diastolicBp, setDiastolicBp] = useState('');
   const [temperatureC, setTemperatureC] = useState('');
   const [pulseRate, setPulseRate] = useState('');
-  const [sicknesses, setSicknesses] = useState<string[]>([]);
-  const [otherSickness, setOtherSickness] = useState(false);
-  const [otherSicknessNote, setOtherSicknessNote] = useState('');
+  const [primaryIllness, setPrimaryIllness] = useState<PrimaryIllness>('none');
+  const [illnessOther, setIllnessOther] = useState('');
+  const [complications, setComplications] = useState<HealthComplication[]>([]);
+  const [vaccinationStatus, setVaccinationStatus] = useState<VaccinationStatus>('unknown');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
@@ -128,7 +138,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       !vitalOk(temperatureC, TEMPERATURE_C_RANGE) ||
       !vitalOk(pulseRate, PULSE_RATE_RANGE)) &&
       'vitals within range',
-    otherSickness && !otherSicknessNote.trim() && 'the other sickness named',
+    primaryIllness === 'other' && !illnessOther.trim() && 'the other illness named',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
   const caveats = bmiCaveats(resident);
@@ -200,8 +210,10 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       diastolic_bp: diastolicBp.trim() === '' ? null : Number(diastolicBp),
       temperature_c: temperatureC.trim() === '' ? null : Number(temperatureC),
       pulse_rate: pulseRate.trim() === '' ? null : Number(pulseRate),
-      sicknesses: otherSickness ? [...sicknesses, 'Other'] : sicknesses,
-      sickness_other_note: otherSickness ? otherSicknessNote.trim() : null,
+      vaccination_status: vaccinationStatus,
+      health_complications: complications,
+      primary_illness: primaryIllness,
+      illness_other: primaryIllness === 'other' ? illnessOther.trim() : null,
       created_at: existing?.created_at ?? timestamp,
       updated_at: timestamp,
     };
@@ -224,9 +236,10 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     setDiastolicBp('');
     setTemperatureC('');
     setPulseRate('');
-    setSicknesses([]);
-    setOtherSickness(false);
-    setOtherSicknessNote('');
+    setPrimaryIllness('none');
+    setIllnessOther('');
+    setComplications([]);
+    setVaccinationStatus('unknown');
     setAssessmentDate(today());
     setResidentId('');
     setResident(null);
@@ -368,31 +381,54 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
           </p>
         ))}
 
+        <SelectField
+          label="Primary illness"
+          value={primaryIllness}
+          onChange={(event) => setPrimaryIllness(event.target.value as PrimaryIllness)}
+        >
+          {PRIMARY_ILLNESS_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {titleCase(option)}
+            </option>
+          ))}
+        </SelectField>
+        {primaryIllness === 'other' ? (
+          <FormField
+            label="Name the other illness"
+            value={illnessOther}
+            onChange={(event) => setIllnessOther(event.target.value)}
+            required
+            error={showValidation && !illnessOther.trim() ? 'Name the illness, or pick one from the list.' : undefined}
+          />
+        ) : null}
+
         <div>
-          <p className="eyebrow">Sickness observed (optional)</p>
+          <p className="eyebrow">Health complications (optional)</p>
           <div className="choice-list">
-            {SICKNESS_OPTIONS.map((option) => (
+            {HEALTH_COMPLICATION_OPTIONS.map((option) => (
               <MemberChoice
                 key={option}
-                label={option}
-                checked={sicknesses.includes(option)}
+                label={titleCase(option)}
+                checked={complications.includes(option)}
                 onChange={(next) =>
-                  setSicknesses((current) => (next ? [...current, option] : current.filter((item) => item !== option)))
+                  setComplications((current) => (next ? [...current, option] : current.filter((item) => item !== option)))
                 }
               />
             ))}
-            <MemberChoice label="Other" checked={otherSickness} onChange={setOtherSickness} />
           </div>
-          {otherSickness ? (
-            <FormField
-              label="Name the other sickness"
-              value={otherSicknessNote}
-              onChange={(event) => setOtherSicknessNote(event.target.value)}
-              required
-              error={showValidation && !otherSicknessNote.trim() ? 'Name the other sickness, or uncheck it.' : undefined}
-            />
-          ) : null}
         </div>
+
+        <SelectField
+          label="Vaccination status"
+          value={vaccinationStatus}
+          onChange={(event) => setVaccinationStatus(event.target.value as VaccinationStatus)}
+        >
+          {VACCINATION_STATUS_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {titleCase(option)}
+            </option>
+          ))}
+        </SelectField>
 
         <FormActions>
           <Button type="submit" disabled={saving}>

@@ -39,6 +39,29 @@ export const RESIDENT_STATUSES = ['active', 'moved_out', 'deceased', 'transferre
 export type ResidentStatus = (typeof RESIDENT_STATUSES)[number];
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
+export type VaccinationStatus = 'complete' | 'partial' | 'none' | 'unknown';
+export type PrimaryIllness =
+  | 'none'
+  | 'tuberculosis'
+  | 'hypertension'
+  | 'diabetes'
+  | 'asthma'
+  | 'dengue'
+  | 'pneumonia'
+  | 'diarrhea'
+  | 'skin_infection'
+  | 'other';
+export type HealthComplication =
+  | 'anemia'
+  | 'edema'
+  | 'stunting'
+  | 'wasting'
+  | 'disability'
+  | 'vision_problem'
+  | 'hearing_problem'
+  | 'dental_problem'
+  | 'chronic_cough'
+  | 'pregnancy_risk';
 
 // public.profiles — the single source of a session's role. Writes go through the
 // admin_* RPCs, so there is no Insert/Update variant here.
@@ -163,8 +186,11 @@ export type HealthAssessment = {
   diastolic_bp?: number | null;
   temperature_c?: number | null;
   pulse_rate?: number | null;
-  sicknesses?: string[];
-  sickness_other_note?: string | null;
+  vaccination_status?: VaccinationStatus;
+  health_complications?: HealthComplication[];
+  primary_illness?: PrimaryIllness;
+  /** Set only when `primary_illness` is 'other' — the server rejects it otherwise. */
+  illness_other?: string | null;
   created_at: string;
   updated_at: string;
 };
