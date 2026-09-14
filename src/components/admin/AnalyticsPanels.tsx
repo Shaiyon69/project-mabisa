@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react';
 import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
-import { formatCount, titleCase } from '../../lib/utils';
+import {
+  formatCount,
+  HEALTH_COMPLICATION_OPTIONS,
+  PRIMARY_ILLNESS_OPTIONS,
+  titleCase,
+  VACCINATION_STATUS_OPTIONS,
+} from '../../lib/utils';
 import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   AGE_BANDS,
@@ -8,9 +14,12 @@ import {
   ageBandOf,
   barangayStats,
   describeScope,
+  latestPerResident,
   lowStockItems,
   monthlyTrend,
+  monthlyVitals,
   nutritionByBarangay,
+  nutritionTally,
   rankByUnderweight,
   supplyUtilization,
   tally,
@@ -20,6 +29,7 @@ import {
   type ItemUtilization,
   type Tally,
   type TrendPoint,
+  type VitalsPoint,
 } from '../../services/adminData';
 import type { InventoryItemType } from '../../types/database';
 import { Button } from '../common/Button';
@@ -71,6 +81,158 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
       )}
       <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
     </div>
+  );
+}
+
+/** The residents' health in the period: each figure counts a resident once, by their latest check. */
+export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
+  const scope = describeScope(filters, snapshot);
+  const latest = latestPerResident(snapshot.assessments);
+  const vaccination = tally(latest, (row) => row.vaccination_status ?? null, VACCINATION_STATUS_OPTIONS);
+  const vaccinationColors: Record<string, string> = {
+    complete: SERIES_COLORS[0],
+    partial: SERIES_COLORS[1],
+    none: 'var(--danger)',
+    unknown: 'var(--bmi-low)',
+  };
+
+  return (
+    <div className="activity-grid report-grid">
+      <DistributionPanel
+        title="Nutrition status"
+        rows={nutritionTally(snapshot.assessments)}
+        colorFor={(row) => NUTRITION_COLORS[row.label]}
+        filters={filters}
+        scope={scope}
+      />
+      <DistributionPanel
+        title="Vaccination status"
+        rows={vaccination}
+        colorFor={(row) => vaccinationColors[row.label]}
+        filters={filters}
+        scope={scope}
+      />
+      <DistributionPanel
+        title="Primary illness"
+        rows={tally(latest, (row) => row.primary_illness ?? null, PRIMARY_ILLNESS_OPTIONS)
+          .filter((row) => row.label !== 'none')}
+        filters={filters}
+        scope={scope}
+      />
+      <DistributionPanel
+        title="Health complications"
+        rows={tally(
+          latest.flatMap((row) => row.health_complications ?? []),
+          (complication) => complication,
+          HEALTH_COMPLICATION_OPTIONS,
+        )}
+        filters={filters}
+        scope={scope}
+      />
+      <VitalsPanel snapshot={snapshot} filters={filters} scope={scope} />
+    </div>
+  );
+}
+
+/** One health distribution: a ring when `colorFor` is given, bars otherwise, with its table beneath. */
+function DistributionPanel({
+  title,
+  rows,
+  colorFor,
+  filters,
+  scope,
+}: { title: string; rows: Tally[]; colorFor?: (row: Tally) => string } & PanelProps) {
+  const empty = !rows.some((row) => row.count);
+
+  return (
+    <Card className="activity-card report-card" as="article">
+      <PanelHead title={title} onExport={() => exportReport(contextFor(title, { filters, scope }), rows, distributionColumns)} />
+      <SummaryContext filters={filters} extra={scope} />
+      {empty ? (
+        <EmptyState
+          title="Nothing recorded in this period"
+          text="Try a wider date range, or wait for a health worker's phone to send its records."
+        />
+      ) : colorFor ? (
+        <DonutChart rows={rows} colorFor={colorFor} unit="residents" />
+      ) : (
+        <BarChart
+          rows={rows.map((row) => ({ key: row.label, label: titleCase(row.label), values: [row.count] }))}
+          series={[{ label: 'Residents', color: SERIES_COLORS[0] }]}
+        />
+      )}
+      {empty ? null : (
+        <Table
+          columns={distributionTableColumns}
+          rows={rows}
+          getRowKey={(row) => row.label}
+          emptyTitle="Nothing recorded in this period"
+          emptyText="Counts appear here once a health worker's phone has sent its records."
+        />
+      )}
+    </Card>
+  );
+}
+
+const vitalsColumns: CsvColumn<VitalsPoint>[] = [
+  { header: 'Month', value: (row) => row.month },
+  { header: 'Checks with vitals', value: (row) => row.readings },
+  { header: 'Average systolic BP (mmHg)', value: (row) => row.systolic_bp },
+  { header: 'Average diastolic BP (mmHg)', value: (row) => row.diastolic_bp },
+  { header: 'Average temperature (°C)', value: (row) => row.temperature_c },
+  { header: 'Average pulse rate (bpm)', value: (row) => row.pulse_rate },
+];
+
+/** Monthly vital averages. Only blood pressure is drawn: the four vitals share no unit or scale. */
+function VitalsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
+  const points = monthlyVitals(snapshot.assessments, filters);
+  // A month with no reading is skipped, not drawn at zero: an average of nothing is not 0 mmHg.
+  const measured = points.filter((point) => point.systolic_bp !== null && point.diastolic_bp !== null);
+  const blank = (value: number | null) => value ?? '—';
+  const columns: TableColumn<VitalsPoint>[] = [
+    { key: 'month', header: 'Month', render: (row) => row.label },
+    { key: 'readings', header: 'Checks with vitals', numeric: true, render: (row) => row.readings },
+    { key: 'systolic', header: 'Systolic BP', numeric: true, render: (row) => blank(row.systolic_bp) },
+    { key: 'diastolic', header: 'Diastolic BP', numeric: true, render: (row) => blank(row.diastolic_bp) },
+    { key: 'temperature', header: 'Temperature (°C)', numeric: true, render: (row) => blank(row.temperature_c) },
+    { key: 'pulse', header: 'Pulse (bpm)', numeric: true, render: (row) => blank(row.pulse_rate) },
+  ];
+
+  return (
+    <Card className="activity-card report-card report-card-wide" as="article">
+      <PanelHead
+        title="Vital signs"
+        onExport={() => exportReport(contextFor('Vital Signs', { filters, scope }), points, vitalsColumns)}
+      />
+      <SummaryContext filters={filters} extra={scope} />
+      {points.some((point) => point.readings) ? (
+        <>
+          {measured.length ? (
+            <LineChart
+              rows={measured.map((point) => ({
+                key: point.month,
+                label: point.label,
+                values: [point.systolic_bp ?? 0, point.diastolic_bp ?? 0],
+              }))}
+              series={[
+                { label: 'Average systolic BP', color: SERIES_COLORS[0] },
+                { label: 'Average diastolic BP', color: SERIES_COLORS[1] },
+              ]}
+            />
+          ) : null}
+          <Table
+            columns={columns}
+            rows={points}
+            getRowKey={(row) => row.month}
+            emptyTitle="No vitals in this period"
+            emptyText="Vitals appear here once a health worker records them at a check."
+          />
+        </>
+      ) : (
+        <EmptyState title="No vitals in this period" text="Vitals are optional at a check, so not every visit records them." />
+      )}
+      <p className="muted report-note">Averages over the checks that took each vital, not over every check.</p>
+    </Card>
   );
 }
 
@@ -432,10 +594,6 @@ function ComparisonPanel({
   );
 }
 
-/**
- * How much of the register has been reached, which is a different question from
- * what the assessments found. Counts distinct residents, not assessments.
- */
 const coverageTableColumns: TableColumn<BarangayStats>[] = [
   { key: 'name', header: 'Barangay', render: (row) => row.name },
   { key: 'residents', header: 'Residents', numeric: true, render: (row) => row.residents },
@@ -443,6 +601,10 @@ const coverageTableColumns: TableColumn<BarangayStats>[] = [
   { key: 'coverage', header: 'Coverage', numeric: true, render: (row) => percent(row.coverageRate) },
 ];
 
+/**
+ * How much of the register has been reached, which is a different question from
+ * what the assessments found. Counts distinct residents, not assessments.
+ */
 function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & PanelProps) {
   // Emptiest first: a gap is what this panel is for, and at sixty-four barangays
   // the best-covered ones pushed it off the bottom of the grid.

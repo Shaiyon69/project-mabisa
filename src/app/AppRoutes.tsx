@@ -16,6 +16,7 @@ const ResidentsPage = lazy(() => import('../pages/admin/AdminPages').then((modul
 const InventoryPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.InventoryPage })));
 const AccountsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.AccountsPage })));
 const AnalyticsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.AnalyticsPage })));
+const HealthPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.HealthPage })));
 const ReportsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.ReportsPage })));
 
 const BHWLayout = lazy(() => import('../components/bhw/BHWLayout').then((module) => ({ default: module.BHWLayout })));
@@ -133,6 +134,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
             <Route path="residents" element={<ResidentsPage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="accounts" element={<AccountsPage />} />
+            <Route path="health" element={<HealthPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="reports" element={<ReportsPage />} />
           </Route>

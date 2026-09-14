@@ -19,6 +19,7 @@ import { filterInventory } from '../../services/adminData';
 // chart components off the path to first paint. `DonutChart` stays eager;
 // `AdminDashboard` needs it.
 const AnalyticsPanels = lazy(() => import('../../components/admin/AnalyticsPanels').then((module) => ({ default: module.AnalyticsPanels })));
+const HealthPanels = lazy(() => import('../../components/admin/AnalyticsPanels').then((module) => ({ default: module.HealthPanels })));
 const ReportCards = lazy(() => import('../../components/admin/ReportCards').then((module) => ({ default: module.ReportCards })));
 
 /**
@@ -205,6 +206,32 @@ export function AnalyticsPage() {
       <div aria-busy={loading}>
         <Suspense fallback={null}>
           <AnalyticsPanels snapshot={snapshot} filters={filters} />
+        </Suspense>
+      </div>
+    </>
+  );
+}
+
+export function HealthPage() {
+  const { snapshot, filters, setFilters, loading, error } = useAdminData();
+  const role = useAdminRole();
+
+  return (
+    <>
+      <PageHeader
+        icon="heart"
+        title="Health"
+        description="What the health checks found: nutrition, vaccination, illness and vital signs."
+        actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
+      />
+      {error ? (
+        <Card className="admin-monitor">
+          <ErrorState title="Could not load the records" text={error} />
+        </Card>
+      ) : null}
+      <div aria-busy={loading}>
+        <Suspense fallback={null}>
+          <HealthPanels snapshot={snapshot} filters={filters} />
         </Suspense>
       </div>
     </>
