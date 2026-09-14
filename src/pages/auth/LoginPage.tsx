@@ -42,7 +42,7 @@ export function LoginPage({
       <section className="login-panel">
         <div className="login-hero">
           <span className="brand-mark" aria-hidden="true">
-            B
+            <img src="/assets/logo.png" alt="" />
           </span>
           <div>
             {/* The sign-in screen is where most people meet the name for the

@@ -65,11 +65,18 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: 22px 16px 24px 18px;
+  overflow: hidden;
   color: var(--primary-foreground);
   background: var(--primary);
   font-family: var(--display);
   font-size: 22px;
   font-weight: 800;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* Common components */
