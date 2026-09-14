@@ -25,6 +25,7 @@ const RegisterResidentPage = lazy(() => import('../pages/bhw/BHWPages').then((mo
 const BhwResidentsPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ResidentsPage })));
 const ResidentDetailPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ResidentDetailPage })));
 const HealthAssessmentPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.HealthAssessmentPage })));
+const ImmunizationPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ImmunizationPage })));
 const SupplyDisbursementPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.SupplyDisbursementPage })));
 const ProfilePage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ProfilePage })));
 
@@ -107,6 +108,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
             <Route path="residents" element={<BhwResidentsPage />} />
             <Route path="residents/:residentId" element={<ResidentDetailPage />} />
             <Route path="health-assessment" element={<HealthAssessmentPage />} />
+            <Route path="immunization" element={<ImmunizationPage />} />
             <Route path="supply-disbursement" element={<SupplyDisbursementPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>

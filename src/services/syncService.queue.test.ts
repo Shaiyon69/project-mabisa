@@ -139,12 +139,14 @@ vi.mock('./localDatabase', () => ({
     return Promise.resolve();
   },
   pullHealthAssessmentsFromServer: () => Promise.resolve(),
+  pullImmunizationsFromServer: () => Promise.resolve(),
   pullSupplyDisbursementsFromServer: () => Promise.resolve(),
   readExistingIds: (table: string) => Promise.resolve(new Set(fake.known[table] ?? [])),
   primaryKeys: {
     households: 'household_id',
     individuals: 'resident_id',
     health_assessments: 'assessment_id',
+    immunizations: 'immunization_id',
     inventory_items: 'item_id',
     supply_disbursements: 'log_id',
   },
