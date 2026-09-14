@@ -185,8 +185,10 @@ const migrations = [
     diastolic_bp integer,
     temperature_c real,
     pulse_rate integer,
-    sicknesses text not null default '[]',
-    sickness_other_note text,
+    vaccination_status text not null default 'unknown',
+    health_complications text not null default '[]',
+    primary_illness text not null default 'none',
+    illness_other text,
     created_at text not null,
     updated_at text not null,
     foreign key (resident_id) references individuals(resident_id) on delete cascade
@@ -296,9 +298,11 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   { table: 'health_assessments', column: 'diastolic_bp', definition: 'integer' },
   { table: 'health_assessments', column: 'temperature_c', definition: 'real' },
   { table: 'health_assessments', column: 'pulse_rate', definition: 'integer' },
+  { table: 'health_assessments', column: 'vaccination_status', definition: "text not null default 'unknown'" },
   // JSON-encoded array — SQLite has no native array type.
-  { table: 'health_assessments', column: 'sicknesses', definition: "text not null default '[]'" },
-  { table: 'health_assessments', column: 'sickness_other_note', definition: 'text' },
+  { table: 'health_assessments', column: 'health_complications', definition: "text not null default '[]'" },
+  { table: 'health_assessments', column: 'primary_illness', definition: "text not null default 'none'" },
+  { table: 'health_assessments', column: 'illness_other', definition: 'text' },
 ];
 
 /**
@@ -894,9 +898,10 @@ export async function saveHouseholdWithMembersLocally(
 const assessmentInsert = {
   statement: `insert or replace into health_assessments
      (assessment_id, resident_id, assessment_date, weight, height, bmi, nutrition_status,
-      systolic_bp, diastolic_bp, temperature_c, pulse_rate, sicknesses, sickness_other_note,
+      systolic_bp, diastolic_bp, temperature_c, pulse_rate,
+      vaccination_status, health_complications, primary_illness, illness_other,
       created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   values: (assessment: HealthAssessment): SqlValue[] => [
     assessment.assessment_id,
     assessment.resident_id,
@@ -909,8 +914,10 @@ const assessmentInsert = {
     assessment.diastolic_bp ?? null,
     assessment.temperature_c ?? null,
     assessment.pulse_rate ?? null,
-    JSON.stringify(assessment.sicknesses ?? []),
-    assessment.sickness_other_note ?? null,
+    assessment.vaccination_status ?? 'unknown',
+    JSON.stringify(assessment.health_complications ?? []),
+    assessment.primary_illness ?? 'none',
+    assessment.illness_other ?? null,
     assessment.created_at,
     assessment.updated_at,
   ],
@@ -1307,7 +1314,7 @@ function toHealthAssessment(row: Record<string, unknown>): HealthAssessment {
     diastolic_bp: row.diastolic_bp === null || row.diastolic_bp === undefined ? null : Number(row.diastolic_bp),
     temperature_c: row.temperature_c === null || row.temperature_c === undefined ? null : Number(row.temperature_c),
     pulse_rate: row.pulse_rate === null || row.pulse_rate === undefined ? null : Number(row.pulse_rate),
-    sicknesses: JSON.parse(String(row.sicknesses || '[]')),
+    health_complications: JSON.parse(String(row.health_complications || '[]')),
   } as unknown as HealthAssessment;
 }
 

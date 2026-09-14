@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import type { NutritionStatus, ResidentStatus } from '../types/database';
+import type { HealthComplication, NutritionStatus, PrimaryIllness, ResidentStatus, VaccinationStatus } from '../types/database';
 
 export function calculateBmi(weightKg: number, heightCm: number): number | null {
   if (weightKg <= 0 || heightCm <= 0) {
@@ -35,19 +35,34 @@ export const VACCINE_OPTIONS = [
   'COVID-19',
 ];
 
-/** Placeholders until the panel supplies the real ~10-condition list. */
-export const SICKNESS_OPTIONS = [
-  'Sickness 1',
-  'Sickness 2',
-  'Sickness 3',
-  'Sickness 4',
-  'Sickness 5',
-  'Sickness 6',
-  'Sickness 7',
-  'Sickness 8',
-  'Sickness 9',
-  'Sickness 10',
-];
+/** Mirror the check constraints on `health_assessments` — a value outside these is rejected on sync. */
+export const PRIMARY_ILLNESS_OPTIONS = [
+  'none',
+  'tuberculosis',
+  'hypertension',
+  'diabetes',
+  'asthma',
+  'dengue',
+  'pneumonia',
+  'diarrhea',
+  'skin_infection',
+  'other',
+] as const satisfies readonly PrimaryIllness[];
+
+export const HEALTH_COMPLICATION_OPTIONS = [
+  'anemia',
+  'edema',
+  'stunting',
+  'wasting',
+  'disability',
+  'vision_problem',
+  'hearing_problem',
+  'dental_problem',
+  'chronic_cough',
+  'pregnancy_risk',
+] as const satisfies readonly HealthComplication[];
+
+export const VACCINATION_STATUS_OPTIONS = ['unknown', 'complete', 'partial', 'none'] as const satisfies readonly VaccinationStatus[];
 
 /**
  * Whether a measurement typed into a form is one the app will record. Takes the
