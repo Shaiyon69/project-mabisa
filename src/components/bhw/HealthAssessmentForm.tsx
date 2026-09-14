@@ -21,6 +21,7 @@ import {
   ignoreImplicitSubmit,
   isInFuture,
   isMeasurementInRange,
+  isWholeNumberInRange,
   PRIMARY_ILLNESS_OPTIONS,
   PULSE_RATE_RANGE,
   scrollToFirstError,
@@ -90,8 +91,8 @@ function railPercent(bmi: number): number {
 }
 
 /** Vitals are optional: not every visit takes every one, so blank passes. */
-function vitalOk(value: string, range: { min: number; max: number }): boolean {
-  return value.trim() === '' || isMeasurementInRange(value, range);
+function vitalOk(value: string, range: { min: number; max: number }, wholeNumber = true): boolean {
+  return value.trim() === '' || (wholeNumber ? isWholeNumberInRange(value, range) : isMeasurementInRange(value, range));
 }
 
 type HealthAssessmentFormProps = {
@@ -135,7 +136,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       'a weight and height within range',
     (!vitalOk(systolicBp, SYSTOLIC_BP_RANGE) ||
       !vitalOk(diastolicBp, DIASTOLIC_BP_RANGE) ||
-      !vitalOk(temperatureC, TEMPERATURE_C_RANGE) ||
+      !vitalOk(temperatureC, TEMPERATURE_C_RANGE, false) ||
       !vitalOk(pulseRate, PULSE_RATE_RANGE)) &&
       'vitals within range',
     primaryIllness === 'other' && !illnessOther.trim() && 'the other illness named',
@@ -324,7 +325,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             value={systolicBp}
             onChange={(event) => setSystolicBp(event.target.value)}
             placeholder="(Optional)"
-            error={showValidation && !vitalOk(systolicBp, SYSTOLIC_BP_RANGE) ? 'Enter a value from 60 to 260 mmHg.' : undefined}
+            error={showValidation && !vitalOk(systolicBp, SYSTOLIC_BP_RANGE) ? 'Enter a whole number from 60 to 260 mmHg.' : undefined}
           />
           <FormField
             label="Diastolic BP (mmHg)"
@@ -334,7 +335,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             value={diastolicBp}
             onChange={(event) => setDiastolicBp(event.target.value)}
             placeholder="(Optional)"
-            error={showValidation && !vitalOk(diastolicBp, DIASTOLIC_BP_RANGE) ? 'Enter a value from 40 to 160 mmHg.' : undefined}
+            error={showValidation && !vitalOk(diastolicBp, DIASTOLIC_BP_RANGE) ? 'Enter a whole number from 40 to 160 mmHg.' : undefined}
           />
         </div>
         <div className="field-row">
@@ -347,7 +348,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             value={temperatureC}
             onChange={(event) => setTemperatureC(event.target.value)}
             placeholder="(Optional)"
-            error={showValidation && !vitalOk(temperatureC, TEMPERATURE_C_RANGE) ? 'Enter a value from 30 to 43°C.' : undefined}
+            error={showValidation && !vitalOk(temperatureC, TEMPERATURE_C_RANGE, false) ? 'Enter a value from 30 to 43°C.' : undefined}
           />
           <FormField
             label="Pulse rate (bpm)"
@@ -357,7 +358,7 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             value={pulseRate}
             onChange={(event) => setPulseRate(event.target.value)}
             placeholder="(Optional)"
-            error={showValidation && !vitalOk(pulseRate, PULSE_RATE_RANGE) ? 'Enter a value from 30 to 220 bpm.' : undefined}
+            error={showValidation && !vitalOk(pulseRate, PULSE_RATE_RANGE) ? 'Enter a whole number from 30 to 220 bpm.' : undefined}
           />
         </div>
         {/* Overwriting a check is the right move for a mistyped weight and the wrong
