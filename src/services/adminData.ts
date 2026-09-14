@@ -1,15 +1,16 @@
-import { PULL_PAGE_SIZE, readAllPages, supabase } from '../lib/supabase';
+import { readAllPages, supabase } from '../lib/supabase';
 import { ADULT_BMI_MIN_AGE, ageInYears, isoLocalDay } from '../lib/utils';
 import type { ChartRow } from '../lib/charts';
 import type {
+  AccountViewRow,
   Barangay,
   BhwItemStock,
-  BhwPurokAssignment,
   HealthAssessment,
   Individual,
   IndividualSex,
   InventoryAllocation,
   InventoryItem,
+  InventoryItemRow,
   InventoryItemType,
   NutritionStatus,
   Profile,
@@ -20,6 +21,20 @@ import type {
 } from '../types/database';
 
 /** Admin portal reads. Goes to Supabase directly, never localDatabase; row scope is enforced by RLS. */
+
+/** One page of a list the server paged, and how many rows match in all. */
+export type Page<Row> = {
+  rows: Row[];
+  total: number;
+};
+
+function pageOf<Row>({ data, count, error }: { data: Row[] | null; count: number | null; error: { message: string } | null }): Page<Row> {
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { rows: data ?? [], total: count ?? 0 };
+}
 
 /** The period and scope a dashboard or report is filtered by. */
 export type AdminFilters = {
@@ -120,7 +135,7 @@ export function describePeriod(filters: AdminFilters): string {
   return `${filters.from} to ${filters.to}`;
 }
 
-/** The scope clause a caption and a CSV preamble both need, naming the purok too once one is set. */
+/** The scope clause a caption and the printed report both need, naming the purok too once one is set. */
 export function describeScope(filters: AdminFilters, snapshot: Pick<AdminSnapshot, 'barangays' | 'puroks'>): string {
   if (!filters.barangayId) {
     return 'All barangays';
@@ -140,9 +155,13 @@ export function describeScope(filters: AdminFilters, snapshot: Pick<AdminSnapsho
 /** Only the resident columns the summaries need. `household_id` is how a resident reaches a barangay. */
 type AdminResident = Pick<Individual, 'resident_id' | 'household_id' | 'sex' | 'birthday' | 'updated_at'>;
 
+/** A resident of any membership status, named, so an assessment can be shown against a person. */
+export type AdminPerson = Pick<Individual, 'resident_id' | 'household_id' | 'first_name' | 'last_name' | 'sex' | 'birthday'>;
+
 /** Just enough of a household to place everything under it in a barangay. Both scope columns are trigger-stamped, so optional. */
 type AdminHousehold = {
   household_id: string;
+  household_number?: string;
   purok_id?: string;
   barangay_id?: string;
   updated_at: string;
@@ -168,6 +187,8 @@ export type AdminSnapshot = {
   householdCount: number;
   residentCount: number;
   residents: AdminResident[];
+  /** Every resident in scope whatever their status, for naming who an assessment belongs to. */
+  people: AdminPerson[];
   /** Period-scoped. */
   assessments: HealthAssessment[];
   disbursements: SupplyDisbursement[];
@@ -198,6 +219,7 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   householdCount: 0,
   residentCount: 0,
   residents: [],
+  people: [],
   assessments: [],
   disbursements: [],
   inventoryItems: [],
@@ -236,17 +258,17 @@ function readSnapshotRows(filters: AdminFilters) {
     // Rows rather than a count: `individuals` carries no barangay of its own, so
     // every per-barangay figure below joins through this list.
     readAllPages<AdminHousehold>('Household', 'household_id', () =>
-      supabase.from('households').select('household_id, purok_id, barangay_id, updated_at'),
+      supabase.from('households').select('household_id, household_number, purok_id, barangay_id, updated_at'),
     ),
     // Active members only: someone who moved out or died is still on file, but
     // is not counted in the resident-facing demographics.
     readAllPages<AdminResident>('Resident', 'resident_id', () =>
       supabase.from('individuals').select('resident_id, household_id, sex, birthday, updated_at').eq('status', 'active'),
     ),
-    // Every status, id columns only: scopes assessments/disbursements below, which
-    // must not drop a record just because the resident later changed status.
-    readAllPages<Pick<AdminResident, 'resident_id' | 'household_id'>>('Resident (all statuses)', 'resident_id', () =>
-      supabase.from('individuals').select('resident_id, household_id'),
+    // Every status: scopes assessments/disbursements below, which must not drop a
+    // record just because the resident later changed status.
+    readAllPages<AdminPerson>('Resident (all statuses)', 'resident_id', () =>
+      supabase.from('individuals').select('resident_id, household_id, first_name, last_name, sex, birthday'),
     ),
     readAllPages<HealthAssessment>('Health assessment', 'assessment_id', () =>
       supabase
@@ -383,9 +405,8 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
 
   // All statuses, not just active: a record made before a resident moved out or
   // died must still count in the period it happened.
-  const scopedResidentIds = new Set(
-    residentHouseholds.filter((resident) => inScope.has(resident.household_id)).map((resident) => resident.resident_id),
-  );
+  const people = residentHouseholds.filter((resident) => inScope.has(resident.household_id));
+  const scopedResidentIds = new Set(people.map((resident) => resident.resident_id));
 
   const assessmentRows = assessments.filter((row) => scopedResidentIds.has(row.resident_id));
   const disbursementRows = disbursements.filter((row) => scopedResidentIds.has(row.resident_id));
@@ -401,6 +422,7 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     householdCount: householdRows.length,
     residentCount: residentRows.length,
     residents: residentRows,
+    people,
     assessments: assessmentRows,
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
@@ -601,25 +623,34 @@ export function lowStockItems(items: InventoryItem[]): InventoryItem[] {
   });
 }
 
-/** Inventory rows the Inventory tab's scope filters match. Low stock is decided by `lowStockItems`. */
-export function filterInventory(items: InventoryItem[], filters: AdminFilters): InventoryItem[] {
-  const low = new Set(lowStockItems(items).map((item) => item.item_id));
+/** One page of barangay stock, low stock first. `is_low` is the view's copy of the `lowStockItems` rule. */
+export async function fetchInventoryPage(query: string, filters: AdminFilters, limit: number, offset: number): Promise<Page<InventoryItemRow>> {
+  const search = sanitizeSearch(query);
+  let request = supabase.from('inventory_item_rows').select('*', { count: 'exact' });
 
-  return items.filter((item) => {
-    if (filters.itemType && item.type !== filters.itemType) {
-      return false;
-    }
+  if (filters.barangayId) {
+    request = request.eq('barangay_id', filters.barangayId);
+  }
 
-    if (filters.stockLevel === 'low' && !low.has(item.item_id)) {
-      return false;
-    }
+  if (filters.itemType) {
+    request = request.eq('type', filters.itemType);
+  }
 
-    if (filters.stockLevel === 'sufficient' && low.has(item.item_id)) {
-      return false;
-    }
+  if (filters.stockLevel) {
+    request = request.eq('is_low', filters.stockLevel === 'low');
+  }
 
-    return true;
-  });
+  if (search) {
+    request = request.or(`item_name.ilike.%${search}%,type.ilike.%${search}%,barangay_name.ilike.%${search}%`);
+  }
+
+  return pageOf(
+    await request
+      .order('is_low', { ascending: false })
+      .order('item_name')
+      .order('item_id')
+      .range(offset, offset + limit - 1),
+  );
 }
 
 /** Quantity released per item over the period, largest first. */
@@ -635,7 +666,7 @@ export function disbursementsByItem(disbursements: SupplyDisbursement[], items: 
   return [...totals.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
 }
 
-/** BHW accounts with their current purok. Three plain queries joined in memory, since the embeds are untyped here. */
+/** An account and its current purok, off the `account_rows` view. */
 export type AccountRow = {
   profile: Profile;
   purokName: string | null;
@@ -649,35 +680,14 @@ export type AccountRow = {
   barangayId: string | null;
 };
 
+function toAccountRow({ purok_id, purok_name, assigned_since, scope_barangay_id, ...profile }: AccountViewRow): AccountRow {
+  return { profile, purokName: purok_name, assignedSince: assigned_since, purokId: purok_id, barangayId: scope_barangay_id };
+}
+
 export async function fetchAccounts(): Promise<AccountRow[]> {
-  // Paged: the accounts table reports its own row count as the total, so a
-  // read stopping at the server's cap would look complete.
-  const [profiles, assignments, puroks] = await Promise.all([
-    readAllPages<Profile>('Account', 'user_id', () => supabase.from('profiles').select('*')).then((rows) =>
-      byText(rows, 'full_name'),
-    ),
-    readAllPages<BhwPurokAssignment>('Purok assignment', 'assignment_id', () =>
-      supabase.from('bhw_purok_assignments').select('*').is('ended_at', null),
-    ),
-    readAllPages<Purok>('Purok', 'purok_id', () => supabase.from('puroks').select('*')),
-  ]);
+  const rows = await readAllPages<AccountViewRow>('Account', 'user_id', () => supabase.from('account_rows').select('*'));
 
-  const purokNames = new Map(puroks.map((purok: Purok) => [purok.purok_id, purok.name]));
-  const purokBarangays = new Map(puroks.map((purok: Purok) => [purok.purok_id, purok.barangay_id]));
-  const active = new Map(assignments.map((assignment) => [assignment.bhw_id, assignment]));
-
-  return profiles.map((profile) => {
-    const assignment = active.get(profile.user_id);
-    const purokId = assignment?.purok_id ?? null;
-
-    return {
-      profile,
-      purokName: assignment ? purokNames.get(assignment.purok_id) ?? null : null,
-      assignedSince: assignment?.started_at ?? null,
-      purokId,
-      barangayId: (purokId ? purokBarangays.get(purokId) : undefined) ?? profile.barangay_id ?? null,
-    };
-  });
+  return byText(rows, 'full_name').map(toAccountRow);
 }
 
 /**
@@ -690,78 +700,63 @@ export function canAssignPurok(viewer: UserRole | null, account: UserRole): bool
 }
 
 /**
- * The accounts a role manages on the Accounts tab, which is narrower than what it
- * may read: the RHU appoints barangay administrators, and a barangay administrator
- * runs the health workers under one. Neither is shown a row it cannot act on, its
- * own included.
+ * One page of the accounts a role manages on the Accounts tab, which is narrower
+ * than what it may read: the RHU appoints barangay administrators, and a barangay
+ * administrator runs the health workers under one.
  *
- * In purok order, which is how a barangay administrator thinks of their workers.
- * Unassigned last: they are the rows to act on, and burying them under a purok
- * heading they do not have would read as an assignment.
+ * In purok order, unassigned last: they are the rows to act on.
  */
-export function visibleAccounts(viewer: UserRole | null, rows: AccountRow[]): AccountRow[] {
+export async function fetchAccountPage(viewer: UserRole | null, filters: AdminFilters, limit: number, offset: number): Promise<Page<AccountRow>> {
   const managed: UserRole | null = viewer === 'admin' ? 'barangay_admin' : viewer === 'barangay_admin' ? 'bhw' : null;
 
   if (!managed) {
-    return [];
+    return { rows: [], total: 0 };
   }
 
-  return rows
-    .filter((row) => row.profile.role === managed)
-    .sort(
-      (a, b) =>
-        Number(a.purokName === null) - Number(b.purokName === null) ||
-        (a.purokName ?? '').localeCompare(b.purokName ?? '') ||
-        a.profile.full_name.localeCompare(b.profile.full_name),
-    );
+  let request = supabase.from('account_rows').select('*', { count: 'exact' }).eq('role', managed);
+
+  if (filters.accountRole) {
+    request = request.eq('role', filters.accountRole);
+  }
+
+  if (filters.accountActive) {
+    request = request.eq('is_active', filters.accountActive === 'active');
+  }
+
+  if (filters.barangayId) {
+    request = request.eq('scope_barangay_id', filters.barangayId);
+  }
+
+  if (filters.purokId) {
+    request = request.eq('purok_id', filters.purokId);
+  }
+
+  const page = pageOf(
+    await request
+      .order('purok_name', { nullsFirst: false })
+      .order('full_name')
+      .order('user_id')
+      .range(offset, offset + limit - 1),
+  );
+
+  return { rows: page.rows.map(toAccountRow), total: page.total };
 }
 
 /**
- * Barangays with nobody administering them. A health worker there can be created
- * but never assigned a purok, so they can record nothing — and the RHU is the only
- * account that can appoint the administrator who would fix it.
+ * Active barangays with no active administrator. A health worker there can be
+ * created but never assigned a purok, and only the RHU can appoint the fix.
  */
-export function barangaysMissingAdmin(barangays: Barangay[], rows: AccountRow[]): Barangay[] {
-  const administered = new Set(
-    rows
-      .filter((row) => row.profile.role === 'barangay_admin' && row.profile.is_active)
-      .map((row) => row.profile.barangay_id),
-  );
+export async function fetchBarangaysMissingAdmin(): Promise<Barangay[]> {
+  const [barangays, administrators] = await Promise.all([
+    fetchActiveBarangays(),
+    readAllPages<{ user_id: string; barangay_id: string | null }>('Administrator', 'user_id', () =>
+      supabase.from('profiles').select('user_id, barangay_id').eq('role', 'barangay_admin').eq('is_active', true),
+    ),
+  ]);
+  const administered = new Set(administrators.map((administrator) => administrator.barangay_id));
 
   return barangays.filter((barangay) => !administered.has(barangay.barangay_id));
 }
-
-/** Account rows the Accounts tab's scope filters match: role, active state, barangay and purok. */
-export function filterAccounts(rows: AccountRow[], filters: AdminFilters): AccountRow[] {
-  return rows.filter((row) => {
-    if (filters.accountRole && row.profile.role !== filters.accountRole) {
-      return false;
-    }
-
-    if (filters.accountActive === 'active' && !row.profile.is_active) {
-      return false;
-    }
-
-    if (filters.accountActive === 'inactive' && row.profile.is_active) {
-      return false;
-    }
-
-    if (filters.barangayId && row.barangayId !== filters.barangayId) {
-      return false;
-    }
-
-    if (filters.purokId && row.purokId !== filters.purokId) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-type ResidentPage = {
-  rows: Individual[];
-  total: number;
-};
 
 /** Strips characters PostgREST reads as filter syntax before the search feeds into `.or()`. */
 function sanitizeSearch(query: string): string {
@@ -795,7 +790,7 @@ export async function fetchResidentPage(
   offset: number,
   filters: AdminFilters,
   statusFilter?: ResidentStatusFilter,
-): Promise<ResidentPage> {
+): Promise<Page<Individual>> {
   const search = sanitizeSearch(query);
   // `!inner` joins rather than nests: only the households column is needed, and
   // an inner join is what drops residents outside the scope. Filtering here
@@ -895,28 +890,6 @@ export async function fetchResidentPage(
     }),
     total: count ?? 0,
   };
-}
-
-/**
- * Every resident the current filters match, followed page by page to the end.
- * Takes the reader rather than calling `fetchResidentPage`, so the paging can
- * be exercised without a network.
- */
-export async function readAllResidentPages(
-  read: (offset: number) => Promise<ResidentPage>,
-): Promise<Individual[]> {
-  const rows: Individual[] = [];
-
-  for (let offset = 0; ; offset += PULL_PAGE_SIZE) {
-    const page = await read(offset);
-    rows.push(...page.rows);
-
-    // A short page ends the set; the total stops a reader that keeps handing
-    // back full pages from looping forever.
-    if (page.rows.length < PULL_PAGE_SIZE || rows.length >= page.total) {
-      return rows;
-    }
-  }
 }
 
 // -----------------------------------------------------------------------------
@@ -1320,6 +1293,132 @@ export function monthlyTrend(assessments: HealthAssessment[], filters: AdminFilt
   });
 }
 
+const VITALS = ['systolic_bp', 'diastolic_bp', 'temperature_c', 'pulse_rate'] as const;
+
+export type VitalsPoint = {
+  month: string;
+  label: string;
+  /** Checks that took at least one vital. */
+  readings: number;
+} & Record<(typeof VITALS)[number], number | null>;
+
+/** Each vital's monthly average over the checks that took it; null for a month where none did. */
+export function monthlyVitals(assessments: HealthAssessment[], filters: AdminFilters): VitalsPoint[] {
+  const byMonth = new Map<string, HealthAssessment[]>();
+
+  for (const assessment of assessments) {
+    const month = assessment.assessment_date.slice(0, 7);
+    const rows = byMonth.get(month) ?? [];
+    rows.push(assessment);
+    byMonth.set(month, rows);
+  }
+
+  return monthsIn(filters).map(({ month, label }) => {
+    const rows = byMonth.get(month) ?? [];
+    const average = (vital: (typeof VITALS)[number]) => {
+      const values = rows.map((row) => row[vital]).filter((value): value is number => value != null);
+      return values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10 : null;
+    };
+
+    return {
+      month,
+      label,
+      readings: rows.filter((row) => VITALS.some((vital) => row[vital] != null)).length,
+      systolic_bp: average('systolic_bp'),
+      diastolic_bp: average('diastolic_bp'),
+      temperature_c: average('temperature_c'),
+      pulse_rate: average('pulse_rate'),
+    };
+  });
+}
+
+export type ResidentHealthRow = {
+  person: AdminPerson;
+  householdNumber: string;
+  barangay: string;
+  /** Their most recent check in the period. */
+  latest: HealthAssessment;
+  checks: number;
+};
+
+/** One row per resident checked in the period, by last name. */
+export function residentHealthRows(
+  snapshot: Pick<AdminSnapshot, 'people' | 'households' | 'barangays' | 'assessments'>,
+): ResidentHealthRow[] {
+  const people = new Map(snapshot.people.map((person) => [person.resident_id, person]));
+  const households = new Map(snapshot.households.map((household) => [household.household_id, household]));
+  const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
+  const checks = tally(snapshot.assessments, (assessment) => assessment.resident_id);
+  const checkCount = new Map(checks.map((row) => [row.label, row.count]));
+
+  return latestPerResident(snapshot.assessments)
+    .flatMap((latest) => {
+      const person = people.get(latest.resident_id);
+      // An assessment whose resident is outside the scope has no one to show it against.
+      if (!person) {
+        return [];
+      }
+
+      const household = households.get(person.household_id);
+
+      return [
+        {
+          person,
+          householdNumber: household?.household_number ?? '',
+          barangay: (household?.barangay_id && barangays.get(household.barangay_id)) || 'Unassigned',
+          latest,
+          checks: checkCount.get(latest.resident_id) ?? 1,
+        },
+      ];
+    })
+    .sort(
+      (a, b) =>
+        a.person.last_name.localeCompare(b.person.last_name) || a.person.first_name.localeCompare(b.person.first_name),
+    );
+}
+
+/** One page of `residentHealthRows`, read by `resident_health_page`. */
+export async function fetchResidentHealthPage(
+  query: string,
+  filters: AdminFilters,
+  limit: number,
+  offset: number,
+): Promise<Page<ResidentHealthRow>> {
+  const { data, error } = await supabase.rpc('resident_health_page', {
+    period_from: filters.from,
+    period_to: filters.to,
+    scope_barangay_id: filters.barangayId,
+    scope_purok_id: filters.purokId ?? null,
+    search_text: query.trim() || null,
+    page_limit: limit,
+    page_offset: offset,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rows = data ?? [];
+
+  return {
+    rows: rows.map((row) => ({
+      person: {
+        resident_id: row.resident_id,
+        household_id: row.household_id,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        sex: row.sex,
+        birthday: row.birthday,
+      },
+      householdNumber: row.household_number ?? '',
+      barangay: row.barangay_name,
+      latest: row.latest,
+      checks: row.checks,
+    })),
+    total: rows[0]?.total_count ?? 0,
+  };
+}
+
 /** Supply movement over the same months `monthsIn` gives the assessment trend. */
 export function monthlyReleases(
   disbursements: SupplyDisbursement[],
@@ -1386,9 +1485,27 @@ export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
     .sort((a, b) => b.releasedInPeriod - a.releasedInPeriod || a.itemName.localeCompare(b.itemName));
 }
 
-/** What each BHW is still carrying, per item, from the `bhw_item_stock` view. */
-export async function fetchBhwStock(): Promise<BhwItemStock[]> {
-  return readAllPages<BhwItemStock>('Carried stock', 'item_id', () => supabase.from('bhw_item_stock').select('*')).then(
-    (rows) => byText(rows, 'item_name'),
+/** One page of what each BHW is still carrying, per item, from the `bhw_item_stock` view, with the BHW's name. */
+export async function fetchBhwStockPage(limit: number, offset: number): Promise<Page<BhwItemStock & { bhw_name: string | null }>> {
+  const page = pageOf(
+    await supabase
+      .from('bhw_item_stock')
+      .select('*', { count: 'exact' })
+      .order('item_name')
+      .order('bhw_id')
+      .order('item_id')
+      .range(offset, offset + limit - 1),
   );
+  const bhwIds = [...new Set(page.rows.map((row) => row.bhw_id))];
+  const { data, error } = bhwIds.length
+    ? await supabase.from('profiles').select('user_id, full_name').in('user_id', bhwIds)
+    : { data: [], error: null };
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const names = new Map((data ?? []).map((profile) => [profile.user_id, profile.full_name]));
+
+  return { rows: page.rows.map((row) => ({ ...row, bhw_name: names.get(row.bhw_id) ?? null })), total: page.total };
 }

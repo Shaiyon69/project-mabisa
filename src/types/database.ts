@@ -39,6 +39,29 @@ export const RESIDENT_STATUSES = ['active', 'moved_out', 'deceased', 'transferre
 export type ResidentStatus = (typeof RESIDENT_STATUSES)[number];
 export type InventoryItemType = 'medicine' | 'food' | 'equipment' | 'hygiene' | 'other';
 export type NutritionStatus = 'underweight' | 'normal' | 'overweight' | 'obese';
+export type VaccinationStatus = 'complete' | 'partial' | 'none' | 'unknown';
+export type PrimaryIllness =
+  | 'none'
+  | 'tuberculosis'
+  | 'hypertension'
+  | 'diabetes'
+  | 'asthma'
+  | 'dengue'
+  | 'pneumonia'
+  | 'diarrhea'
+  | 'skin_infection'
+  | 'other';
+export type HealthComplication =
+  | 'anemia'
+  | 'edema'
+  | 'stunting'
+  | 'wasting'
+  | 'disability'
+  | 'vision_problem'
+  | 'hearing_problem'
+  | 'dental_problem'
+  | 'chronic_cough'
+  | 'pregnancy_risk';
 
 // public.profiles — the single source of a session's role. Writes go through the
 // admin_* RPCs, so there is no Insert/Update variant here.
@@ -158,6 +181,28 @@ export type HealthAssessment = {
   height: number;
   bmi: number;
   nutrition_status: NutritionStatus;
+  /** Raw reading only — no banding yet. Null where not taken. */
+  systolic_bp?: number | null;
+  diastolic_bp?: number | null;
+  temperature_c?: number | null;
+  pulse_rate?: number | null;
+  vaccination_status?: VaccinationStatus;
+  health_complications?: HealthComplication[];
+  primary_illness?: PrimaryIllness;
+  /** Set only when `primary_illness` is 'other' — the server rejects it otherwise. */
+  illness_other?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One dose given to a resident. No schedule/due-date engine — a log, not a tracker. */
+export type Immunization = {
+  immunization_id: string;
+  resident_id: string;
+  vaccine_name: string;
+  dose_number?: number | null;
+  date_given: string;
+  given_by: string;
   created_at: string;
   updated_at: string;
 };
@@ -201,6 +246,35 @@ export type BhwItemStock = {
   updated_at: string;
 };
 
+/** public.inventory_item_rows — barangay stock with its barangay's name and low-stock state, for the paged table. */
+export type InventoryItemRow = InventoryItem & {
+  barangay_name: string | null;
+  is_low: boolean;
+};
+
+/** public.account_rows — a profile with its current purok, and the barangay it belongs to either way. */
+export type AccountViewRow = Profile & {
+  purok_id: string | null;
+  purok_name: string | null;
+  assigned_since: string | null;
+  scope_barangay_id: string | null;
+};
+
+/** One row of `resident_health_page`: a resident and their latest check in the period. */
+export type ResidentHealthPageRow = {
+  resident_id: string;
+  household_id: string;
+  first_name: string;
+  last_name: string;
+  sex: IndividualSex;
+  birthday: string;
+  household_number: string | null;
+  barangay_name: string;
+  checks: number;
+  latest: HealthAssessment;
+  total_count: number;
+};
+
 export type SupplyDisbursement = {
   log_id: string;
   item_id: string;
@@ -239,6 +313,14 @@ export type HealthAssessmentInsert = Omit<HealthAssessment, 'assessment_id' | 'a
   updated_at?: string;
 };
 export type HealthAssessmentUpdate = Partial<Omit<HealthAssessment, 'assessment_id'>>;
+
+// given_by is stamped server-side (private.stamp_immunization_actor), never trusted from the device.
+export type ImmunizationInsert = Omit<Immunization, 'immunization_id' | 'created_at' | 'updated_at'> & {
+  immunization_id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+export type ImmunizationUpdate = Partial<Omit<Immunization, 'immunization_id'>>;
 
 export type InventoryItemInsert = Omit<InventoryItem, 'item_id' | 'current_stock' | 'created_at' | 'updated_at'> & {
   item_id?: string;
@@ -289,6 +371,16 @@ type HealthAssessmentRelationships = [
   },
 ];
 
+type ImmunizationRelationships = [
+  {
+    foreignKeyName: 'immunizations_resident_id_fkey';
+    columns: ['resident_id'];
+    isOneToOne: false;
+    referencedRelation: 'individuals';
+    referencedColumns: ['resident_id'];
+  },
+];
+
 export type Database = {
   public: {
     Tables: {
@@ -304,6 +396,7 @@ export type Database = {
         HealthAssessmentUpdate,
         HealthAssessmentRelationships
       >;
+      immunizations: RowDefinition<Immunization, ImmunizationInsert, ImmunizationUpdate, ImmunizationRelationships>;
       inventory_items: RowDefinition<InventoryItem, InventoryItemInsert, InventoryItemUpdate>;
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
       // Written only by barangay_admin_allocate_stock — never for both write shapes.
@@ -311,6 +404,8 @@ export type Database = {
     };
     Views: {
       bhw_item_stock: RowDefinition<BhwItemStock, never, never>;
+      inventory_item_rows: RowDefinition<InventoryItemRow, never, never>;
+      account_rows: RowDefinition<AccountViewRow, never, never>;
     };
     // The helpers granted to `authenticated`, plus the admin_* RPCs a surface
     // actually calls. Argument names are the SQL parameter names: the client sends
@@ -331,6 +426,18 @@ export type Database = {
       current_barangay_id: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      resident_health_page: {
+        Args: {
+          period_from: string;
+          period_to: string;
+          scope_barangay_id?: string | null;
+          scope_purok_id?: string | null;
+          search_text?: string | null;
+          page_limit?: number;
+          page_offset?: number;
+        };
+        Returns: ResidentHealthPageRow[];
       };
       // Account administration, RHU only. Both assert an active admin and write
       // the audit event in the same transaction, which is why the tables withhold

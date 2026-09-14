@@ -1,45 +1,25 @@
 import { useEffect, useState } from 'react';
-import { formatDate, titleCase } from '../../lib/utils';
-import { exportReport, type CsvColumn } from '../../lib/csv';
+import { formatDate } from '../../lib/utils';
 import {
   assignBhwToPurok,
-  barangaysMissingAdmin,
   canAssignPurok,
   createAccount,
-  fetchAccounts,
+  fetchAccountPage,
   fetchActiveBarangays,
   fetchActivePuroks,
   fetchBarangayScope,
-  filterAccounts,
+  fetchBarangaysMissingAdmin,
   setProfileActive,
-  visibleAccounts,
   type AccountRow,
   type AdminFilters,
 } from '../../services/adminData';
+import { useServerPage } from '../../hooks/useServerPage';
 import type { Barangay, Purok, UserRole } from '../../types/database';
 import { Button } from '../common/Button';
 import { FormField, SelectField, TextAreaField } from '../common/FormField';
 import { Modal } from '../common/Modal';
 import { ErrorState, WarningState } from '../common/StateMessage';
-import { ROWS_PER_PAGE, Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
-
-/** A purok is a health worker's, so the two assignment columns are dropped for the rows that never have one. */
-function exportColumnsFor(assigned: boolean): CsvColumn<AccountRow>[] {
-  return [
-    { header: 'User ID', value: (row) => row.profile.user_id },
-    { header: 'Name', value: (row) => row.profile.full_name },
-    { header: 'Role', value: (row) => titleCase(row.profile.role) },
-    ...(assigned
-      ? [
-          { header: 'Assigned purok', value: (row: AccountRow) => row.purokName },
-          { header: 'Assigned since', value: (row: AccountRow) => row.assignedSince },
-        ]
-      : []),
-    { header: 'Active', value: (row) => (row.profile.is_active ? 'Yes' : 'No') },
-    { header: 'Deactivated at', value: (row) => row.profile.disabled_at },
-    { header: 'Created at', value: (row) => row.profile.created_at },
-  ];
-}
+import { Table, TableBadge, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
 
 /**
  * What each role is called on screen. `admin` is the RHU account that reads every
@@ -62,7 +42,7 @@ type AccountsTableProps = {
    * `private.assert_admin()`; this only decides what is drawn.
    */
   role: UserRole | null;
-  /** The page's filter drawer, applied in memory over the accounts already read. */
+  /** The page's filter drawer, sent with the page read. */
   filters: AdminFilters;
 };
 
@@ -89,58 +69,57 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [creating, setCreating] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
-  const [result, setResult] = useState<{
-    rows: AccountRow[];
+  // The lists the dialogs and the missing-administrator warning need, beside the paged accounts.
+  const [lookups, setLookups] = useState<{
     puroks: Purok[];
     barangays: Barangay[];
     /** The session's own barangay, which a new health worker is created into. Null for the RHU. */
     sessionBarangayId: string | null;
+    /** Only the RHU can appoint an administrator, so only the RHU is told one is missing. */
+    unadministered: Barangay[];
     error: string | null;
-    settledFor: number;
-  }>({ rows: [], puroks: [], barangays: [], sessionBarangayId: null, error: null, settledFor: -1 });
+  }>({ puroks: [], barangays: [], sessionBarangayId: null, unadministered: [], error: null });
+  const { puroks, barangays, sessionBarangayId, unadministered } = lookups;
 
-  // `loading` is the difference between the read this render wants and the one the
-  // state last settled against, the same shape `useAdminData` uses.
-  const { rows, puroks, barangays, sessionBarangayId, error } = result;
-  const loading = result.settledFor !== reloadToken;
-  // The accounts this role runs, before the drawer narrows them: the count below
-  // reads against this rather than against every row the API returned, which for
-  // an RHU is every profile in the municipality.
-  const scoped = visibleAccounts(role, rows);
-  const visible = filterAccounts(scoped, filters);
-  // Only the RHU can appoint one, so only the RHU is told one is missing.
-  const unadministered = role === 'admin' ? barangaysMissingAdmin(barangays, rows) : [];
+  const filtered = Boolean(filters.accountRole || filters.accountActive || filters.barangayId || filters.purokId);
+  const scopeKey = [role, filters.accountRole, filters.accountActive, filters.barangayId, filters.purokId].join('|');
+  const { rows, total, error: pageError, loading, page, pageCount, setPage, offset } = useServerPage(
+    scopeKey,
+    (limit, start) => fetchAccountPage(role, filters, limit, start),
+    { reloadToken },
+  );
+  const error = pageError ?? lookups.error;
 
   useEffect(() => {
     let current = true;
 
-    Promise.all([fetchAccounts(), fetchActivePuroks(), fetchActiveBarangays(), fetchBarangayScope()])
-      .then(([accounts, activePuroks, activeBarangays, scope]) => {
+    Promise.all([
+      fetchActivePuroks(),
+      fetchActiveBarangays(),
+      fetchBarangayScope(),
+      role === 'admin' ? fetchBarangaysMissingAdmin() : Promise.resolve([]),
+    ])
+      .then(([activePuroks, activeBarangays, scope, missing]) => {
         if (current) {
-          setResult({
-            rows: accounts,
+          setLookups({
             puroks: activePuroks,
             barangays: activeBarangays,
             sessionBarangayId: scope.barangayId,
+            unadministered: missing,
             error: null,
-            settledFor: reloadToken,
           });
         }
       })
       .catch((cause: unknown) => {
         if (current) {
-          setResult((previous) => ({
-            ...previous,
-            error: cause instanceof Error ? cause.message : 'Could not read accounts.',
-            settledFor: reloadToken,
-          }));
+          setLookups((previous) => ({ ...previous, error: cause instanceof Error ? cause.message : 'Could not read accounts.' }));
         }
       });
 
     return () => {
       current = false;
     };
-  }, [reloadToken]);
+  }, [reloadToken, role]);
 
   const columns: TableColumn<AccountRow>[] = [
     {
@@ -204,27 +183,6 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     });
   }
 
-  // The scope is read at export time rather than held in state, so the file cannot
-  // name a barangay the session has since moved off.
-  async function exportAccounts() {
-    exportReport(
-      {
-        title: 'Accounts',
-        barangay: (await fetchBarangayScope()).label,
-        from: 'all dates',
-        to: 'all dates',
-        // The drawer's filters, named on the file, so an export of a narrowed
-        // list does not read later as the whole account list.
-        filters: [
-          ...(filters.accountRole ? [{ label: 'Role', value: titleCase(filters.accountRole) }] : []),
-          ...(filters.accountActive ? [{ label: 'Account state', value: titleCase(filters.accountActive) }] : []),
-        ],
-      },
-      visible,
-      exportColumnsFor(assignsAnyone),
-    );
-  }
-
   return (
     <div className="ui-table-stack">
       <TableToolbar>
@@ -233,9 +191,6 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
             {role === 'admin' ? 'Create account' : 'Create health worker'}
           </Button>
         ) : null}
-        <Button variant="ghost" onClick={() => void exportAccounts()} disabled={loading || !visible.length}>
-          Export CSV
-        </Button>
       </TableToolbar>
 
       {error ? <ErrorState title="Could not read accounts" text={error} /> : null}
@@ -255,15 +210,15 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
 
       <Table
         columns={columns}
-        rows={visible}
+        rows={rows}
         getRowKey={(account) => account.profile.user_id}
-        pageSize={ROWS_PER_PAGE}
         numbered
+        startIndex={offset}
         emptyTitle={loading ? 'Loading the accounts' : 'No accounts found'}
         emptyText={
           loading
             ? 'One moment.'
-            : scoped.length
+            : filtered
               ? 'No account matches the filters. Widen them in the drawer above.'
               : role === 'admin'
                 ? 'No barangay administrator yet. Create one with the button above.'
@@ -271,7 +226,8 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         }
       />
 
-      <TableMeta shown={visible.length} total={scoped.length} label={role === 'admin' ? 'barangay administrators' : 'health workers'} />
+      <TableMeta shown={rows.length} total={total} label={role === 'admin' ? 'barangay administrators' : 'health workers'} />
+      {pageCount > 1 ? <TablePager page={page} pageCount={pageCount} onPage={setPage} disabled={loading} /> : null}
 
       {/* Keyed on the account and the action so the fields reset between
           openings: a reason typed for one account must never be carried into

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { HealthAssessment, Individual, InventoryItem, SupplyDisbursement } from '../../types/database';
+import type { HealthAssessment, Immunization, Individual, InventoryItem, SupplyDisbursement } from '../../types/database';
 import {
   ageInYears,
   emptyToNull,
@@ -13,6 +13,7 @@ import {
 } from '../../lib/utils';
 import {
   readLocalHealthAssessments,
+  readLocalImmunizations,
   readLocalIndividual,
   readLocalSupplyDisbursements,
   saveIndividualLocally,
@@ -37,18 +38,20 @@ type ResidentRecord = {
   residentId: string;
   person: Individual | null;
   assessments: HealthAssessment[];
+  immunizations: Immunization[];
   disbursements: SupplyDisbursement[];
 };
 
 /** Everything this screen shows about one resident, read in one go. */
 async function readResident(residentId: string): Promise<ResidentRecord> {
-  const [person, assessments, disbursements] = await Promise.all([
+  const [person, assessments, immunizations, disbursements] = await Promise.all([
     readLocalIndividual(residentId),
     readLocalHealthAssessments(residentId),
+    readLocalImmunizations(residentId),
     readLocalSupplyDisbursements(residentId),
   ]);
 
-  return { residentId, person, assessments, disbursements };
+  return { residentId, person, assessments, immunizations, disbursements };
 }
 
 /**
@@ -59,6 +62,7 @@ async function readResident(residentId: string): Promise<ResidentRecord> {
 export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: ResidentDetailProps) {
   const [resident, setResident] = useState<Individual | null>(null);
   const [assessments, setAssessments] = useState<HealthAssessment[]>([]);
+  const [immunizations, setImmunizations] = useState<Immunization[]>([]);
   const [disbursements, setDisbursements] = useState<SupplyDisbursement[]>([]);
   // Which resident the three lists above describe. `loading` is derived from it,
   // so moving between residents never flashes one person's history under another's name.
@@ -73,6 +77,7 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
   const apply = useCallback((loaded: ResidentRecord) => {
     setResident(loaded.person);
     setAssessments(loaded.assessments);
+    setImmunizations(loaded.immunizations);
     setDisbursements(loaded.disbursements);
     setLoadedId(loaded.residentId);
   }, []);
@@ -326,6 +331,37 @@ export function ResidentDetail({ residentId, inventoryItems, bhwId, onSaved }: R
         ) : (
           <EmptyState title="No health checks yet" text="Checks you save will appear here." />
         )}
+      </Card>
+
+      <Card className="list-section">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Vaccination log</p>
+            <h2>Immunizations</h2>
+          </div>
+          <Badge label={`${immunizations.length}`} tone="info" />
+        </div>
+
+        {immunizations.length ? (
+          <ul className="compact-list">
+            {immunizations.map((immunization) => (
+              <li key={immunization.immunization_id}>
+                <span>{immunization.vaccine_name}</span>
+                <small>
+                  {immunization.dose_number ? `Dose ${immunization.dose_number} • ` : ''}
+                  {formatDate(immunization.date_given)}
+                </small>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState title="No immunizations yet" text="Doses you save will appear here." />
+        )}
+
+        <Link className="ghost-button" to="/bhw/immunization">
+          <Icon name="shield" size={17} />
+          Record immunization
+        </Link>
       </Card>
 
       <Card className="list-section">

@@ -1,38 +1,52 @@
 import { useMemo, useState } from 'react';
 import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
-import { formatCount, titleCase } from '../../lib/utils';
-import { exportReport, type CsvColumn } from '../../lib/csv';
+import {
+  ageInYears,
+  formatCount,
+  formatDate,
+  HEALTH_COMPLICATION_OPTIONS,
+  PRIMARY_ILLNESS_OPTIONS,
+  titleCase,
+  VACCINATION_STATUS_OPTIONS,
+} from '../../lib/utils';
 import {
   AGE_BANDS,
   NUTRITION_ORDER,
   ageBandOf,
   barangayStats,
   describeScope,
+  latestPerResident,
   lowStockItems,
   monthlyTrend,
+  monthlyVitals,
   nutritionByBarangay,
+  nutritionTally,
   rankByUnderweight,
+  fetchResidentHealthPage,
   supplyUtilization,
   tally,
   type AdminFilters,
   type AdminSnapshot,
   type BarangayStats,
   type ItemUtilization,
+  type ResidentHealthRow,
   type Tally,
   type TrendPoint,
+  type VitalsPoint,
 } from '../../services/adminData';
 import type { InventoryItemType } from '../../types/database';
-import { Button } from '../common/Button';
 import { BarChart, DonutChart, GaugeRing, LineChart } from './Charts';
 import { Card } from '../common/Card';
-import { EmptyState } from '../common/StateMessage';
-import { ROWS_PER_PAGE, Table, TableMeta, TablePager, type TableColumn } from '../common/Table';
+import { EmptyState, ErrorState } from '../common/StateMessage';
+import { useServerPage } from '../../hooks/useServerPage';
+import { FormField } from '../common/FormField';
+import { ROWS_PER_PAGE, Table, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 /**
  * The analyses the period summaries cannot answer: how the numbers are moving,
- * how the barangays compare, how much of the register has been reached, and where
- * the supplies went. Each panel exports on its own, and all are computed from the
+ * how the barangays compare, how much of the register has been reached, where
+ * the supplies went, and what the health checks found. All are computed from the
  * one snapshot the page already read.
  */
 export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
@@ -49,6 +63,15 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
   const scope = describeScope(filters, snapshot);
   // What those two panels actually cover, which is not what the picker says.
   const everyBarangay = snapshot.barangayLabel;
+  // Health figures count a resident once, by their latest check.
+  const latest = latestPerResident(snapshot.assessments);
+  const vaccination = tally(latest, (row) => row.vaccination_status ?? null, VACCINATION_STATUS_OPTIONS);
+  const vaccinationColors: Record<string, string> = {
+    complete: SERIES_COLORS[0],
+    partial: SERIES_COLORS[1],
+    none: 'var(--danger)',
+    unknown: 'var(--bmi-low)',
+  };
 
   return (
     // The half-width panels are adjacent so they share a row, and there are two
@@ -70,7 +93,205 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
         <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={everyBarangay} />
       )}
       <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
+      <DistributionPanel
+        title="Nutrition status"
+        rows={nutritionTally(snapshot.assessments)}
+        colorFor={(row) => NUTRITION_COLORS[row.label]}
+        filters={filters}
+        scope={scope}
+      />
+      <DistributionPanel
+        title="Vaccination status"
+        rows={vaccination}
+        colorFor={(row) => vaccinationColors[row.label]}
+        filters={filters}
+        scope={scope}
+      />
+      <DistributionPanel
+        title="Primary illness"
+        rows={tally(latest, (row) => row.primary_illness ?? null, PRIMARY_ILLNESS_OPTIONS)
+          .filter((row) => row.label !== 'none')}
+        filters={filters}
+        scope={scope}
+      />
+      <DistributionPanel
+        title="Health complications"
+        rows={tally(
+          latest.flatMap((row) => row.health_complications ?? []),
+          (complication) => complication,
+          HEALTH_COMPLICATION_OPTIONS,
+        )}
+        filters={filters}
+        scope={scope}
+      />
+      <VitalsPanel snapshot={snapshot} filters={filters} scope={scope} />
     </div>
+  );
+}
+
+/** Each resident's own record for the period, one row per resident. */
+export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
+  return (
+    <div className="activity-grid report-grid">
+      <ResidentHealthPanel filters={filters} scope={describeScope(filters, snapshot)} />
+    </div>
+  );
+}
+
+const illnessOf = (row: ResidentHealthRow) =>
+  row.latest.primary_illness === 'other' ? row.latest.illness_other || 'Other' : titleCase(row.latest.primary_illness ?? 'none');
+const complicationsOf = (row: ResidentHealthRow) => row.latest.health_complications?.map(titleCase).join(', ') || 'None';
+const nameOf = (row: ResidentHealthRow) => `${row.person.first_name} ${row.person.last_name}`;
+
+const residentHealthColumns: TableColumn<ResidentHealthRow>[] = [
+  { key: 'name', header: 'Resident', render: nameOf },
+  { key: 'age', header: 'Age', numeric: true, render: (row) => ageInYears(row.person.birthday) ?? '—' },
+  { key: 'sex', header: 'Sex', render: (row) => titleCase(row.person.sex) },
+  { key: 'barangay', header: 'Barangay', render: (row) => row.barangay },
+  { key: 'date', header: 'Last check', render: (row) => formatDate(row.latest.assessment_date) },
+  { key: 'bmi', header: 'BMI', numeric: true, render: (row) => row.latest.bmi },
+  { key: 'nutrition', header: 'Nutrition', render: (row) => titleCase(row.latest.nutrition_status) },
+  {
+    key: 'bp',
+    header: 'BP (mmHg)',
+    numeric: true,
+    render: (row) => (row.latest.systolic_bp != null ? `${row.latest.systolic_bp}/${row.latest.diastolic_bp ?? '—'}` : '—'),
+  },
+  { key: 'temperature', header: 'Temp (°C)', numeric: true, render: (row) => row.latest.temperature_c ?? '—' },
+  { key: 'pulse', header: 'Pulse (bpm)', numeric: true, render: (row) => row.latest.pulse_rate ?? '—' },
+  { key: 'illness', header: 'Illness', render: illnessOf },
+  { key: 'complications', header: 'Complications', render: complicationsOf },
+  { key: 'vaccination', header: 'Vaccination', render: (row) => titleCase(row.latest.vaccination_status ?? 'unknown') },
+  { key: 'checks', header: 'Checks in period', numeric: true, render: (row) => row.checks },
+];
+
+/** Every resident checked in the period, one row each, searchable by name or household number. */
+function ResidentHealthPanel({ filters, scope }: PanelProps) {
+  const [query, setQuery] = useState('');
+  const needle = query.trim();
+  const scopeKey = [needle, filters.from, filters.to, filters.barangayId, filters.purokId].join('|');
+  const { rows, total, error, loading, page, pageCount, setPage, offset } = useServerPage(
+    scopeKey,
+    (limit, start) => fetchResidentHealthPage(needle, filters, limit, start),
+    { delayMs: 300 },
+  );
+
+  return (
+    <Card className="activity-card report-card report-card-wide" as="article">
+      <PanelHead title="Resident health records" />
+      <SummaryContext filters={filters} extra={scope} />
+      {error ? <ErrorState title="Could not read the health records" text={error} /> : null}
+      <TableToolbar>
+        <FormField
+          label="Search residents"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Name or household number"
+        />
+      </TableToolbar>
+      <Table
+        columns={residentHealthColumns}
+        rows={rows}
+        getRowKey={(row) => row.person.resident_id}
+        emptyTitle={loading ? 'Loading the health records' : needle ? 'No resident matches' : 'No health checks in this period'}
+        emptyText={loading ? 'One moment.' : needle ? 'Try a different name or household number.' : 'Try a wider date range.'}
+        numbered
+        startIndex={offset}
+      />
+      <TableMeta shown={rows.length} total={total} label="residents checked" />
+      {pageCount > 1 ? <TablePager page={page} pageCount={pageCount} onPage={setPage} disabled={loading} /> : null}
+      <p className="muted report-note">Each resident&rsquo;s most recent check in the period.</p>
+    </Card>
+  );
+}
+
+/** One health distribution: a ring when `colorFor` is given, bars otherwise, with its table beneath. */
+function DistributionPanel({
+  title,
+  rows,
+  colorFor,
+  filters,
+  scope,
+}: { title: string; rows: Tally[]; colorFor?: (row: Tally) => string } & PanelProps) {
+  const empty = !rows.some((row) => row.count);
+
+  return (
+    <Card className="activity-card report-card" as="article">
+      <PanelHead title={title} />
+      <SummaryContext filters={filters} extra={scope} />
+      {empty ? (
+        <EmptyState
+          title="Nothing recorded in this period"
+          text="Try a wider date range, or wait for a health worker's phone to send its records."
+        />
+      ) : colorFor ? (
+        <DonutChart rows={rows} colorFor={colorFor} unit="residents" />
+      ) : (
+        <BarChart
+          rows={rows.map((row) => ({ key: row.label, label: titleCase(row.label), values: [row.count] }))}
+          series={[{ label: 'Residents', color: SERIES_COLORS[0] }]}
+        />
+      )}
+      {empty ? null : (
+        <Table
+          columns={distributionTableColumns}
+          rows={rows}
+          getRowKey={(row) => row.label}
+          emptyTitle="Nothing recorded in this period"
+          emptyText="Counts appear here once a health worker's phone has sent its records."
+        />
+      )}
+    </Card>
+  );
+}
+
+/** Monthly vital averages. Only blood pressure is drawn: the four vitals share no unit or scale. */
+function VitalsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
+  const points = monthlyVitals(snapshot.assessments, filters);
+  // A month with no reading is skipped, not drawn at zero: an average of nothing is not 0 mmHg.
+  const measured = points.filter((point) => point.systolic_bp !== null && point.diastolic_bp !== null);
+  const blank = (value: number | null) => value ?? '—';
+  const columns: TableColumn<VitalsPoint>[] = [
+    { key: 'month', header: 'Month', render: (row) => row.label },
+    { key: 'readings', header: 'Checks with vitals', numeric: true, render: (row) => row.readings },
+    { key: 'systolic', header: 'Systolic BP', numeric: true, render: (row) => blank(row.systolic_bp) },
+    { key: 'diastolic', header: 'Diastolic BP', numeric: true, render: (row) => blank(row.diastolic_bp) },
+    { key: 'temperature', header: 'Temperature (°C)', numeric: true, render: (row) => blank(row.temperature_c) },
+    { key: 'pulse', header: 'Pulse (bpm)', numeric: true, render: (row) => blank(row.pulse_rate) },
+  ];
+
+  return (
+    <Card className="activity-card report-card report-card-wide" as="article">
+      <PanelHead title="Vital signs" />
+      <SummaryContext filters={filters} extra={scope} />
+      {points.some((point) => point.readings) ? (
+        <>
+          {measured.length ? (
+            <LineChart
+              rows={measured.map((point) => ({
+                key: point.month,
+                label: point.label,
+                values: [point.systolic_bp ?? 0, point.diastolic_bp ?? 0],
+              }))}
+              series={[
+                { label: 'Average systolic BP', color: SERIES_COLORS[0] },
+                { label: 'Average diastolic BP', color: SERIES_COLORS[1] },
+              ]}
+            />
+          ) : null}
+          <Table
+            columns={columns}
+            rows={points}
+            getRowKey={(row) => row.month}
+            emptyTitle="No vitals in this period"
+            emptyText="Vitals appear here once a health worker records them at a check."
+          />
+        </>
+      ) : (
+        <EmptyState title="No vitals in this period" text="Vitals are optional at a check, so not every visit records them." />
+      )}
+      <p className="muted report-note">Averages over the checks that took each vital, not over every check.</p>
+    </Card>
   );
 }
 
@@ -85,30 +306,13 @@ type PanelProps = {
   scope: string;
 };
 
-/** The report context every export on this screen shares. */
-function contextFor(title: string, { filters, scope }: PanelProps) {
-  // `barangay` is the heading the CSV prints, so it carries the same scope the
-  // panel's caption states.
-  return { title, barangay: scope, from: filters.from, to: filters.to, filters: [{ label: 'Barangay', value: scope }] };
-}
-
-function PanelHead({ title, onExport }: { title: string; onExport: () => void }) {
+function PanelHead({ title }: { title: string }) {
   return (
     <div className="report-card-head">
       <h3>{title}</h3>
-      <Button variant="ghost" onClick={onExport}>
-        Export CSV
-      </Button>
     </div>
   );
 }
-
-const trendColumns: CsvColumn<TrendPoint>[] = [
-  { header: 'Month', value: (row) => row.month },
-  { header: 'Assessments', value: (row) => row.assessments },
-  { header: 'Underweight', value: (row) => row.underweight },
-  { header: 'Underweight rate', value: (row) => (row.rate === null ? '' : `${Math.round(row.rate * 100)}%`) },
-];
 
 /**
  * Assessments per month, with the underweight readings among them on the same
@@ -129,10 +333,7 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
-      <PanelHead
-        title="Assessment trend"
-        onExport={() => exportReport(contextFor('Assessment Trend', { filters, scope }), points, trendColumns)}
-      />
+      <PanelHead title="Assessment trend" />
       <SummaryContext filters={filters} extra={scope} />
       {recorded ? (
         <LineChart
@@ -168,40 +369,13 @@ function TrendPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
   );
 }
 
-const coverageColumns: CsvColumn<BarangayStats>[] = [
-  { header: 'Barangay', value: (row) => row.name },
-  { header: 'Residents', value: (row) => row.residents },
-  { header: 'Residents assessed', value: (row) => row.residentsAssessed },
-  { header: 'Coverage', value: (row) => (row.coverageRate === null ? '' : `${Math.round(row.coverageRate * 100)}%`) },
-];
-
-/** `mix` carries each barangay's four band counts in `NUTRITION_ORDER`. */
-const comparisonColumns = (mix: Map<string, number[]>): CsvColumn<BarangayStats>[] => [
-  { header: 'Barangay', value: (row) => row.name },
-  { header: 'Households', value: (row) => row.households },
-  { header: 'Residents', value: (row) => row.residents },
-  { header: 'Assessments in period', value: (row) => row.assessments },
-  { header: 'Underweight', value: (row) => row.underweight },
-  ...NUTRITION_ORDER.slice(1).map((status, index) => ({
-    header: titleCase(status),
-    value: (row: BarangayStats) => mix.get(row.barangayId)?.[index + 1] ?? 0,
-  })),
-  {
-    header: 'Underweight rate',
-    value: (row) => (row.underweightRate === null ? '' : `${Math.round(row.underweightRate * 100)}%`),
-  },
-  { header: 'Residents assessed', value: (row) => row.residentsAssessed },
-  { header: 'Coverage', value: (row) => (row.coverageRate === null ? '' : `${Math.round(row.coverageRate * 100)}%`) },
-  { header: 'Units released', value: (row) => row.unitsReleased },
-];
-
 function percent(value: number | null): string {
   return value === null ? '—' : `${Math.round(value * 100)}%`;
 }
 
-const distributionColumns: CsvColumn<Tally>[] = [
-  { header: 'Category', value: (row) => titleCase(row.label) },
-  { header: 'Residents', value: (row) => row.count },
+const distributionTableColumns: TableColumn<Tally>[] = [
+  { key: 'category', header: 'Category', render: (row) => titleCase(row.label) },
+  { key: 'residents', header: 'Residents', numeric: true, render: (row) => row.count },
 ];
 
 /**
@@ -216,12 +390,7 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
-      <PanelHead
-        title="Resident profile"
-        onExport={() =>
-          exportReport(contextFor('Resident Profile', { filters, scope }), [...sexes, ...ages], distributionColumns)
-        }
-      />
+      <PanelHead title="Resident profile" />
       <SummaryContext filters={filters} extra={scope} />
       {snapshot.residents.length ? (
         <div className="chart-split">
@@ -253,6 +422,15 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
           text="Resident profiles appear here once a household has been recorded in the selected area."
         />
       )}
+      {snapshot.residents.length ? (
+        <Table
+          columns={distributionTableColumns}
+          rows={[...sexes, ...ages]}
+          getRowKey={(row) => row.label}
+          emptyTitle="No residents in this scope"
+          emptyText="Resident profiles appear here once a household has been recorded in the selected area."
+        />
+      ) : null}
       <p className="muted report-note">
         Counts active residents on the register right now.
       </p>
@@ -260,9 +438,9 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
   );
 }
 
-const stockColumns: CsvColumn<Tally>[] = [
-  { header: 'Item type', value: (row) => titleCase(row.label) },
-  { header: 'Units at the barangay', value: (row) => row.count },
+const stockTableColumns: TableColumn<Tally>[] = [
+  { key: 'type', header: 'Item type', render: (row) => titleCase(row.label) },
+  { key: 'units', header: 'Units at the barangay', numeric: true, render: (row) => row.count },
 ];
 
 /**
@@ -293,10 +471,7 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
 
   return (
     <Card className="activity-card report-card" as="article">
-      <PanelHead
-        title="Stock position"
-        onExport={() => exportReport(contextFor('Stock Position', { filters, scope }), byType, stockColumns)}
-      />
+      <PanelHead title="Stock position" />
       <SummaryContext filters={filters} extra={scope} />
       {snapshot.inventoryItems.length ? (
         <div className="chart-split">
@@ -327,6 +502,15 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
       ) : (
         <EmptyState title="Nothing stocked yet" text="A barangay administrator adds supplies from the Inventory screen." />
       )}
+      {byType.length ? (
+        <Table
+          columns={stockTableColumns}
+          rows={byType}
+          getRowKey={(row) => row.label}
+          emptyTitle="Nothing stocked yet"
+          emptyText="A barangay administrator adds supplies from the Inventory screen."
+        />
+      ) : null}
       <p className="muted report-note">
         Unallocated stock only — not what health workers are carrying.
       </p>
@@ -380,12 +564,7 @@ function ComparisonPanel({
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
-      <PanelHead
-        title="Barangay comparison"
-        onExport={() =>
-          exportReport(contextFor('Barangay Comparison', { filters, scope }), stats, comparisonColumns(mix))
-        }
-      />
+      <PanelHead title="Barangay comparison" />
       <SummaryContext filters={filters} extra={scope} />
       <Table
         columns={columns}
@@ -403,6 +582,13 @@ function ComparisonPanel({
   );
 }
 
+const coverageTableColumns: TableColumn<BarangayStats>[] = [
+  { key: 'name', header: 'Barangay', render: (row) => row.name },
+  { key: 'residents', header: 'Residents', numeric: true, render: (row) => row.residents },
+  { key: 'assessed', header: 'Residents assessed', numeric: true, render: (row) => row.residentsAssessed },
+  { key: 'coverage', header: 'Coverage', numeric: true, render: (row) => percent(row.coverageRate) },
+];
+
 /**
  * How much of the register has been reached, which is a different question from
  * what the assessments found. Counts distinct residents, not assessments.
@@ -419,10 +605,7 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
 
   return (
     <Card className="activity-card report-card" as="article">
-      <PanelHead
-        title="Assessment coverage"
-        onExport={() => exportReport(contextFor('Assessment Coverage', { filters, scope }), ranked, coverageColumns)}
-      />
+      <PanelHead title="Assessment coverage" />
       <SummaryContext filters={filters} extra={scope} />
       {/* A ring per barangay, emptiest first, so the gaps are the first rings read
           and a reader finds them by shape before reading a number. One hue across
@@ -444,6 +627,17 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
         <EmptyState title="No registered residents" text="Coverage is a share of the residents on file." />
       )}
       {pageCount > 1 ? <TablePager page={current} pageCount={pageCount} onPage={setPage} /> : null}
+      {ranked.length ? (
+        <Table
+          columns={coverageTableColumns}
+          rows={ranked}
+          getRowKey={(row) => row.barangayId || 'unassigned'}
+          emptyTitle="No registered residents"
+          emptyText="Coverage is a share of the residents on file."
+          pageSize={ROWS_PER_PAGE}
+          numbered
+        />
+      ) : null}
       <p className="muted report-note">
         A thin ring is a profiling gap, not a health finding.
         {pageCount > 1 ? ` All ${ranked.length} barangays, emptiest first.` : ''}
@@ -451,15 +645,6 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
     </Card>
   );
 }
-
-const utilizationColumns: CsvColumn<ItemUtilization>[] = [
-  { header: 'Item', value: (row) => row.itemName },
-  { header: 'Type', value: (row) => titleCase(row.type) },
-  { header: 'At the barangay', value: (row) => row.onHand },
-  { header: 'Given to health workers (all time)', value: (row) => row.allocated },
-  { header: 'Released in period', value: (row) => row.releasedInPeriod },
-  { header: 'Reorder level', value: (row) => row.reorderLevel },
-];
 
 /**
  * The two halves of the stock position, each with the colour its segment and its
@@ -493,10 +678,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
-      <PanelHead
-        title="How supplies are used"
-        onExport={() => exportReport(contextFor('Supply Utilization', { filters, scope }), busiest, utilizationColumns)}
-      />
+      <PanelHead title="How supplies are used" />
       <SummaryContext filters={filters} extra={scope} />
       {/* Ring left, bars right, on one row. The ring is where the stock stands
           and the bars are what moved, and stacking them left the ring's row half

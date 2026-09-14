@@ -11,7 +11,6 @@ import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ErrorState } from '../../components/common/StateMessage';
 import { useAdminData } from '../../hooks/useAdminData';
-import { filterInventory } from '../../services/adminData';
 
 // The two biggest screens in the portal, and the two the officer opening the
 // dashboard has not asked for. Each has exactly one consumer below, so splitting
@@ -19,6 +18,7 @@ import { filterInventory } from '../../services/adminData';
 // chart components off the path to first paint. `DonutChart` stays eager;
 // `AdminDashboard` needs it.
 const AnalyticsPanels = lazy(() => import('../../components/admin/AnalyticsPanels').then((module) => ({ default: module.AnalyticsPanels })));
+const HealthPanels = lazy(() => import('../../components/admin/AnalyticsPanels').then((module) => ({ default: module.HealthPanels })));
 const ReportCards = lazy(() => import('../../components/admin/ReportCards').then((module) => ({ default: module.ReportCards })));
 
 /**
@@ -70,7 +70,7 @@ export function ResidentsPage() {
       />
       <Card className="admin-monitor">
         {error ? <ErrorState title="Could not load the records" text={error} /> : null}
-        <IndividualsTable filters={filters} snapshot={snapshot} />
+        <IndividualsTable filters={filters} />
       </Card>
     </>
   );
@@ -80,8 +80,7 @@ export function InventoryPage() {
   const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
   const role = useAdminRole();
   const canMoveStock = role === 'barangay_admin';
-  // Bumped after a movement so the carried-stock table re-reads `bhw_item_stock`
-  // along with the snapshot, which reads `inventory_items`.
+  // Bumped after a movement so both server-paged stock tables re-read, along with the snapshot.
   const [movementToken, setMovementToken] = useState(0);
 
   function handleChanged() {
@@ -126,14 +125,7 @@ export function InventoryPage() {
           What has not yet been handed to a health worker.
           {canMoveStock ? '' : ' Only a barangay administrator can move stock.'}
         </p>
-        {/* `filterInventory` rather than a filter of its own, so the type and
-            stock-level narrowing here decides "low" by the same rule as the
-            table's own badge and the dashboard's alert count. */}
-        <InventoryTable
-          inventoryItems={filterInventory(snapshot.inventoryItems, filters)}
-          barangays={snapshot.barangays}
-          loading={loading}
-        />
+        <InventoryTable filters={filters} spansBarangays={role === 'admin' && !filters.barangayId} reloadToken={movementToken} />
       </Card>
       <Card className="admin-monitor">
         <div className="panel-heading">
@@ -194,7 +186,7 @@ export function AnalyticsPage() {
       <PageHeader
         icon="chart"
         title="Charts"
-        description="Trends over time, barangay by barangay, and how supplies are being used."
+        description="Trends over time, barangay by barangay, how supplies are being used, and what the health checks found."
         actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
       {error ? (
@@ -211,6 +203,32 @@ export function AnalyticsPage() {
   );
 }
 
+export function HealthPage() {
+  const { snapshot, filters, setFilters, loading, error } = useAdminData();
+  const role = useAdminRole();
+
+  return (
+    <>
+      <PageHeader
+        icon="heart"
+        title="Health"
+        description="Each resident's latest health check in the period: vitals, illness and vaccination."
+        actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
+      />
+      {error ? (
+        <Card className="admin-monitor">
+          <ErrorState title="Could not load the records" text={error} />
+        </Card>
+      ) : null}
+      <div aria-busy={loading}>
+        <Suspense fallback={null}>
+          <HealthPanels snapshot={snapshot} filters={filters} />
+        </Suspense>
+      </div>
+    </>
+  );
+}
+
 export function ReportsPage() {
   const { snapshot, filters, setFilters, loading, error } = useAdminData();
   const role = useAdminRole();
@@ -220,7 +238,7 @@ export function ReportsPage() {
       <PageHeader
         icon="clipboard"
         title="Reports"
-        description="Summaries for the period you choose. Each one can be saved as a spreadsheet file."
+        description="Summaries for the period you choose, exported as one report ready to print or save as PDF."
         actions={
           <AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} sections />
         }
@@ -228,7 +246,7 @@ export function ReportsPage() {
       <Card className="activity-panel" aria-busy={loading}>
         {error ? <ErrorState title="Could not load the records" text={error} /> : null}
         <Suspense fallback={null}>
-          <ReportCards snapshot={snapshot} filters={filters} />
+          <ReportCards snapshot={snapshot} filters={filters} onFiltersChange={setFilters} loading={loading} role={role} />
         </Suspense>
       </Card>
     </>

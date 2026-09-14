@@ -9,6 +9,9 @@ import type {
   Household,
   HouseholdInsert,
   HouseholdUpdate,
+  Immunization,
+  ImmunizationInsert,
+  ImmunizationUpdate,
   Individual,
   IndividualInsert,
   IndividualUpdate,
@@ -43,6 +46,7 @@ export type LocalTableName =
   | 'households'
   | 'individuals'
   | 'health_assessments'
+  | 'immunizations'
   | 'inventory_items'
   | 'supply_disbursements';
 
@@ -58,6 +62,7 @@ export const primaryKeys = {
   households: 'household_id',
   individuals: 'resident_id',
   health_assessments: 'assessment_id',
+  immunizations: 'immunization_id',
   inventory_items: 'item_id',
   supply_disbursements: 'log_id',
 } as const satisfies Record<LocalTableName, string>;
@@ -67,6 +72,7 @@ type LocalInsertPayloadByTable = {
   households: HouseholdInsert;
   individuals: IndividualInsert;
   health_assessments: HealthAssessmentInsert;
+  immunizations: ImmunizationInsert;
   inventory_items: InventoryItemInsert;
   supply_disbursements: SupplyDisbursementInsert;
 };
@@ -76,6 +82,7 @@ type LocalUpdatePayloadByTable = {
   households: HouseholdUpdate & Pick<Household, 'household_id'>;
   individuals: IndividualUpdate & Pick<Individual, 'resident_id'>;
   health_assessments: HealthAssessmentUpdate & Pick<HealthAssessment, 'assessment_id'>;
+  immunizations: ImmunizationUpdate & Pick<Immunization, 'immunization_id'>;
   inventory_items: InventoryItemUpdate & Pick<InventoryItem, 'item_id'>;
   supply_disbursements: SupplyDisbursementUpdate & Pick<SupplyDisbursement, 'log_id'>;
 };
@@ -174,11 +181,32 @@ const migrations = [
     height real not null check (height > 0),
     bmi real not null check (bmi > 0),
     nutrition_status text not null check (nutrition_status in ('underweight', 'normal', 'overweight', 'obese')),
+    systolic_bp integer,
+    diastolic_bp integer,
+    temperature_c real,
+    pulse_rate integer,
+    vaccination_status text not null default 'unknown',
+    health_complications text not null default '[]',
+    primary_illness text not null default 'none',
+    illness_other text,
     created_at text not null,
     updated_at text not null,
     foreign key (resident_id) references individuals(resident_id) on delete cascade
   )`,
-  
+
+  // Immunizations Table — one row per dose given, no schedule/due-date engine.
+  `create table if not exists immunizations (
+    immunization_id text primary key,
+    resident_id text not null,
+    vaccine_name text not null,
+    dose_number integer,
+    date_given text not null,
+    given_by text not null,
+    created_at text not null,
+    updated_at text not null,
+    foreign key (resident_id) references individuals(resident_id) on delete cascade
+  )`,
+
   // Inventory Items Table
   `create table if not exists inventory_items (
     item_id text primary key,
@@ -207,7 +235,7 @@ const migrations = [
   `create table if not exists sync_queue (
     queue_id integer primary key autoincrement,
     operation_type text not null check (operation_type in ('INSERT', 'UPDATE')),
-    target_table text not null check (target_table in ('households', 'individuals', 'health_assessments', 'inventory_items', 'supply_disbursements')),
+    target_table text not null check (target_table in ('households', 'individuals', 'health_assessments', 'immunizations', 'inventory_items', 'supply_disbursements')),
     payload text not null,
     created_at text not null,
     attempts integer not null default 0,
@@ -221,7 +249,7 @@ const migrations = [
     dead_letter_id integer primary key autoincrement,
     original_queue_id integer not null,
     operation_type text not null check (operation_type in ('INSERT', 'UPDATE')),
-    target_table text not null check (target_table in ('households', 'individuals', 'health_assessments', 'inventory_items', 'supply_disbursements')),
+    target_table text not null check (target_table in ('households', 'individuals', 'health_assessments', 'immunizations', 'inventory_items', 'supply_disbursements')),
     payload text not null,
     created_at text not null,
     attempts integer not null default 0,
@@ -233,6 +261,7 @@ const migrations = [
   // Performance Indices for faster lookups and table joins
   'create index if not exists local_individuals_household_id_idx on individuals(household_id)',
   'create index if not exists local_health_assessments_resident_id_idx on health_assessments(resident_id)',
+  'create index if not exists local_immunizations_resident_id_idx on immunizations(resident_id)',
   'create index if not exists local_inventory_items_type_idx on inventory_items(type)',
   'create index if not exists local_supply_disbursements_item_id_idx on supply_disbursements(item_id)',
   'create index if not exists local_supply_disbursements_resident_id_idx on supply_disbursements(resident_id)',
@@ -265,6 +294,15 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   // the default.
   { table: 'individuals', column: 'status', definition: "text not null default 'active'" },
   { table: 'individuals', column: 'status_changed_on', definition: 'text' },
+  { table: 'health_assessments', column: 'systolic_bp', definition: 'integer' },
+  { table: 'health_assessments', column: 'diastolic_bp', definition: 'integer' },
+  { table: 'health_assessments', column: 'temperature_c', definition: 'real' },
+  { table: 'health_assessments', column: 'pulse_rate', definition: 'integer' },
+  { table: 'health_assessments', column: 'vaccination_status', definition: "text not null default 'unknown'" },
+  // JSON-encoded array — SQLite has no native array type.
+  { table: 'health_assessments', column: 'health_complications', definition: "text not null default '[]'" },
+  { table: 'health_assessments', column: 'primary_illness', definition: "text not null default 'none'" },
+  { table: 'health_assessments', column: 'illness_other', definition: 'text' },
 ];
 
 /**
@@ -859,8 +897,11 @@ export async function saveHouseholdWithMembersLocally(
  */
 const assessmentInsert = {
   statement: `insert or replace into health_assessments
-     (assessment_id, resident_id, assessment_date, weight, height, bmi, nutrition_status, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (assessment_id, resident_id, assessment_date, weight, height, bmi, nutrition_status,
+      systolic_bp, diastolic_bp, temperature_c, pulse_rate,
+      vaccination_status, health_complications, primary_illness, illness_other,
+      created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   values: (assessment: HealthAssessment): SqlValue[] => [
     assessment.assessment_id,
     assessment.resident_id,
@@ -869,8 +910,32 @@ const assessmentInsert = {
     assessment.height,
     assessment.bmi,
     assessment.nutrition_status,
+    assessment.systolic_bp ?? null,
+    assessment.diastolic_bp ?? null,
+    assessment.temperature_c ?? null,
+    assessment.pulse_rate ?? null,
+    assessment.vaccination_status ?? 'unknown',
+    JSON.stringify(assessment.health_complications ?? []),
+    assessment.primary_illness ?? 'none',
+    assessment.illness_other ?? null,
     assessment.created_at,
     assessment.updated_at,
+  ],
+};
+
+const immunizationInsert = {
+  statement: `insert or replace into immunizations
+     (immunization_id, resident_id, vaccine_name, dose_number, date_given, given_by, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+  values: (immunization: Immunization): SqlValue[] => [
+    immunization.immunization_id,
+    immunization.resident_id,
+    immunization.vaccine_name,
+    immunization.dose_number ?? null,
+    immunization.date_given,
+    immunization.given_by,
+    immunization.created_at,
+    immunization.updated_at,
   ],
 };
 
@@ -898,6 +963,18 @@ export async function saveHealthAssessmentLocally(
     'health_assessments',
     operationType,
     assessment,
+  );
+}
+
+export async function saveImmunizationLocally(
+  immunization: Immunization,
+  operationType: SyncOperationType = 'INSERT',
+): Promise<void> {
+  await writeAndQueue(
+    [{ statement: immunizationInsert.statement, values: immunizationInsert.values(immunization) }],
+    'immunizations',
+    operationType,
+    immunization,
   );
 }
 
@@ -981,7 +1058,7 @@ export async function countRows(table: MigratableTableName): Promise<number> {
 export async function clearLocalRecords(): Promise<void> {
   const database = await initializeLocalDatabase();
 
-  for (const table of ['supply_disbursements', 'health_assessments', 'individuals', 'households', 'inventory_items']) {
+  for (const table of ['supply_disbursements', 'health_assessments', 'immunizations', 'individuals', 'households', 'inventory_items']) {
     await database.run(`delete from ${table}`);
   }
 
@@ -1227,6 +1304,20 @@ export async function findLocalHouseholdByNumber(householdNumber: string | null 
   return row ? toHousehold(row) : null;
 }
 
+function toHealthAssessment(row: Record<string, unknown>): HealthAssessment {
+  return {
+    ...row,
+    weight: Number(row.weight),
+    height: Number(row.height),
+    bmi: Number(row.bmi),
+    systolic_bp: row.systolic_bp === null || row.systolic_bp === undefined ? null : Number(row.systolic_bp),
+    diastolic_bp: row.diastolic_bp === null || row.diastolic_bp === undefined ? null : Number(row.diastolic_bp),
+    temperature_c: row.temperature_c === null || row.temperature_c === undefined ? null : Number(row.temperature_c),
+    pulse_rate: row.pulse_rate === null || row.pulse_rate === undefined ? null : Number(row.pulse_rate),
+    health_complications: JSON.parse(String(row.health_complications || '[]')),
+  } as unknown as HealthAssessment;
+}
+
 /** `limit` exists for the dashboard, which shows three rows out of a purok's whole history. */
 export async function readLocalHealthAssessments(residentId?: string, limit?: number): Promise<HealthAssessment[]> {
   const database = await initializeLocalDatabase();
@@ -1236,13 +1327,8 @@ export async function readLocalHealthAssessments(residentId?: string, limit?: nu
     `select * from health_assessments${scope.clause} order by assessment_date desc${page.clause}`,
     [...scope.params, ...page.params],
   );
-  
-  return (result.values ?? []).map((row) => ({
-    ...row,
-    weight: Number(row.weight),
-    height: Number(row.height),
-    bmi: Number(row.bmi),
-  })) as HealthAssessment[];
+
+  return (result.values ?? []).map(toHealthAssessment);
 }
 
 /**
@@ -1261,9 +1347,22 @@ export async function findLocalAssessmentOnDate(
   );
   const row = result.values?.[0];
 
-  return row
-    ? ({ ...row, weight: Number(row.weight), height: Number(row.height), bmi: Number(row.bmi) } as HealthAssessment)
-    : null;
+  return row ? toHealthAssessment(row) : null;
+}
+
+/** Newest first — the same order the assessment and disbursement histories read in. */
+export async function readLocalImmunizations(residentId?: string): Promise<Immunization[]> {
+  const database = await initializeLocalDatabase();
+  const scope = scopedTo('resident_id', residentId);
+  const result = await database.query(
+    `select * from immunizations${scope.clause} order by date_given desc`,
+    scope.params,
+  );
+
+  return (result.values ?? []).map((row) => ({
+    ...row,
+    dose_number: row.dose_number === null || row.dose_number === undefined ? null : Number(row.dose_number),
+  })) as Immunization[];
 }
 
 export async function readLocalInventoryItems(): Promise<InventoryItem[]> {
@@ -1314,6 +1413,7 @@ function parseLocalTableName(value: string): LocalTableName {
     value === 'households' ||
     value === 'individuals' ||
     value === 'health_assessments' ||
+    value === 'immunizations' ||
     value === 'inventory_items' ||
     value === 'supply_disbursements'
   ) {
@@ -1353,6 +1453,8 @@ export const pullHouseholdsFromServer = (rows: Household[]) => pullRowsFromServe
 export const pullIndividualsFromServer = (rows: Individual[]) => pullRowsFromServer('individuals', individualUpsert, rows);
 export const pullHealthAssessmentsFromServer = (rows: HealthAssessment[]) =>
   pullRowsFromServer('health assessments', assessmentInsert, rows);
+export const pullImmunizationsFromServer = (rows: Immunization[]) =>
+  pullRowsFromServer('immunizations', immunizationInsert, rows);
 export const pullSupplyDisbursementsFromServer = (rows: SupplyDisbursement[]) =>
   pullRowsFromServer('supply disbursements', disbursementInsert, rows);
 

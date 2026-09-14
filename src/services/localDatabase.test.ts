@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HealthAssessment, Household, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
+import type { HealthAssessment, Household, Immunization, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
 
 // The Capacitor plugin is replaced with a real SQLite (sql.js, already a
 // dependency) behind the same connection interface, so a malformed clause or a
@@ -187,6 +187,19 @@ function assessment(overrides: Partial<HealthAssessment> & Pick<HealthAssessment
     updated_at: AT,
     ...overrides,
   } as HealthAssessment;
+}
+
+function immunization(overrides: Partial<Immunization> & Pick<Immunization, 'immunization_id'>): Immunization {
+  return {
+    resident_id: 'r1',
+    vaccine_name: 'BCG',
+    dose_number: 1,
+    date_given: '2026-08-01',
+    given_by: 'bhw-1',
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  } as Immunization;
 }
 
 function item(overrides: Partial<InventoryItem> & Pick<InventoryItem, 'item_id'>): InventoryItem {
@@ -484,6 +497,64 @@ describe('the local store', () => {
       expect(found?.bmi).toBe(23.44);
       expect(await store.findLocalAssessmentOnDate('r1', '2026-08-02')).toBeNull();
       expect(await store.findLocalAssessmentOnDate('r2', '2026-08-01')).toBeNull();
+    });
+
+    // Vitals are optional (null), complications is an array — SQLite has neither type
+    // natively, so both are worth proving they survive the round trip unchanged.
+    it('round-trips vitals, the illness fields and the complications array', async () => {
+      await seed();
+      await store.saveHealthAssessmentLocally(
+        assessment({
+          assessment_id: 'a1',
+          resident_id: 'r1',
+          assessment_date: '2026-08-01',
+          systolic_bp: 120,
+          diastolic_bp: 80,
+          temperature_c: 36.5,
+          pulse_rate: 72,
+          vaccination_status: 'partial',
+          health_complications: ['anemia', 'chronic_cough'],
+          primary_illness: 'other',
+          illness_other: 'Chikungunya',
+        }),
+      );
+
+      const found = await store.findLocalAssessmentOnDate('r1', '2026-08-01');
+
+      expect(found?.systolic_bp).toBe(120);
+      expect(found?.pulse_rate).toBe(72);
+      expect(found?.vaccination_status).toBe('partial');
+      expect(found?.health_complications).toEqual(['anemia', 'chronic_cough']);
+      expect(found?.primary_illness).toBe('other');
+      expect(found?.illness_other).toBe('Chikungunya');
+
+      await store.saveHealthAssessmentLocally(
+        assessment({ assessment_id: 'a2', resident_id: 'r1', assessment_date: '2026-08-02' }),
+      );
+      const unset = await store.findLocalAssessmentOnDate('r1', '2026-08-02');
+
+      expect(unset?.systolic_bp).toBeNull();
+      expect(unset?.health_complications).toEqual([]);
+      // The server's defaults, so a synced row satisfies its check constraints.
+      expect(unset?.primary_illness).toBe('none');
+      expect(unset?.vaccination_status).toBe('unknown');
+      expect(unset?.illness_other).toBeNull();
+    });
+  });
+
+  describe('recording an immunization', () => {
+    it('saves and reads doses back newest first, with the dose number as a number', async () => {
+      await seed();
+      await store.saveImmunizationLocally(immunization({ immunization_id: 'z1', date_given: '2026-08-01' }));
+      await store.saveImmunizationLocally(
+        immunization({ immunization_id: 'z2', date_given: '2026-08-03', dose_number: null }),
+      );
+
+      const rows = await store.readLocalImmunizations('r1');
+
+      expect(rows.map((row) => row.immunization_id)).toEqual(['z2', 'z1']);
+      expect(rows[1].dose_number).toBe(1);
+      expect(rows[0].dose_number).toBeNull();
     });
   });
 

@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import type { NutritionStatus, ResidentStatus } from '../types/database';
+import type { HealthComplication, NutritionStatus, PrimaryIllness, ResidentStatus, VaccinationStatus } from '../types/database';
 
 export function calculateBmi(weightKg: number, heightCm: number): number | null {
   if (weightKg <= 0 || heightCm <= 0) {
@@ -17,6 +17,52 @@ export function calculateBmi(weightKg: number, heightCm: number): number | null 
  */
 export const WEIGHT_KG_RANGE = { min: 1, max: 300 };
 export const HEIGHT_CM_RANGE = { min: 30, max: 250 };
+export const SYSTOLIC_BP_RANGE = { min: 60, max: 260 };
+export const DIASTOLIC_BP_RANGE = { min: 40, max: 160 };
+export const TEMPERATURE_C_RANGE = { min: 30, max: 43 };
+export const PULSE_RATE_RANGE = { min: 30, max: 220 };
+
+/** Common DOH EPI vaccines. Not exhaustive — the field paired with a `<datalist>` takes free text too. */
+export const VACCINE_OPTIONS = [
+  'BCG',
+  'Hepatitis B',
+  'Penta (DPT-HepB-Hib)',
+  'OPV',
+  'IPV',
+  'PCV',
+  'MMR',
+  'Td/Tdap',
+  'COVID-19',
+];
+
+/** Mirror the check constraints on `health_assessments` — a value outside these is rejected on sync. */
+export const PRIMARY_ILLNESS_OPTIONS = [
+  'none',
+  'tuberculosis',
+  'hypertension',
+  'diabetes',
+  'asthma',
+  'dengue',
+  'pneumonia',
+  'diarrhea',
+  'skin_infection',
+  'other',
+] as const satisfies readonly PrimaryIllness[];
+
+export const HEALTH_COMPLICATION_OPTIONS = [
+  'anemia',
+  'edema',
+  'stunting',
+  'wasting',
+  'disability',
+  'vision_problem',
+  'hearing_problem',
+  'dental_problem',
+  'chronic_cough',
+  'pregnancy_risk',
+] as const satisfies readonly HealthComplication[];
+
+export const VACCINATION_STATUS_OPTIONS = ['unknown', 'complete', 'partial', 'none'] as const satisfies readonly VaccinationStatus[];
 
 /**
  * Whether a measurement typed into a form is one the app will record. Takes the
@@ -27,6 +73,11 @@ export function isMeasurementInRange(value: string, range: { min: number; max: n
   const parsed = Number(value);
 
   return value.trim() !== '' && Number.isFinite(parsed) && parsed >= range.min && parsed <= range.max;
+}
+
+/** For a `smallint` column: a decimal passes the form but is rejected on every sync attempt. */
+export function isWholeNumberInRange(value: string, range: { min: number; max: number }): boolean {
+  return isMeasurementInRange(value, range) && Number.isInteger(Number(value));
 }
 
 /**
@@ -167,7 +218,7 @@ export function titleCase(value: string): string {
     .join(' ');
 }
 
-/** A count as it is read on screen. Exports keep the raw digits, which a CSV cell needs. */
+/** A count as it is read on screen, with thousands separators. */
 export function formatCount(value: number): string {
   return new Intl.NumberFormat('en-PH').format(value);
 }
