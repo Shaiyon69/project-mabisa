@@ -3260,36 +3260,374 @@ td,
 
 .report-print-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   justify-content: flex-end;
+  gap: 10px;
   margin-bottom: 10px;
 }
 
-/* A printed report: only the report cards, full width, no chrome. */
+/* The printed report. Hidden on screen; when it is mounted, printing shows it alone on A4. */
+.print-report {
+  display: none;
+}
+
 @media print {
-  .admin-sidebar,
-  .admin-header,
-  .admin-filter-bar,
-  .no-print,
-  .report-card-head button {
+  @page {
+    size: A4;
+    margin: 14mm 14mm 16mm;
+
+    @bottom-left {
+      content: 'BRHP-MSAM';
+      color: #6b6b5f;
+      font: 7pt 'Nunito Variable', system-ui, sans-serif;
+    }
+
+    @bottom-right {
+      content: 'Page ' counter(page) ' of ' counter(pages);
+      color: #6b6b5f;
+      font: 7pt 'Nunito Variable', system-ui, sans-serif;
+    }
+  }
+
+  @page landscape {
+    size: A4 landscape;
+  }
+
+  .print-report-health {
+    page: landscape;
+  }
+
+  body:has(.print-report) > :not(.print-report) {
     display: none !important;
   }
 
-  .mobile-shell.admin-layout {
-    display: block;
+  :root:has(.print-report),
+  body:has(.print-report) {
+    min-width: 0;
+    background: #fff;
   }
 
-  .workspace {
-    padding: 0;
+  .print-report {
+    display: block;
+    color: var(--text);
+    background: #fff;
+    font: 9pt/1.45 'Nunito Variable', system-ui, sans-serif;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
-  .report-grid-wrap,
-  .activity-grid.report-grid {
+  .pr-head {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10pt 12pt;
+    align-items: center;
+    padding-bottom: 10pt;
+    border-bottom: 2.5pt solid var(--primary);
+  }
+
+  .pr-head::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -5.5pt;
+    width: 72pt;
+    height: 3pt;
+    background: var(--secondary);
+  }
+
+  .pr-head img {
+    width: 46pt;
+    height: 46pt;
+    object-fit: contain;
+  }
+
+  .pr-eyebrow {
+    margin: 0;
+    color: var(--muted);
+    font-size: 6.5pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .pr-title {
+    margin: 3pt 0 0;
+    color: var(--primary-strong);
+    font-family: var(--display);
+    font-size: 21pt;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+
+  .pr-meta {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-auto-flow: column;
+    grid-template-rows: auto auto;
+    justify-content: start;
+    gap: 1pt 28pt;
+    margin: 0;
+    padding-top: 8pt;
+    border-top: 0.5pt solid var(--border);
+    font-size: 8.5pt;
+  }
+
+  .pr-meta dt {
+    color: var(--muted);
+    font-size: 6.5pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .pr-meta dd {
+    margin: 0;
+    color: var(--text-h);
+    font-weight: 700;
+  }
+
+  .pr-figures {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: 8pt;
+    margin-top: 18pt;
+  }
+
+  .pr-figure {
+    padding: 7pt 10pt;
+    border: 0.75pt solid var(--border);
+    border-top: 3pt solid var(--primary);
+    border-radius: 3pt;
+    background: var(--panel);
+  }
+
+  .pr-figure strong {
     display: block;
+    color: var(--primary-strong);
+    font-family: var(--display);
+    font-size: 18pt;
+    line-height: 1.15;
+  }
+
+  .pr-figure span {
+    color: var(--muted);
+    font-size: 6.5pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .pr-section {
+    margin-top: 18pt;
+  }
+
+  .pr-section h2 {
+    display: flex;
+    gap: 8pt;
+    align-items: baseline;
+    margin: 0;
+    padding-bottom: 3pt;
+    border-bottom: 0.75pt solid var(--border);
+    color: var(--primary-strong);
+    font-family: var(--display);
+    font-size: 13pt;
+    font-weight: 600;
+    break-after: avoid;
+  }
+
+  .pr-section h2 span {
+    padding: 0.5pt 5pt;
+    border-radius: 2pt;
+    color: var(--secondary-ink);
+    background: var(--secondary);
+    font-family: 'Nunito Variable', system-ui, sans-serif;
+    font-size: 8pt;
+    font-weight: 800;
+  }
+
+  .pr-context {
+    margin: 3pt 0 8pt;
+    color: var(--muted);
+    font-size: 8pt;
+    break-after: avoid;
+  }
+
+  .pr-split {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14pt;
+    align-items: start;
+  }
+
+  .pr-table {
     width: 100%;
+    min-width: 0;
+    margin-top: 8pt;
+    border-collapse: collapse;
+    font-size: 8.5pt;
   }
 
-  .report-grid > * {
+  .pr-split .pr-table {
+    margin-top: 0;
+  }
+
+  .pr-table caption {
+    padding-bottom: 3pt;
+    color: var(--muted);
+    font-size: 6.5pt;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .pr-table thead th {
+    padding: 4pt 6pt;
+    color: var(--primary-foreground);
+    background: var(--primary);
+    font-size: 6.5pt;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  /* Undo the screen tables' sticky header and row label, which paint over cells on paper. */
+  .pr-table th,
+  .pr-table td {
+    position: static;
+    box-shadow: none;
+    font-size: inherit;
+  }
+
+  .pr-table td {
+    padding: 3.5pt 6pt;
+    background: transparent;
+    border-bottom: 0.5pt solid #ddd5c8;
+    vertical-align: top;
+  }
+
+  .pr-table tbody tr:nth-child(even) td {
+    background: #f8f4ed;
+  }
+
+  .pr-table tfoot th {
+    padding: 4pt 6pt;
+    border-top: 1pt solid var(--primary);
+    color: var(--text-h);
+    text-align: left;
+  }
+
+  .pr-table tr {
     break-inside: avoid;
-    margin-bottom: 16px;
+  }
+
+  .pr-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pr-dense {
+    font-size: 7.5pt;
+  }
+
+  .pr-dense td,
+  .pr-dense thead th {
+    padding-inline: 4pt;
+    white-space: nowrap;
+  }
+
+  .pr-dense td.pr-wrap {
+    white-space: normal;
+  }
+
+  .pr-bar-col {
+    width: 36%;
+  }
+
+  .pr-bar {
+    display: block;
+    height: 6pt;
+    margin-top: 3pt;
+    border-radius: 1pt;
+    background: var(--primary);
+  }
+
+  .pr-dot {
+    display: inline-block;
+    width: 6pt;
+    height: 6pt;
+    margin-right: 3pt;
+    border-radius: 50%;
+  }
+
+  .pr-flag {
+    padding: 0.5pt 4pt;
+    border: 0.5pt solid var(--danger-line);
+    border-radius: 2pt;
+    color: var(--danger-ink);
+    background: var(--danger-surface);
+    font-size: 6.5pt;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .pr-flag-ok {
+    border-color: var(--success-line);
+    color: var(--success-ink);
+    background: var(--success-surface);
+  }
+
+  .pr-note {
+    margin: 6pt 0 0;
+    color: var(--muted);
+    font-size: 7.5pt;
+    font-style: italic;
+  }
+
+  .pr-empty {
+    margin: 0;
+    padding: 10pt;
+    border: 0.75pt dashed var(--border);
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .pr-sign {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40pt;
+    margin-top: 32pt;
+    break-inside: avoid;
+  }
+
+  .pr-sign p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .pr-sign span {
+    display: block;
+    margin-top: 30pt;
+    padding-top: 3pt;
+    border-top: 0.75pt solid var(--text-h);
+    color: var(--muted);
+    font-size: 7pt;
+  }
+
+  .pr-foot {
+    margin: 16pt 0 0;
+    padding-top: 6pt;
+    border-top: 0.5pt solid var(--border);
+    color: var(--muted);
+    font-size: 7pt;
   }
 }

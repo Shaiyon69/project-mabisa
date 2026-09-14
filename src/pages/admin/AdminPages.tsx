@@ -247,7 +247,7 @@ export function ReportsPage() {
       <PageHeader
         icon="clipboard"
         title="Reports"
-        description="Summaries for the period you choose. Each one can be saved as a spreadsheet file."
+        description="Summaries for the period you choose, exported as one report ready to print or save as PDF."
         actions={
           <AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} sections />
         }
@@ -255,7 +255,7 @@ export function ReportsPage() {
       <Card className="activity-panel" aria-busy={loading}>
         {error ? <ErrorState title="Could not load the records" text={error} /> : null}
         <Suspense fallback={null}>
-          <ReportCards snapshot={snapshot} filters={filters} />
+          <ReportCards snapshot={snapshot} filters={filters} onFiltersChange={setFilters} loading={loading} role={role} />
         </Suspense>
       </Card>
     </>

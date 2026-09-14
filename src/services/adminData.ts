@@ -120,7 +120,7 @@ export function describePeriod(filters: AdminFilters): string {
   return `${filters.from} to ${filters.to}`;
 }
 
-/** The scope clause a caption and a CSV preamble both need, naming the purok too once one is set. */
+/** The scope clause a caption and the printed report both need, naming the purok too once one is set. */
 export function describeScope(filters: AdminFilters, snapshot: Pick<AdminSnapshot, 'barangays' | 'puroks'>): string {
   if (!filters.barangayId) {
     return 'All barangays';
