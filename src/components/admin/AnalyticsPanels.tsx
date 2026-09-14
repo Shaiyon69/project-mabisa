@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
 import {
+  ageInYears,
   formatCount,
+  formatDate,
   HEALTH_COMPLICATION_OPTIONS,
   PRIMARY_ILLNESS_OPTIONS,
   titleCase,
@@ -21,12 +23,14 @@ import {
   nutritionByBarangay,
   nutritionTally,
   rankByUnderweight,
+  residentHealthRows,
   supplyUtilization,
   tally,
   type AdminFilters,
   type AdminSnapshot,
   type BarangayStats,
   type ItemUtilization,
+  type ResidentHealthRow,
   type Tally,
   type TrendPoint,
   type VitalsPoint,
@@ -36,7 +40,8 @@ import { Button } from '../common/Button';
 import { BarChart, DonutChart, GaugeRing, LineChart } from './Charts';
 import { Card } from '../common/Card';
 import { EmptyState } from '../common/StateMessage';
-import { ROWS_PER_PAGE, Table, TableMeta, TablePager, type TableColumn } from '../common/Table';
+import { FormField } from '../common/FormField';
+import { ROWS_PER_PAGE, Table, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 /**
@@ -98,6 +103,7 @@ export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; f
 
   return (
     <div className="activity-grid report-grid">
+      <ResidentHealthPanel snapshot={snapshot} filters={filters} scope={scope} />
       <DistributionPanel
         title="Nutrition status"
         rows={nutritionTally(snapshot.assessments)}
@@ -131,6 +137,95 @@ export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; f
       />
       <VitalsPanel snapshot={snapshot} filters={filters} scope={scope} />
     </div>
+  );
+}
+
+const illnessOf = (row: ResidentHealthRow) =>
+  row.latest.primary_illness === 'other' ? row.latest.illness_other || 'Other' : titleCase(row.latest.primary_illness ?? 'none');
+const complicationsOf = (row: ResidentHealthRow) => row.latest.health_complications?.map(titleCase).join(', ') || 'None';
+const nameOf = (row: ResidentHealthRow) => `${row.person.first_name} ${row.person.last_name}`;
+
+const residentHealthColumns: TableColumn<ResidentHealthRow>[] = [
+  { key: 'name', header: 'Resident', render: nameOf },
+  { key: 'age', header: 'Age', numeric: true, render: (row) => ageInYears(row.person.birthday) ?? '—' },
+  { key: 'sex', header: 'Sex', render: (row) => titleCase(row.person.sex) },
+  { key: 'barangay', header: 'Barangay', render: (row) => row.barangay },
+  { key: 'date', header: 'Last check', render: (row) => formatDate(row.latest.assessment_date) },
+  { key: 'bmi', header: 'BMI', numeric: true, render: (row) => row.latest.bmi },
+  { key: 'nutrition', header: 'Nutrition', render: (row) => titleCase(row.latest.nutrition_status) },
+  {
+    key: 'bp',
+    header: 'BP (mmHg)',
+    numeric: true,
+    render: (row) => (row.latest.systolic_bp != null ? `${row.latest.systolic_bp}/${row.latest.diastolic_bp ?? '—'}` : '—'),
+  },
+  { key: 'temperature', header: 'Temp (°C)', numeric: true, render: (row) => row.latest.temperature_c ?? '—' },
+  { key: 'pulse', header: 'Pulse (bpm)', numeric: true, render: (row) => row.latest.pulse_rate ?? '—' },
+  { key: 'illness', header: 'Illness', render: illnessOf },
+  { key: 'complications', header: 'Complications', render: complicationsOf },
+  { key: 'vaccination', header: 'Vaccination', render: (row) => titleCase(row.latest.vaccination_status ?? 'unknown') },
+  { key: 'checks', header: 'Checks in period', numeric: true, render: (row) => row.checks },
+];
+
+const residentHealthExport: CsvColumn<ResidentHealthRow>[] = [
+  { header: 'Resident ID', value: (row) => row.person.resident_id },
+  { header: 'Last name', value: (row) => row.person.last_name },
+  { header: 'First name', value: (row) => row.person.first_name },
+  { header: 'Sex', value: (row) => titleCase(row.person.sex) },
+  { header: 'Age', value: (row) => ageInYears(row.person.birthday) },
+  { header: 'Household number', value: (row) => row.householdNumber },
+  { header: 'Barangay', value: (row) => row.barangay },
+  { header: 'Last check', value: (row) => row.latest.assessment_date },
+  { header: 'Weight (kg)', value: (row) => row.latest.weight },
+  { header: 'Height (cm)', value: (row) => row.latest.height },
+  { header: 'BMI', value: (row) => row.latest.bmi },
+  { header: 'Nutrition status', value: (row) => titleCase(row.latest.nutrition_status) },
+  { header: 'Systolic BP', value: (row) => row.latest.systolic_bp },
+  { header: 'Diastolic BP', value: (row) => row.latest.diastolic_bp },
+  { header: 'Temperature (°C)', value: (row) => row.latest.temperature_c },
+  { header: 'Pulse rate', value: (row) => row.latest.pulse_rate },
+  { header: 'Primary illness', value: illnessOf },
+  { header: 'Health complications', value: complicationsOf },
+  { header: 'Vaccination status', value: (row) => titleCase(row.latest.vaccination_status ?? 'unknown') },
+  { header: 'Checks in period', value: (row) => row.checks },
+];
+
+/** Every resident checked in the period, one row each, searchable by name or household number. */
+function ResidentHealthPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
+  const [query, setQuery] = useState('');
+  const all = useMemo(() => residentHealthRows(snapshot), [snapshot]);
+  const needle = query.trim().toLowerCase();
+  const rows = needle
+    ? all.filter((row) => `${nameOf(row)} ${row.householdNumber}`.toLowerCase().includes(needle))
+    : all;
+
+  return (
+    <Card className="activity-card report-card report-card-wide" as="article">
+      <PanelHead
+        title="Resident health records"
+        onExport={() => exportReport(contextFor('Resident Health Records', { filters, scope }), rows, residentHealthExport)}
+      />
+      <SummaryContext filters={filters} extra={scope} />
+      <TableToolbar>
+        <FormField
+          label="Search residents"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Name or household number"
+        />
+      </TableToolbar>
+      <Table
+        columns={residentHealthColumns}
+        rows={rows}
+        getRowKey={(row) => row.person.resident_id}
+        emptyTitle={needle ? 'No resident matches' : 'No health checks in this period'}
+        emptyText={needle ? 'Try a different name or household number.' : 'Try a wider date range.'}
+        pageSize={ROWS_PER_PAGE}
+        numbered
+      />
+      <TableMeta shown={rows.length} total={all.length} label="residents checked" />
+      <p className="muted report-note">Each resident&rsquo;s most recent check in the period.</p>
+    </Card>
   );
 }
 

@@ -32,6 +32,7 @@ import {
   rankByUnderweight,
   readAllResidentPages,
   REPORT_SECTIONS,
+  residentHealthRows,
   reorderLevelOf,
   showsSection,
   tally,
@@ -611,6 +612,30 @@ describe('monthlyVitals', () => {
 
     expect(points[0]).toMatchObject({ readings: 2, systolic_bp: 125.5, pulse_rate: 70, diastolic_bp: null });
     expect(points[1]).toMatchObject({ readings: 0, systolic_bp: null });
+  });
+});
+
+describe('residentHealthRows', () => {
+  it('shows each resident once, named, with their latest check and how many they had', () => {
+    const rows = residentHealthRows({
+      barangays: [{ barangay_id: 'b1', name: 'Cabugao', code: null, is_active: true, created_at: '', updated_at: '', created_by: null }],
+      households: [{ household_id: 'h1', household_number: 'HH-1', barangay_id: 'b1', updated_at: '' }],
+      people: [
+        { resident_id: 'r1', household_id: 'h1', first_name: 'Ana', last_name: 'Santos', sex: 'female', birthday: '2000-01-01' },
+        { resident_id: 'r2', household_id: 'h9', first_name: 'Ben', last_name: 'Cruz', sex: 'male', birthday: '1990-01-01' },
+      ],
+      assessments: [
+        assessment('a1', 'r1', '2026-01-01', 'underweight'),
+        assessment('a2', 'r1', '2026-03-01', 'normal'),
+        assessment('a3', 'r2', '2026-02-01', 'obese'),
+        assessment('a4', 'r-out-of-scope', '2026-02-01', 'normal'),
+      ],
+    });
+
+    expect(rows.map((row) => row.person.last_name)).toEqual(['Cruz', 'Santos']);
+    expect(rows[0]).toMatchObject({ barangay: 'Unassigned', checks: 1 });
+    expect(rows[1]).toMatchObject({ barangay: 'Cabugao', householdNumber: 'HH-1', checks: 2 });
+    expect(rows[1].latest.assessment_id).toBe('a2');
   });
 });
 
