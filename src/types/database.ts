@@ -158,6 +158,13 @@ export type HealthAssessment = {
   height: number;
   bmi: number;
   nutrition_status: NutritionStatus;
+  /** Raw reading only — no banding yet. Null where not taken. */
+  systolic_bp?: number | null;
+  diastolic_bp?: number | null;
+  temperature_c?: number | null;
+  pulse_rate?: number | null;
+  sicknesses?: string[];
+  sickness_other_note?: string | null;
   created_at: string;
   updated_at: string;
 };

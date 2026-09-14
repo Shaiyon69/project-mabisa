@@ -6,13 +6,18 @@ import {
   calculateBmi,
   createId,
   describeMissing,
+  DIASTOLIC_BP_RANGE,
   formatDate,
   getNutritionStatus,
   HEIGHT_CM_RANGE,
   ignoreImplicitSubmit,
   isInFuture,
   isMeasurementInRange,
+  PULSE_RATE_RANGE,
   scrollToFirstError,
+  SICKNESS_OPTIONS,
+  SYSTOLIC_BP_RANGE,
+  TEMPERATURE_C_RANGE,
   titleCase,
   today,
   WEIGHT_KG_RANGE,
@@ -24,6 +29,7 @@ import { Card } from '../common/Card';
 import { FormActions, FormField } from '../common/FormField';
 import { IndividualSearch } from './IndividualSearch';
 import { Icon } from '../common/Icon';
+import { MemberChoice } from './MemberFields';
 
 // Roughly the range a field BMI lands in. A reading outside it still resolves to
 // a band; the marker parks at the end of the scale.
@@ -74,6 +80,11 @@ function railPercent(bmi: number): number {
   return ((Math.min(Math.max(bmi, BMI_MIN), BMI_MAX) - BMI_MIN) / (BMI_MAX - BMI_MIN)) * 100;
 }
 
+/** Vitals are optional: not every visit takes every one, so blank passes. */
+function vitalOk(value: string, range: { min: number; max: number }): boolean {
+  return value.trim() === '' || isMeasurementInRange(value, range);
+}
+
 type HealthAssessmentFormProps = {
   individualCount: number;
   onSaved: () => Promise<void>;
@@ -85,6 +96,13 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
   const [assessmentDate, setAssessmentDate] = useState(today());
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
+  const [systolicBp, setSystolicBp] = useState('');
+  const [diastolicBp, setDiastolicBp] = useState('');
+  const [temperatureC, setTemperatureC] = useState('');
+  const [pulseRate, setPulseRate] = useState('');
+  const [sicknesses, setSicknesses] = useState<string[]>([]);
+  const [otherSickness, setOtherSickness] = useState(false);
+  const [otherSicknessNote, setOtherSicknessNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
@@ -105,6 +123,12 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       !bmi ||
       !nutritionStatus) &&
       'a weight and height within range',
+    (!vitalOk(systolicBp, SYSTOLIC_BP_RANGE) ||
+      !vitalOk(diastolicBp, DIASTOLIC_BP_RANGE) ||
+      !vitalOk(temperatureC, TEMPERATURE_C_RANGE) ||
+      !vitalOk(pulseRate, PULSE_RATE_RANGE)) &&
+      'vitals within range',
+    otherSickness && !otherSicknessNote.trim() && 'the other sickness named',
   ].filter(Boolean) as string[];
   const isFormReady = missingRequirements.length === 0;
   const caveats = bmiCaveats(resident);
@@ -172,6 +196,12 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
       height: Number(height),
       bmi,
       nutrition_status: nutritionStatus,
+      systolic_bp: systolicBp.trim() === '' ? null : Number(systolicBp),
+      diastolic_bp: diastolicBp.trim() === '' ? null : Number(diastolicBp),
+      temperature_c: temperatureC.trim() === '' ? null : Number(temperatureC),
+      pulse_rate: pulseRate.trim() === '' ? null : Number(pulseRate),
+      sicknesses: otherSickness ? [...sicknesses, 'Other'] : sicknesses,
+      sickness_other_note: otherSickness ? otherSicknessNote.trim() : null,
       created_at: existing?.created_at ?? timestamp,
       updated_at: timestamp,
     };
@@ -190,6 +220,13 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
     pendingId.current = null;
     setWeight('');
     setHeight('');
+    setSystolicBp('');
+    setDiastolicBp('');
+    setTemperatureC('');
+    setPulseRate('');
+    setSicknesses([]);
+    setOtherSickness(false);
+    setOtherSicknessNote('');
     setAssessmentDate(today());
     setResidentId('');
     setResident(null);
@@ -265,6 +302,51 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             error={showValidation && !isMeasurementInRange(height, HEIGHT_CM_RANGE) ? 'Enter a height from 30 to 250 cm.' : undefined}
           />
         </div>
+        <div className="field-row">
+          <FormField
+            label="Systolic BP (mmHg)"
+            type="number"
+            min={SYSTOLIC_BP_RANGE.min}
+            max={SYSTOLIC_BP_RANGE.max}
+            value={systolicBp}
+            onChange={(event) => setSystolicBp(event.target.value)}
+            placeholder="(Optional)"
+            error={showValidation && !vitalOk(systolicBp, SYSTOLIC_BP_RANGE) ? 'Enter a value from 60 to 260 mmHg.' : undefined}
+          />
+          <FormField
+            label="Diastolic BP (mmHg)"
+            type="number"
+            min={DIASTOLIC_BP_RANGE.min}
+            max={DIASTOLIC_BP_RANGE.max}
+            value={diastolicBp}
+            onChange={(event) => setDiastolicBp(event.target.value)}
+            placeholder="(Optional)"
+            error={showValidation && !vitalOk(diastolicBp, DIASTOLIC_BP_RANGE) ? 'Enter a value from 40 to 160 mmHg.' : undefined}
+          />
+        </div>
+        <div className="field-row">
+          <FormField
+            label="Temperature (°C)"
+            type="number"
+            step="0.1"
+            min={TEMPERATURE_C_RANGE.min}
+            max={TEMPERATURE_C_RANGE.max}
+            value={temperatureC}
+            onChange={(event) => setTemperatureC(event.target.value)}
+            placeholder="(Optional)"
+            error={showValidation && !vitalOk(temperatureC, TEMPERATURE_C_RANGE) ? 'Enter a value from 30 to 43°C.' : undefined}
+          />
+          <FormField
+            label="Pulse rate (bpm)"
+            type="number"
+            min={PULSE_RATE_RANGE.min}
+            max={PULSE_RATE_RANGE.max}
+            value={pulseRate}
+            onChange={(event) => setPulseRate(event.target.value)}
+            placeholder="(Optional)"
+            error={showValidation && !vitalOk(pulseRate, PULSE_RATE_RANGE) ? 'Enter a value from 30 to 220 bpm.' : undefined}
+          />
+        </div>
         {/* Overwriting a check is the right move for a mistyped weight and the wrong
             one for a second real reading, and only the BHW knows which. Says what is
             on file so she can change the date instead. */}
@@ -285,6 +367,33 @@ export function HealthAssessmentForm({ individualCount, onSaved }: HealthAssessm
             {caveat}
           </p>
         ))}
+
+        <div>
+          <p className="eyebrow">Sickness observed (optional)</p>
+          <div className="choice-list">
+            {SICKNESS_OPTIONS.map((option) => (
+              <MemberChoice
+                key={option}
+                label={option}
+                checked={sicknesses.includes(option)}
+                onChange={(next) =>
+                  setSicknesses((current) => (next ? [...current, option] : current.filter((item) => item !== option)))
+                }
+              />
+            ))}
+            <MemberChoice label="Other" checked={otherSickness} onChange={setOtherSickness} />
+          </div>
+          {otherSickness ? (
+            <FormField
+              label="Name the other sickness"
+              value={otherSicknessNote}
+              onChange={(event) => setOtherSicknessNote(event.target.value)}
+              required
+              error={showValidation && !otherSicknessNote.trim() ? 'Name the other sickness, or uncheck it.' : undefined}
+            />
+          ) : null}
+        </div>
+
         <FormActions>
           <Button type="submit" disabled={saving}>
             <Icon name="save" size={18} />

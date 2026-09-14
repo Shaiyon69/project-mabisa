@@ -174,6 +174,12 @@ const migrations = [
     height real not null check (height > 0),
     bmi real not null check (bmi > 0),
     nutrition_status text not null check (nutrition_status in ('underweight', 'normal', 'overweight', 'obese')),
+    systolic_bp integer,
+    diastolic_bp integer,
+    temperature_c real,
+    pulse_rate integer,
+    sicknesses text not null default '[]',
+    sickness_other_note text,
     created_at text not null,
     updated_at text not null,
     foreign key (resident_id) references individuals(resident_id) on delete cascade
@@ -265,6 +271,13 @@ const columnUpgrades: { table: MigratableTableName; column: string; definition: 
   // the default.
   { table: 'individuals', column: 'status', definition: "text not null default 'active'" },
   { table: 'individuals', column: 'status_changed_on', definition: 'text' },
+  { table: 'health_assessments', column: 'systolic_bp', definition: 'integer' },
+  { table: 'health_assessments', column: 'diastolic_bp', definition: 'integer' },
+  { table: 'health_assessments', column: 'temperature_c', definition: 'real' },
+  { table: 'health_assessments', column: 'pulse_rate', definition: 'integer' },
+  // JSON-encoded array — SQLite has no native array type.
+  { table: 'health_assessments', column: 'sicknesses', definition: "text not null default '[]'" },
+  { table: 'health_assessments', column: 'sickness_other_note', definition: 'text' },
 ];
 
 /**
@@ -859,8 +872,10 @@ export async function saveHouseholdWithMembersLocally(
  */
 const assessmentInsert = {
   statement: `insert or replace into health_assessments
-     (assessment_id, resident_id, assessment_date, weight, height, bmi, nutrition_status, created_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (assessment_id, resident_id, assessment_date, weight, height, bmi, nutrition_status,
+      systolic_bp, diastolic_bp, temperature_c, pulse_rate, sicknesses, sickness_other_note,
+      created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   values: (assessment: HealthAssessment): SqlValue[] => [
     assessment.assessment_id,
     assessment.resident_id,
@@ -869,6 +884,12 @@ const assessmentInsert = {
     assessment.height,
     assessment.bmi,
     assessment.nutrition_status,
+    assessment.systolic_bp ?? null,
+    assessment.diastolic_bp ?? null,
+    assessment.temperature_c ?? null,
+    assessment.pulse_rate ?? null,
+    JSON.stringify(assessment.sicknesses ?? []),
+    assessment.sickness_other_note ?? null,
     assessment.created_at,
     assessment.updated_at,
   ],
@@ -1227,6 +1248,20 @@ export async function findLocalHouseholdByNumber(householdNumber: string | null 
   return row ? toHousehold(row) : null;
 }
 
+function toHealthAssessment(row: Record<string, unknown>): HealthAssessment {
+  return {
+    ...row,
+    weight: Number(row.weight),
+    height: Number(row.height),
+    bmi: Number(row.bmi),
+    systolic_bp: row.systolic_bp === null || row.systolic_bp === undefined ? null : Number(row.systolic_bp),
+    diastolic_bp: row.diastolic_bp === null || row.diastolic_bp === undefined ? null : Number(row.diastolic_bp),
+    temperature_c: row.temperature_c === null || row.temperature_c === undefined ? null : Number(row.temperature_c),
+    pulse_rate: row.pulse_rate === null || row.pulse_rate === undefined ? null : Number(row.pulse_rate),
+    sicknesses: JSON.parse(String(row.sicknesses || '[]')),
+  } as unknown as HealthAssessment;
+}
+
 /** `limit` exists for the dashboard, which shows three rows out of a purok's whole history. */
 export async function readLocalHealthAssessments(residentId?: string, limit?: number): Promise<HealthAssessment[]> {
   const database = await initializeLocalDatabase();
@@ -1236,13 +1271,8 @@ export async function readLocalHealthAssessments(residentId?: string, limit?: nu
     `select * from health_assessments${scope.clause} order by assessment_date desc${page.clause}`,
     [...scope.params, ...page.params],
   );
-  
-  return (result.values ?? []).map((row) => ({
-    ...row,
-    weight: Number(row.weight),
-    height: Number(row.height),
-    bmi: Number(row.bmi),
-  })) as HealthAssessment[];
+
+  return (result.values ?? []).map(toHealthAssessment);
 }
 
 /**
@@ -1261,9 +1291,7 @@ export async function findLocalAssessmentOnDate(
   );
   const row = result.values?.[0];
 
-  return row
-    ? ({ ...row, weight: Number(row.weight), height: Number(row.height), bmi: Number(row.bmi) } as HealthAssessment)
-    : null;
+  return row ? toHealthAssessment(row) : null;
 }
 
 export async function readLocalInventoryItems(): Promise<InventoryItem[]> {

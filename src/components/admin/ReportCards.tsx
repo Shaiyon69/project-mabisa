@@ -222,6 +222,12 @@ const assessmentColumns: CsvColumn<HealthAssessment>[] = [
   // its own is not reviewable.
   { header: 'BMI', value: (row) => row.bmi },
   { header: 'Nutrition status', value: (row) => titleCase(row.nutrition_status) },
+  { header: 'Systolic BP', value: (row) => row.systolic_bp },
+  { header: 'Diastolic BP', value: (row) => row.diastolic_bp },
+  { header: 'Temperature (°C)', value: (row) => row.temperature_c },
+  { header: 'Pulse rate', value: (row) => row.pulse_rate },
+  { header: 'Sicknesses', value: (row) => row.sicknesses?.join(', ') },
+  { header: 'Other sickness', value: (row) => row.sickness_other_note },
 ];
 
 const inventoryColumns: CsvColumn<InventoryItem>[] = [
