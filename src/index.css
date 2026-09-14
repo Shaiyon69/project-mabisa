@@ -166,9 +166,11 @@
 }
 
 /* A printed page renders prefers-color-scheme inconsistently across browsers, so
-   the light palette is pinned here rather than trusted to follow the active theme. */
+   the light palette is pinned here rather than trusted to follow the active theme.
+   `[data-theme]` matches the dark block's specificity, so a chosen theme is overridden too. */
 @media print {
-  :root {
+  :root,
+  :root[data-theme] {
     --bg: #fdfcf8;
     --text-h: #2c2c24;
     --text: #3f3f35;
