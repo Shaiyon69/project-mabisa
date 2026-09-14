@@ -3257,3 +3257,39 @@ td,
 .app-update-rail a {
   margin-left: auto;
 }
+
+.report-print-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+/* A printed report: only the report cards, full width, no chrome. */
+@media print {
+  .admin-sidebar,
+  .admin-header,
+  .admin-filter-bar,
+  .no-print,
+  .report-card-head button {
+    display: none !important;
+  }
+
+  .mobile-shell.admin-layout {
+    display: block;
+  }
+
+  .workspace {
+    padding: 0;
+  }
+
+  .report-grid-wrap,
+  .activity-grid.report-grid {
+    display: block;
+    width: 100%;
+  }
+
+  .report-grid > * {
+    break-inside: avoid;
+    margin-bottom: 16px;
+  }
+}
