@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HealthAssessment, Household, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
+import type { HealthAssessment, Household, Immunization, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
 
 // The Capacitor plugin is replaced with a real SQLite (sql.js, already a
 // dependency) behind the same connection interface, so a malformed clause or a
@@ -187,6 +187,19 @@ function assessment(overrides: Partial<HealthAssessment> & Pick<HealthAssessment
     updated_at: AT,
     ...overrides,
   } as HealthAssessment;
+}
+
+function immunization(overrides: Partial<Immunization> & Pick<Immunization, 'immunization_id'>): Immunization {
+  return {
+    resident_id: 'r1',
+    vaccine_name: 'BCG',
+    dose_number: 1,
+    date_given: '2026-08-01',
+    given_by: 'bhw-1',
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  } as Immunization;
 }
 
 function item(overrides: Partial<InventoryItem> & Pick<InventoryItem, 'item_id'>): InventoryItem {
@@ -518,6 +531,22 @@ describe('the local store', () => {
 
       expect(unset?.systolic_bp).toBeNull();
       expect(unset?.sicknesses).toEqual([]);
+    });
+  });
+
+  describe('recording an immunization', () => {
+    it('saves and reads doses back newest first, with the dose number as a number', async () => {
+      await seed();
+      await store.saveImmunizationLocally(immunization({ immunization_id: 'z1', date_given: '2026-08-01' }));
+      await store.saveImmunizationLocally(
+        immunization({ immunization_id: 'z2', date_given: '2026-08-03', dose_number: null }),
+      );
+
+      const rows = await store.readLocalImmunizations('r1');
+
+      expect(rows.map((row) => row.immunization_id)).toEqual(['z2', 'z1']);
+      expect(rows[1].dose_number).toBe(1);
+      expect(rows[0].dose_number).toBeNull();
     });
   });
 

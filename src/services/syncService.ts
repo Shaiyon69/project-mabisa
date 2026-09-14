@@ -1,5 +1,5 @@
 import { Network } from '@capacitor/network';
-import type { BhwItemStock, HealthAssessment, Household, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
+import type { BhwItemStock, HealthAssessment, Household, Immunization, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
 import { logDev } from '../lib/utils';
 import { readAllPages, supabase } from '../lib/supabase';
 import {
@@ -17,6 +17,7 @@ import {
   pullHouseholdsFromServer,
   pullIndividualsFromServer,
   pullHealthAssessmentsFromServer,
+  pullImmunizationsFromServer,
   pullSupplyDisbursementsFromServer,
   readExistingIds,
   primaryKeys,
@@ -132,6 +133,7 @@ async function isNetworkConnected(): Promise<boolean> {
 //
 //   households      <- individuals            (household_id)
 //   individuals     <- health_assessments     (resident_id)
+//   individuals     <- immunizations          (resident_id)
 //   individuals     <- supply_disbursements   (resident_id)
 //   inventory_items <- supply_disbursements   (item_id)
 // -----------------------------------------------------------------------------
@@ -178,6 +180,7 @@ export function parentEntityKeys(entry: SyncQueueEntry): EntityKey[] {
       // ahead of the record it references.
       return [...reference('household_id', 'households'), ...reference('duplicate_override_of', 'individuals')];
     case 'health_assessments':
+    case 'immunizations':
       return reference('resident_id', 'individuals');
     case 'supply_disbursements':
       return [...reference('resident_id', 'individuals'), ...reference('item_id', 'inventory_items')];
@@ -656,6 +659,10 @@ async function pullRemoteUpdates(): Promise<void> {
       changedSince(supabase.from('health_assessments').select('*')),
     );
 
+    const cloudImmunizations = await readAllPages<Immunization>('Immunization', 'immunization_id', () =>
+      changedSince(supabase.from('immunizations').select('*')),
+    );
+
     const cloudDisbursements = await readAllPages<SupplyDisbursement>('Supply disbursement', 'log_id', () =>
       changedSince(supabase.from('supply_disbursements').select('*')),
     );
@@ -722,6 +729,10 @@ async function pullRemoteUpdates(): Promise<void> {
       withKnownParents(withoutQuarantined('health_assessments', cloudAssessments), 'resident_id', residentIds),
     );
 
+    await pullImmunizationsFromServer(
+      withKnownParents(withoutQuarantined('immunizations', cloudImmunizations), 'resident_id', residentIds),
+    );
+
     await pullSupplyDisbursementsFromServer(
       withKnownParents(
         withKnownParents(withoutQuarantined('supply_disbursements', cloudDisbursements), 'resident_id', residentIds),
@@ -739,6 +750,7 @@ async function pullRemoteUpdates(): Promise<void> {
       ...cloudHouseholds,
       ...cloudIndividuals,
       ...cloudAssessments,
+      ...cloudImmunizations,
       ...cloudDisbursements,
     ];
 

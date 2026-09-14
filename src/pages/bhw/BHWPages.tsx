@@ -6,6 +6,7 @@ import { ageInYears, logDev, titleCase } from '../../lib/utils';
 import { readLocalHouseholdSummaries, readLocalIndividuals, type HouseholdSummary } from '../../services/localDatabase';
 import { BHWDashboard } from '../../components/bhw/BHWDashboard';
 import { HealthAssessmentForm } from '../../components/bhw/HealthAssessmentForm';
+import { ImmunizationForm } from '../../components/bhw/ImmunizationForm';
 import { HouseholdForm } from '../../components/bhw/HouseholdForm';
 import { ResidentDetail } from '../../components/bhw/ResidentDetail';
 import { SupplyDisbursementForm } from '../../components/bhw/SupplyDisbursementForm';
@@ -284,6 +285,23 @@ export function HealthAssessmentPage() {
       onSaved={async () => {
         await refreshLocalData();
         setMessage('Health check saved on this phone. It will be sent when you have signal.');
+        navigate('/bhw');
+      }}
+    />
+  );
+}
+
+export function ImmunizationPage() {
+  const navigate = useNavigate();
+  const { bhwId, snapshot, refreshLocalData, setMessage } = useMabisaData();
+
+  return (
+    <ImmunizationForm
+      individualCount={snapshot.individualCount}
+      bhwId={bhwId}
+      onSaved={async () => {
+        await refreshLocalData();
+        setMessage('Immunization saved on this phone. It will be sent when you have signal.');
         navigate('/bhw');
       }}
     />

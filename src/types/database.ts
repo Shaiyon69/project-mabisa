@@ -169,6 +169,18 @@ export type HealthAssessment = {
   updated_at: string;
 };
 
+/** One dose given to a resident. No schedule/due-date engine — a log, not a tracker. */
+export type Immunization = {
+  immunization_id: string;
+  resident_id: string;
+  vaccine_name: string;
+  dose_number?: number | null;
+  date_given: string;
+  given_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
 /**
  * Barangay supply stock, as the admin portal sees it. `current_stock` is what the
  * barangay holds unallocated, not the total — an allocated quantity moves to
@@ -247,6 +259,14 @@ export type HealthAssessmentInsert = Omit<HealthAssessment, 'assessment_id' | 'a
 };
 export type HealthAssessmentUpdate = Partial<Omit<HealthAssessment, 'assessment_id'>>;
 
+// given_by is stamped server-side (private.stamp_immunization_actor), never trusted from the device.
+export type ImmunizationInsert = Omit<Immunization, 'immunization_id' | 'created_at' | 'updated_at'> & {
+  immunization_id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+export type ImmunizationUpdate = Partial<Omit<Immunization, 'immunization_id'>>;
+
 export type InventoryItemInsert = Omit<InventoryItem, 'item_id' | 'current_stock' | 'created_at' | 'updated_at'> & {
   item_id?: string;
   current_stock?: number;
@@ -296,6 +316,16 @@ type HealthAssessmentRelationships = [
   },
 ];
 
+type ImmunizationRelationships = [
+  {
+    foreignKeyName: 'immunizations_resident_id_fkey';
+    columns: ['resident_id'];
+    isOneToOne: false;
+    referencedRelation: 'individuals';
+    referencedColumns: ['resident_id'];
+  },
+];
+
 export type Database = {
   public: {
     Tables: {
@@ -311,6 +341,7 @@ export type Database = {
         HealthAssessmentUpdate,
         HealthAssessmentRelationships
       >;
+      immunizations: RowDefinition<Immunization, ImmunizationInsert, ImmunizationUpdate, ImmunizationRelationships>;
       inventory_items: RowDefinition<InventoryItem, InventoryItemInsert, InventoryItemUpdate>;
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
       // Written only by barangay_admin_allocate_stock — never for both write shapes.

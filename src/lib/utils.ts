@@ -22,6 +22,19 @@ export const DIASTOLIC_BP_RANGE = { min: 40, max: 160 };
 export const TEMPERATURE_C_RANGE = { min: 30, max: 43 };
 export const PULSE_RATE_RANGE = { min: 30, max: 220 };
 
+/** Common DOH EPI vaccines. Not exhaustive — the field paired with a `<datalist>` takes free text too. */
+export const VACCINE_OPTIONS = [
+  'BCG',
+  'Hepatitis B',
+  'Penta (DPT-HepB-Hib)',
+  'OPV',
+  'IPV',
+  'PCV',
+  'MMR',
+  'Td/Tdap',
+  'COVID-19',
+];
+
 /** Placeholders until the panel supplies the real ~10-condition list. */
 export const SICKNESS_OPTIONS = [
   'Sickness 1',
