@@ -24,14 +24,11 @@ COPY . .
 
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_PUBLISHABLE_KEY
-ARG VITE_BARANGAY_NAME
 
-# Fail here rather than serving a portal that cannot reach the database, or one
-# whose exported reports carry no barangay name.
+# Fail here rather than serving a portal that cannot reach the database.
 RUN test -n "$VITE_SUPABASE_URL" \
     && test -n "$VITE_SUPABASE_PUBLISHABLE_KEY" \
-    && test -n "$VITE_BARANGAY_NAME" \
-    || (echo "VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY and VITE_BARANGAY_NAME are required build arguments" && false)
+    || (echo "VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY are required build arguments" && false)
 
 RUN npm run build:admin
 

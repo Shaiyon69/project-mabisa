@@ -38,6 +38,7 @@ const recordLabels: Record<LocalTableName, string> = {
   households: 'Household profile',
   individuals: 'Resident profile',
   health_assessments: 'Health assessment',
+  immunizations: 'Immunization',
   inventory_items: 'Inventory item',
   supply_disbursements: 'Supply release',
 };

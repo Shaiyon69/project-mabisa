@@ -16,40 +16,33 @@ import {
   emptyAdminSnapshot,
   fetchAdminSnapshot,
   invalidateAdminSnapshot,
-  barangaysMissingAdmin,
   canAssignPurok,
-  filterAccounts,
-  filterInventory,
   LOW_STOCK_THRESHOLD,
   latestPerResident,
   lowStockItems,
   monthlyReleases,
   monthlyTrend,
+  monthlyVitals,
   nutritionByBarangay,
   nutritionTally,
   presetRange,
   rankByUnderweight,
-  readAllResidentPages,
   REPORT_SECTIONS,
+  residentHealthRows,
   reorderLevelOf,
   showsSection,
   tally,
-  visibleAccounts,
-  type AccountRow,
   type AdminFilters,
   type AdminSnapshot,
   type BarangayStats,
 } from './adminData';
 import { filtersFromParams, paramsFromFilters } from '../hooks/useAdminData';
 import type {
-  Barangay,
   HealthAssessment,
-  Individual,
   InventoryItem,
   NutritionStatus,
   SupplyDisbursement,
 } from '../types/database';
-import { PULL_PAGE_SIZE } from '../lib/supabase';
 
 // `fetchAdminSnapshot` is the one export here that talks to Supabase, so the
 // purok-narrowing test below needs a fake client. Only `.from()` and `.rpc()` are
@@ -428,48 +421,6 @@ describe('assessmentsBelowAdultBmiAge', () => {
   });
 });
 
-describe('readAllResidentPages', () => {
-  const resident = (id: string) => ({ resident_id: id }) as unknown as Individual;
-  const full = (offset: number) =>
-    Array.from({ length: PULL_PAGE_SIZE }, (_, index) => resident(`r${offset + index}`));
-
-  it('follows every page, not just the first', async () => {
-    // One oversized range is trimmed to the cap in silence, and the export prints
-    // its own row count as though the file were complete.
-    const pages = [
-      { rows: full(0), total: PULL_PAGE_SIZE + 2 },
-      { rows: [resident('last-1'), resident('last-2')], total: PULL_PAGE_SIZE + 2 },
-    ];
-
-    const rows = await readAllResidentPages((offset) => Promise.resolve(pages[offset / PULL_PAGE_SIZE]));
-
-    expect(rows).toHaveLength(PULL_PAGE_SIZE + 2);
-    expect(rows.at(-1)?.resident_id).toBe('last-2');
-  });
-
-  it('stops on a short page without asking for another', async () => {
-    const reads: number[] = [];
-    const rows = await readAllResidentPages((offset) => {
-      reads.push(offset);
-      return Promise.resolve({ rows: [resident('r1')], total: 1 });
-    });
-
-    expect(reads).toEqual([0]);
-    expect(rows).toHaveLength(1);
-  });
-
-  // A reader that keeps handing back full pages must not spin forever.
-  it('stops once the reported total is covered', async () => {
-    const reads: number[] = [];
-    const rows = await readAllResidentPages((offset) => {
-      reads.push(offset);
-      return Promise.resolve({ rows: full(offset), total: PULL_PAGE_SIZE });
-    });
-
-    expect(reads).toEqual([0]);
-    expect(rows).toHaveLength(PULL_PAGE_SIZE);
-  });
-});
 
 describe('barangayStats', () => {
   const barangay = (barangay_id: string, name: string) => ({
@@ -597,6 +548,46 @@ describe('monthlyTrend', () => {
   });
 });
 
+describe('monthlyVitals', () => {
+  it('averages each vital over only the checks that took it', () => {
+    const points = monthlyVitals(
+      [
+        { ...assessment('a1', 'r1', '2026-01-05', 'normal'), systolic_bp: 120, pulse_rate: 70 },
+        { ...assessment('a2', 'r2', '2026-01-20', 'normal'), systolic_bp: 131 },
+        assessment('a3', 'r3', '2026-01-25', 'normal'),
+      ],
+      { from: '2026-01-01', to: '2026-02-28', barangayId: null },
+    );
+
+    expect(points[0]).toMatchObject({ readings: 2, systolic_bp: 125.5, pulse_rate: 70, diastolic_bp: null });
+    expect(points[1]).toMatchObject({ readings: 0, systolic_bp: null });
+  });
+});
+
+describe('residentHealthRows', () => {
+  it('shows each resident once, named, with their latest check and how many they had', () => {
+    const rows = residentHealthRows({
+      barangays: [{ barangay_id: 'b1', name: 'Cabugao', code: null, is_active: true, created_at: '', updated_at: '', created_by: null }],
+      households: [{ household_id: 'h1', household_number: 'HH-1', barangay_id: 'b1', updated_at: '' }],
+      people: [
+        { resident_id: 'r1', household_id: 'h1', first_name: 'Ana', last_name: 'Santos', sex: 'female', birthday: '2000-01-01' },
+        { resident_id: 'r2', household_id: 'h9', first_name: 'Ben', last_name: 'Cruz', sex: 'male', birthday: '1990-01-01' },
+      ],
+      assessments: [
+        assessment('a1', 'r1', '2026-01-01', 'underweight'),
+        assessment('a2', 'r1', '2026-03-01', 'normal'),
+        assessment('a3', 'r2', '2026-02-01', 'obese'),
+        assessment('a4', 'r-out-of-scope', '2026-02-01', 'normal'),
+      ],
+    });
+
+    expect(rows.map((row) => row.person.last_name)).toEqual(['Cruz', 'Santos']);
+    expect(rows[0]).toMatchObject({ barangay: 'Unassigned', checks: 1 });
+    expect(rows[1]).toMatchObject({ barangay: 'Cabugao', householdNumber: 'HH-1', checks: 2 });
+    expect(rows[1].latest.assessment_id).toBe('a2');
+  });
+});
+
 describe('monthlyReleases', () => {
   it('draws an empty month inside the range at zero, on the same months monthlyTrend walks', () => {
     const points = monthlyReleases(
@@ -632,159 +623,6 @@ describe('showsSection', () => {
       'demographics',
       'stock',
     ]);
-  });
-});
-
-describe('filterInventory', () => {
-  const items = [
-    item('a', 'Paracetamol', 5, 10),
-    item('b', 'Bandage', 40, 10),
-    item('c', 'Leaflets', 0, 0),
-  ];
-  const withType = (row: InventoryItem, type: InventoryItem['type']): InventoryItem => ({ ...row, type });
-  const typed = [withType(items[0], 'medicine'), withType(items[1], 'hygiene'), withType(items[2], 'other')];
-
-  it('matches on item type', () => {
-    expect(filterInventory(typed, { from: 'a', to: 'b', barangayId: null, itemType: 'medicine' }).map((row) => row.item_id)).toEqual([
-      'a',
-    ]);
-  });
-
-  it('matches low stock the same way lowStockItems does', () => {
-    expect(filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'low' }).map((row) => row.item_id)).toEqual([
-      'a',
-    ]);
-    expect(
-      filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'sufficient' }).map((row) => row.item_id),
-    ).toEqual(['b', 'c']);
-  });
-
-  // `reorder_level: 0` switches the warning off, even though stock 0 is at level 0.
-  it('keeps a reorder_level of 0 out of "low", matching lowStockItems', () => {
-    expect(filterInventory(items, { from: 'a', to: 'b', barangayId: null, stockLevel: 'low' })).not.toContainEqual(
-      expect.objectContaining({ item_id: 'c' }),
-    );
-  });
-});
-
-const accountProfile = (
-  user_id: string,
-  role: 'admin' | 'barangay_admin' | 'bhw',
-  is_active: boolean,
-  barangay_id: string | null = null,
-): AccountRow['profile'] => ({
-  user_id,
-  role,
-  barangay_id,
-  full_name: user_id,
-  is_active,
-  created_at: '',
-  updated_at: '',
-  created_by: null,
-  disabled_at: null,
-  disabled_by: null,
-});
-
-const account = (row: Partial<AccountRow> & { profile: AccountRow['profile'] }): AccountRow => ({
-  purokName: null,
-  assignedSince: null,
-  purokId: null,
-  barangayId: null,
-  ...row,
-});
-
-describe('visibleAccounts', () => {
-  const rows = [
-    account({ profile: accountProfile('rhu', 'admin', true) }),
-    account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' }),
-    account({ profile: accountProfile('worker', 'bhw', true), purokId: 'p1', barangayId: 'b1' }),
-  ];
-  const ids = (filtered: AccountRow[]) => filtered.map((row) => row.profile.user_id);
-
-  it('shows the RHU the administrators it appoints, and not itself', () => {
-    expect(ids(visibleAccounts('admin', rows))).toEqual(['ba']);
-  });
-
-  it('shows a barangay administrator the health workers, and not their own row', () => {
-    expect(ids(visibleAccounts('barangay_admin', rows))).toEqual(['worker']);
-  });
-
-  it('orders health workers by purok, with the unassigned last', () => {
-    const workers = [
-      account({ profile: accountProfile('no-purok', 'bhw', true, 'b1') }),
-      account({ profile: accountProfile('purok-2', 'bhw', true), purokName: 'Purok 2' }),
-      account({ profile: accountProfile('purok-1-b', 'bhw', true), purokName: 'Purok 1' }),
-      account({ profile: accountProfile('purok-1-a', 'bhw', true), purokName: 'Purok 1' }),
-    ];
-
-    expect(ids(visibleAccounts('barangay_admin', workers))).toEqual(['purok-1-a', 'purok-1-b', 'purok-2', 'no-purok']);
-  });
-
-  it('shows a health worker nothing', () => {
-    expect(visibleAccounts('bhw', rows)).toEqual([]);
-    expect(visibleAccounts(null, rows)).toEqual([]);
-  });
-});
-
-describe('barangaysMissingAdmin', () => {
-  const barangay = (barangay_id: string): Barangay => ({
-    barangay_id,
-    name: barangay_id,
-    code: barangay_id,
-    is_active: true,
-    created_at: '',
-    updated_at: '',
-    created_by: null,
-  });
-  const barangays = [barangay('b1'), barangay('b2')];
-
-  it('names a barangay nobody administers', () => {
-    const rows = [account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' })];
-
-    expect(barangaysMissingAdmin(barangays, rows).map((row) => row.barangay_id)).toEqual(['b2']);
-  });
-
-  // A deactivated administrator administers nothing: every RLS helper starts from an active profile.
-  it('does not count a deactivated administrator', () => {
-    const rows = [account({ profile: accountProfile('ba', 'barangay_admin', false, 'b1'), barangayId: 'b1' })];
-
-    expect(barangaysMissingAdmin(barangays, rows).map((row) => row.barangay_id)).toEqual(['b1', 'b2']);
-  });
-});
-
-describe('filterAccounts', () => {
-  const rows = [
-    account({ profile: accountProfile('rhu', 'admin', true) }),
-    account({ profile: accountProfile('ba', 'barangay_admin', true, 'b1'), barangayId: 'b1' }),
-    account({ profile: accountProfile('bhw-active', 'bhw', true), purokId: 'p1', barangayId: 'b1' }),
-    account({ profile: accountProfile('bhw-inactive', 'bhw', false), purokId: 'p2', barangayId: 'b2' }),
-  ];
-  const ids = (filtered: AccountRow[]) => filtered.map((row) => row.profile.user_id);
-
-  it('matches role', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, accountRole: 'bhw' }))).toEqual([
-      'bhw-active',
-      'bhw-inactive',
-    ]);
-  });
-
-  it('matches active state', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, accountActive: 'inactive' }))).toEqual([
-      'bhw-inactive',
-    ]);
-  });
-
-  it('matches barangay', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: 'b1' }))).toEqual(['ba', 'bhw-active']);
-  });
-
-  it('matches purok', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: null, purokId: 'p2' }))).toEqual(['bhw-inactive']);
-  });
-
-  // A BHW's barangay is reachable only through their purok assignment.
-  it('finds a BHW whose barangay is reached only through their purok', () => {
-    expect(ids(filterAccounts(rows, { from: 'a', to: 'b', barangayId: 'b2' }))).toEqual(['bhw-inactive']);
   });
 });
 

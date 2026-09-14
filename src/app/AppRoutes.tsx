@@ -16,6 +16,7 @@ const ResidentsPage = lazy(() => import('../pages/admin/AdminPages').then((modul
 const InventoryPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.InventoryPage })));
 const AccountsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.AccountsPage })));
 const AnalyticsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.AnalyticsPage })));
+const HealthPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.HealthPage })));
 const ReportsPage = lazy(() => import('../pages/admin/AdminPages').then((module) => ({ default: module.ReportsPage })));
 
 const BHWLayout = lazy(() => import('../components/bhw/BHWLayout').then((module) => ({ default: module.BHWLayout })));
@@ -25,6 +26,7 @@ const RegisterResidentPage = lazy(() => import('../pages/bhw/BHWPages').then((mo
 const BhwResidentsPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ResidentsPage })));
 const ResidentDetailPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ResidentDetailPage })));
 const HealthAssessmentPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.HealthAssessmentPage })));
+const ImmunizationPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ImmunizationPage })));
 const SupplyDisbursementPage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.SupplyDisbursementPage })));
 const ProfilePage = lazy(() => import('../pages/bhw/BHWPages').then((module) => ({ default: module.ProfilePage })));
 
@@ -107,6 +109,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
             <Route path="residents" element={<BhwResidentsPage />} />
             <Route path="residents/:residentId" element={<ResidentDetailPage />} />
             <Route path="health-assessment" element={<HealthAssessmentPage />} />
+            <Route path="immunization" element={<ImmunizationPage />} />
             <Route path="supply-disbursement" element={<SupplyDisbursementPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
@@ -131,6 +134,7 @@ export function AppRoutes({ logout, role, roleChecked, fullName }: AppRoutesProp
             <Route path="residents" element={<ResidentsPage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="accounts" element={<AccountsPage />} />
+            <Route path="health" element={<HealthPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="reports" element={<ReportsPage />} />
           </Route>
