@@ -41,7 +41,13 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
   const reportContext = (title: string) => ({ title, barangay: scopeLabel, from: filters.from, to: filters.to });
 
   return (
-    <div className="activity-grid report-grid">
+    <div className="report-grid-wrap">
+      <div className="report-print-actions no-print">
+        <Button variant="ghost" onClick={() => window.print()}>
+          Print report
+        </Button>
+      </div>
+      <div className="activity-grid report-grid">
       {showsSection(filters, 'demographics') ? (
         <ReportPanel
           title="Resident demographics"
@@ -149,6 +155,7 @@ export function ReportCards({ snapshot, filters }: ReportCardsProps) {
           />
         </ReportPanel>
       ) : null}
+      </div>
     </div>
   );
 }

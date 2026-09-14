@@ -165,6 +165,48 @@
   color-scheme: dark;
 }
 
+/* A printed page renders prefers-color-scheme inconsistently across browsers, so
+   the light palette is pinned here rather than trusted to follow the active theme. */
+@media print {
+  :root {
+    --bg: #fdfcf8;
+    --text-h: #2c2c24;
+    --text: #3f3f35;
+    --primary: #203a70;
+    --primary-strong: #16274d;
+    --primary-foreground: #f2f5fb;
+    --secondary: #ffcf35;
+    --secondary-strong: #e8b81f;
+    --secondary-ink: #7a5600;
+    --accent: #e6dccd;
+    --muted-surface: #f0ebe5;
+    --muted: #6b6b5f;
+    --panel: #fffefa;
+    --field: #fffdf7;
+    --field-soft: #f7f2ea;
+    --border: #9c9080;
+    --danger: #b5182a;
+    --series-2: #b8860b;
+    --danger-ink: #8c1120;
+    --danger-surface: #fbe7e9;
+    --danger-line: #eec2c7;
+    --warning-ink: #6b4a05;
+    --warning-surface: #fdf3d5;
+    --warning-line: #f0dda0;
+    --success-ink: #0b6b34;
+    --success-surface: #e6f4ec;
+    --success-line: #bcdfca;
+    --danger-strong: #8c1120;
+    --danger-foreground: #ffffff;
+    --secondary-foreground: #24221e;
+    --bmi-low: #7d8c96;
+    --bmi-low-ink: #63737d;
+    --primary-rgb: 32 58 112;
+    --ink-rgb: 44 44 36;
+    color-scheme: light;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
