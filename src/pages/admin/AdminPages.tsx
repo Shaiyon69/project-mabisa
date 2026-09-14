@@ -195,7 +195,7 @@ export function AnalyticsPage() {
       <PageHeader
         icon="chart"
         title="Charts"
-        description="Trends over time, barangay by barangay, and how supplies are being used."
+        description="Trends over time, barangay by barangay, how supplies are being used, and what the health checks found."
         actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
       {error ? (
@@ -221,7 +221,7 @@ export function HealthPage() {
       <PageHeader
         icon="heart"
         title="Health"
-        description="What the health checks found: nutrition, vaccination, illness and vital signs."
+        description="Each resident's latest health check in the period: vitals, illness and vaccination."
         actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
       {error ? (

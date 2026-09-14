@@ -46,8 +46,8 @@ import { SummaryContext } from './AdminFilterBar';
 
 /**
  * The analyses the period summaries cannot answer: how the numbers are moving,
- * how the barangays compare, how much of the register has been reached, and where
- * the supplies went. Each panel exports on its own, and all are computed from the
+ * how the barangays compare, how much of the register has been reached, where
+ * the supplies went, and what the health checks found. Each panel exports on its own, and all are computed from the
  * one snapshot the page already read.
  */
 export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
@@ -64,6 +64,15 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
   const scope = describeScope(filters, snapshot);
   // What those two panels actually cover, which is not what the picker says.
   const everyBarangay = snapshot.barangayLabel;
+  // Health figures count a resident once, by their latest check.
+  const latest = latestPerResident(snapshot.assessments);
+  const vaccination = tally(latest, (row) => row.vaccination_status ?? null, VACCINATION_STATUS_OPTIONS);
+  const vaccinationColors: Record<string, string> = {
+    complete: SERIES_COLORS[0],
+    partial: SERIES_COLORS[1],
+    none: 'var(--danger)',
+    unknown: 'var(--bmi-low)',
+  };
 
   return (
     // The half-width panels are adjacent so they share a row, and there are two
@@ -85,25 +94,6 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
         <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={everyBarangay} />
       )}
       <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
-    </div>
-  );
-}
-
-/** The residents' health in the period: each figure counts a resident once, by their latest check. */
-export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
-  const scope = describeScope(filters, snapshot);
-  const latest = latestPerResident(snapshot.assessments);
-  const vaccination = tally(latest, (row) => row.vaccination_status ?? null, VACCINATION_STATUS_OPTIONS);
-  const vaccinationColors: Record<string, string> = {
-    complete: SERIES_COLORS[0],
-    partial: SERIES_COLORS[1],
-    none: 'var(--danger)',
-    unknown: 'var(--bmi-low)',
-  };
-
-  return (
-    <div className="activity-grid report-grid">
-      <ResidentHealthPanel snapshot={snapshot} filters={filters} scope={scope} />
       <DistributionPanel
         title="Nutrition status"
         rows={nutritionTally(snapshot.assessments)}
@@ -136,6 +126,15 @@ export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; f
         scope={scope}
       />
       <VitalsPanel snapshot={snapshot} filters={filters} scope={scope} />
+    </div>
+  );
+}
+
+/** Each resident's own record for the period, one row per resident. */
+export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
+  return (
+    <div className="activity-grid report-grid">
+      <ResidentHealthPanel snapshot={snapshot} filters={filters} scope={describeScope(filters, snapshot)} />
     </div>
   );
 }
