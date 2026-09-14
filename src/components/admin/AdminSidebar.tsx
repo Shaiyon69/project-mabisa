@@ -31,7 +31,7 @@ export function AdminSidebar({ fullName, role, logout }: AdminSidebarProps) {
     <aside className="side-rail admin-sidebar" aria-label="Admin navigation">
       <div className="brand-lockup">
         <span className="brand-mark" aria-hidden="true">
-          B
+          <img src="/assets/logo.png" alt="" />
         </span>
         <div>
           <p className="eyebrow">BRHP-MSAM</p>
