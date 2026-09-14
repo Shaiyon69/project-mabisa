@@ -503,9 +503,39 @@ export function tally<Row>(rows: Row[], key: (row: Row) => string | null, order?
 
 export const NUTRITION_ORDER: readonly NutritionStatus[] = ['underweight', 'normal', 'overweight', 'obese'];
 
-/** The nutrition distribution for a scope, so no two screens can band it differently. */
+/**
+ * One row per resident: their most recent check in the set. Tallying every
+ * assessment instead keeps a resident's old band in the count long after a later
+ * check moved them, so a barangay that fixes its underweight cases still reads as
+ * having them until the period rolls over.
+ */
+export function latestPerResident(assessments: HealthAssessment[]): HealthAssessment[] {
+  const latest = new Map<string, HealthAssessment>();
+
+  for (const assessment of assessments) {
+    const held = latest.get(assessment.resident_id);
+    // Same day twice is a correction that predates the form refusing to make one;
+    // the later write is the one that counts.
+    const isNewer =
+      !held ||
+      assessment.assessment_date > held.assessment_date ||
+      (assessment.assessment_date === held.assessment_date && assessment.updated_at > held.updated_at);
+
+    if (isNewer) {
+      latest.set(assessment.resident_id, assessment);
+    }
+  }
+
+  return [...latest.values()];
+}
+
+/**
+ * The nutrition distribution for a scope, so no two screens can band it
+ * differently. Counts residents, not checks: the reduction is here rather than at
+ * the call sites so no panel can forget it.
+ */
 export function nutritionTally(assessments: HealthAssessment[]): Tally[] {
-  return tally(assessments, (assessment) => assessment.nutrition_status, NUTRITION_ORDER);
+  return tally(latestPerResident(assessments), (assessment) => assessment.nutrition_status, NUTRITION_ORDER);
 }
 
 /** Demographic age bands, matching the ones Philippine barangay health reporting uses. */
@@ -1052,8 +1082,9 @@ export type BarangayStats = {
   assessments: number;
   /** Distinct residents with at least one assessment in the period. */
   residentsAssessed: number;
+  /** Residents whose latest assessment in the period was underweight. */
   underweight: number;
-  /** Share of this barangay's assessments, null when it recorded none. */
+  /** Share of `residentsAssessed`, null when the barangay assessed nobody. */
   underweightRate: number | null;
   /** Share of its registered residents assessed at all, null when it has none. */
   coverageRate: number | null;
@@ -1131,19 +1162,23 @@ export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: strin
 
   const assessedResidents = new Map<string, Set<string>>();
 
+  // Every check: this is the workload figure, and the one coverage is drawn from.
   for (const assessment of snapshot.assessments) {
     const barangayId = residentBarangay.get(assessment.resident_id) ?? '';
-    const row = at(barangayId);
 
-    row.assessments += 1;
-
-    if (assessment.nutrition_status === SHADED_STATUS) {
-      row.underweight += 1;
-    }
+    at(barangayId).assessments += 1;
 
     const seen = assessedResidents.get(barangayId) ?? new Set<string>();
     seen.add(assessment.resident_id);
     assessedResidents.set(barangayId, seen);
+  }
+
+  // One check per resident: a resident a later check moved out of the band must
+  // stop counting against their barangay, or the rate can never fall.
+  for (const assessment of latestPerResident(snapshot.assessments)) {
+    if (assessment.nutrition_status === SHADED_STATUS) {
+      at(residentBarangay.get(assessment.resident_id) ?? '').underweight += 1;
+    }
   }
 
   for (const disbursement of snapshot.disbursements) {
@@ -1152,7 +1187,7 @@ export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: strin
 
   for (const [barangayId, row] of rows) {
     row.residentsAssessed = assessedResidents.get(barangayId)?.size ?? 0;
-    row.underweightRate = row.assessments ? row.underweight / row.assessments : null;
+    row.underweightRate = row.residentsAssessed ? row.underweight / row.residentsAssessed : null;
     row.coverageRate = row.residents ? row.residentsAssessed / row.residents : null;
   }
 
@@ -1175,10 +1210,10 @@ const RANK_PRIOR = 20;
  */
 export function rankByUnderweight(stats: BarangayStats[]): BarangayStats[] {
   const totalUnderweight = stats.reduce((sum, row) => sum + row.underweight, 0);
-  const totalAssessments = stats.reduce((sum, row) => sum + row.assessments, 0);
-  const overall = totalAssessments ? totalUnderweight / totalAssessments : 0;
+  const totalAssessed = stats.reduce((sum, row) => sum + row.residentsAssessed, 0);
+  const overall = totalAssessed ? totalUnderweight / totalAssessed : 0;
   const score = (row: BarangayStats) =>
-    row.underweightRate === null ? -1 : (row.underweight + RANK_PRIOR * overall) / (row.assessments + RANK_PRIOR);
+    row.underweightRate === null ? -1 : (row.underweight + RANK_PRIOR * overall) / (row.residentsAssessed + RANK_PRIOR);
 
   return [...stats].sort((a, b) => score(b) - score(a));
 }
@@ -1206,7 +1241,8 @@ export function nutritionByBarangay(snapshot: BarangayRollup, sessionBarangayId:
     at(barangay.barangay_id, barangay.name);
   }
 
-  for (const assessment of snapshot.assessments) {
+  // Each resident once, under their latest check, matching `nutritionTally`.
+  for (const assessment of latestPerResident(snapshot.assessments)) {
     const barangayId = residentBarangay.get(assessment.resident_id) ?? '';
     const row = at(barangayId, barangayId ? 'Unknown barangay' : 'Unassigned');
 

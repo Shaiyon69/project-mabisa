@@ -386,6 +386,19 @@ describe('the local store', () => {
       expect(members.map((person) => person.resident_id)).toEqual(['r3']);
     });
 
+    // What the re-visit form loads: a member who left has to appear on the card list,
+    // or the visit that found out has no way to record it.
+    it('keeps former members of a household when asked for them', async () => {
+      await seed();
+
+      const active = await store.readLocalIndividuals({ householdId: 'h1' });
+      const withFormer = await store.readLocalIndividuals({ householdId: 'h1', includeFormer: true });
+
+      expect(active.map((person) => person.resident_id)).toEqual(['r1', 'r2']);
+      expect(withFormer.map((person) => person.resident_id)).toEqual(['r4', 'r1', 'r2']);
+      expect(withFormer.find((person) => person.resident_id === 'r4')?.status).toBe('moved_out');
+    });
+
     it('orders by name and honours limit, offset, and an offset with no limit', async () => {
       await seed();
 
@@ -452,6 +465,53 @@ describe('the local store', () => {
 
       expect(await store.readLocalHouseholds({ searchQuery: '%' })).toHaveLength(0);
       expect(await store.readLocalHouseholds({ searchQuery: 'HH_001' })).toHaveLength(0);
+    });
+  });
+
+  describe('finding a same-day health check', () => {
+    // What turns a second check on one date into a correction of the first. Without
+    // it a mistyped weight can only be answered by a second, contradictory row.
+    it('returns the check already recorded for that resident on that date', async () => {
+      await seed();
+      await store.saveHealthAssessmentLocally(
+        assessment({ assessment_id: 'a1', resident_id: 'r1', assessment_date: '2026-08-01' }),
+      );
+
+      const found = await store.findLocalAssessmentOnDate('r1', '2026-08-01');
+
+      expect(found?.assessment_id).toBe('a1');
+      // Numbers come back as numbers, not the text SQLite hands over.
+      expect(found?.bmi).toBe(23.44);
+      expect(await store.findLocalAssessmentOnDate('r1', '2026-08-02')).toBeNull();
+      expect(await store.findLocalAssessmentOnDate('r2', '2026-08-01')).toBeNull();
+    });
+  });
+
+  describe('the households browse list', () => {
+    it('carries the head and active headcount of each household', async () => {
+      await seed();
+
+      const summaries = await store.readLocalHouseholdSummaries();
+      const byNumber = Object.fromEntries(summaries.map((row) => [row.household_number, row]));
+
+      // Ana moved out, so she is off the count; Pedro is no household's head.
+      expect(byNumber['HH-001'].head_name).toBe('Dela Cruz, Juan');
+      expect(byNumber['HH-001'].member_count).toBe(2);
+      expect(byNumber['HH-002'].head_name).toBeNull();
+      expect(byNumber['HH-002'].member_count).toBe(1);
+    });
+
+    // A BHW knows a house by the family in it, not by its number.
+    it('matches on a member name as well as the household number', async () => {
+      await seed();
+
+      const numbers = async (searchQuery: string) =>
+        (await store.readLocalHouseholdSummaries({ searchQuery })).map((row) => row.household_number);
+
+      expect(await numbers('HH-002')).toEqual(['HH-002']);
+      expect(await numbers('Bautista')).toEqual(['HH-002']);
+      expect(await numbers('Santos')).toEqual(['HH-001']);
+      expect(await numbers('%')).toEqual([]);
     });
   });
 
