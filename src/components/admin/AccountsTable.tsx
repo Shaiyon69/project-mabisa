@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatDate, titleCase } from '../../lib/utils';
-import { exportReport, type CsvColumn } from '../../lib/csv';
+import { formatDate } from '../../lib/utils';
 import {
   assignBhwToPurok,
   barangaysMissingAdmin,
@@ -22,24 +21,6 @@ import { FormField, SelectField, TextAreaField } from '../common/FormField';
 import { Modal } from '../common/Modal';
 import { ErrorState, WarningState } from '../common/StateMessage';
 import { ROWS_PER_PAGE, Table, TableBadge, TableMeta, TableToolbar, type TableColumn } from '../common/Table';
-
-/** A purok is a health worker's, so the two assignment columns are dropped for the rows that never have one. */
-function exportColumnsFor(assigned: boolean): CsvColumn<AccountRow>[] {
-  return [
-    { header: 'User ID', value: (row) => row.profile.user_id },
-    { header: 'Name', value: (row) => row.profile.full_name },
-    { header: 'Role', value: (row) => titleCase(row.profile.role) },
-    ...(assigned
-      ? [
-          { header: 'Assigned purok', value: (row: AccountRow) => row.purokName },
-          { header: 'Assigned since', value: (row: AccountRow) => row.assignedSince },
-        ]
-      : []),
-    { header: 'Active', value: (row) => (row.profile.is_active ? 'Yes' : 'No') },
-    { header: 'Deactivated at', value: (row) => row.profile.disabled_at },
-    { header: 'Created at', value: (row) => row.profile.created_at },
-  ];
-}
 
 /**
  * What each role is called on screen. `admin` is the RHU account that reads every
@@ -204,27 +185,6 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     });
   }
 
-  // The scope is read at export time rather than held in state, so the file cannot
-  // name a barangay the session has since moved off.
-  async function exportAccounts() {
-    exportReport(
-      {
-        title: 'Accounts',
-        barangay: (await fetchBarangayScope()).label,
-        from: 'all dates',
-        to: 'all dates',
-        // The drawer's filters, named on the file, so an export of a narrowed
-        // list does not read later as the whole account list.
-        filters: [
-          ...(filters.accountRole ? [{ label: 'Role', value: titleCase(filters.accountRole) }] : []),
-          ...(filters.accountActive ? [{ label: 'Account state', value: titleCase(filters.accountActive) }] : []),
-        ],
-      },
-      visible,
-      exportColumnsFor(assignsAnyone),
-    );
-  }
-
   return (
     <div className="ui-table-stack">
       <TableToolbar>
@@ -233,9 +193,6 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
             {role === 'admin' ? 'Create account' : 'Create health worker'}
           </Button>
         ) : null}
-        <Button variant="ghost" onClick={() => void exportAccounts()} disabled={loading || !visible.length}>
-          Export CSV
-        </Button>
       </TableToolbar>
 
       {error ? <ErrorState title="Could not read accounts" text={error} /> : null}

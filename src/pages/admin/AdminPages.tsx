@@ -71,7 +71,7 @@ export function ResidentsPage() {
       />
       <Card className="admin-monitor">
         {error ? <ErrorState title="Could not load the records" text={error} /> : null}
-        <IndividualsTable filters={filters} snapshot={snapshot} />
+        <IndividualsTable filters={filters} />
       </Card>
     </>
   );
