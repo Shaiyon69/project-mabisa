@@ -3279,13 +3279,13 @@ td,
 
     @bottom-left {
       content: 'BRHP-MSAM';
-      color: #6b6b5f;
+      color: #6b7c70;
       font: 7pt 'Nunito Variable', system-ui, sans-serif;
     }
 
     @bottom-right {
       content: 'Page ' counter(page) ' of ' counter(pages);
-      color: #6b6b5f;
+      color: #6b7c70;
       font: 7pt 'Nunito Variable', system-ui, sans-serif;
     }
   }
@@ -3506,12 +3506,12 @@ td,
   .pr-table td {
     padding: 3.5pt 6pt;
     background: transparent;
-    border-bottom: 0.5pt solid #ddd5c8;
+    border-bottom: 0.5pt solid #dfe5dc;
     vertical-align: top;
   }
 
   .pr-table tbody tr:nth-child(even) td {
-    background: #f8f4ed;
+    background: #f7f9f4;
   }
 
   .pr-table tfoot th {

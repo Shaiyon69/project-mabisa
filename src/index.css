@@ -48,29 +48,26 @@
 }
 
 :root {
-  --bg: #fdfcf8;
-  --text-h: #2c2c24;
-  --text: #3f3f35;
-  --primary: #203a70;
-  --primary-strong: #16274d;
-  --primary-foreground: #f2f5fb;
-  --secondary: #ffcf35;
-  --secondary-strong: #e8b81f;
-  --secondary-ink: #7a5600;
-  --accent: #e6dccd;
-  --muted-surface: #f0ebe5;
-  --muted: #6b6b5f;
-  --panel: #fffefa;
-  --field: #fffdf7;
-  --field-soft: #f7f2ea;
-  /* 3.05:1 on the page and 3.10:1 on a panel. The old #c7bfb0 was 1.78:1, under
-     the 3:1 a control boundary needs — and these are read in sunlight. */
-  --border: #9c9080;
+  --bg: #f7f9f4;
+  --text-h: #1b3a2b;
+  --text: #34483c;
+  --primary: #2e7d32;
+  --primary-strong: #1b5e20;
+  --primary-foreground: #ffffff;
+  --secondary: #e8a33d;
+  --secondary-strong: #d98f26;
+  --secondary-ink: #a9532b;
+  --accent: #f0e4d3;
+  --muted-surface: #f0e4d3;
+  --muted: #6b7c70;
+  --panel: #ffffff;
+  --field: #ffffff;
+  --field-soft: #f7f9f4;
+  /* 3.2:1 on the page and 3.4:1 on a panel: the 3:1 a control boundary needs, read in sunlight. */
+  --border: #7e8f82;
   --danger: #b5182a;
-  /* The second chart series. Not --secondary: that yellow is 1.44:1 on the page,
-     so a bar drawn in it was a shape you had to already know was there. Kept as a
-     gold, so the series still reads as the same family it always did. */
-  --series-2: #b8860b;
+  /* The second chart series, in terracotta. Not --secondary: honey is too light on white to read as a shape. */
+  --series-2: #d97b4f;
   /* Alert tones as three tokens each rather than a hex per rule: dark mode has to
      restate them all, and App.css was repeating the same nine values by hand. */
   --danger-ink: #8c1120;
@@ -84,7 +81,7 @@
   --success-line: #bcdfca;
   --danger-strong: #8c1120;
   --danger-foreground: #ffffff;
-  --secondary-foreground: #24221e;
+  --secondary-foreground: #1b3a2b;
   /* Underweight is drawn in slate, not in a warning colour — see .bmi-band rules. */
   --bmi-low: #7d8c96;
   --bmi-low-ink: #63737d;
@@ -92,8 +89,8 @@
      the modal scrim and the tonal fill on a selected choice. CSS cannot take an alpha
      off a hex token without relative colour syntax, which the older Android WebViews
      in the field do not all have. Everything else is a flat token. */
-  --primary-rgb: 32 58 112;
-  --ink-rgb: 44 44 36;
+  --primary-rgb: 46 125 50;
+  --ink-rgb: 27 58 43;
   /* Elevation is neutral and tight, the way Material draws it. The old tokens were
      wide, tinted washes (moss under resting cards, clay under floating ones) and a
      tinted shadow under a coloured surface reads as a glow, not as height.
@@ -119,31 +116,28 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dark theme. Only the palette moves — every rule elsewhere reads these tokens, so
-   there is one place to keep the two themes in step. The hues are the same moss
-   and clay, dropped to low-light values rather than swapped for a neutral grey,
-   because the app should still look like itself at night. */
+/* Dark theme. Only the palette moves: the same greens and earthy accents at low-light values. */
 :root[data-theme='dark'] {
-  --bg: #17181a;
-  --text-h: #f0ece4;
-  --text: #d6d2c8;
-  --primary: #8ba8dd;
-  --primary-strong: #a8bfe8;
-  --primary-foreground: #101a30;
-  --secondary: #e6c257;
-  --secondary-strong: #f0d070;
-  --secondary-ink: #e8c86a;
-  --accent: #2e3033;
-  --muted-surface: #26282b;
-  --muted: #9a978e;
-  --panel: #1f2124;
-  --field: #24262a;
-  --field-soft: #202225;
+  --bg: #121714;
+  --text-h: #eef3ec;
+  --text: #d2dbd3;
+  --primary: #7fc685;
+  --primary-strong: #a5d9a8;
+  --primary-foreground: #0e2411;
+  --secondary: #e8a33d;
+  --secondary-strong: #f0b75c;
+  --secondary-ink: #f0b56b;
+  --accent: #2b3a2f;
+  --muted-surface: #243027;
+  --muted: #9daea2;
+  --panel: #1a211c;
+  --field: #1f2721;
+  --field-soft: #1c231e;
   /* 3.51:1 on the page, 3.19:1 on a panel; #383b3f was 1.43:1 on a panel. */
-  --border: #6a6f76;
+  --border: #6b7c70;
   --danger: #ef7a5f;
-  /* The dark palette's yellow already clears the ground it sits on at 10:1. */
-  --series-2: #e6c257;
+  /* Honey, not terracotta: beside the dark danger coral the two bands read as one. */
+  --series-2: #e8a33d;
   --danger-ink: #f5a8ae;
   --danger-surface: #3a1a1f;
   --danger-line: #5c2a31;
@@ -155,11 +149,11 @@
   --success-line: #2c4a37;
   --danger-strong: #ff937c;
   --danger-foreground: #22110d;
-  --secondary-foreground: #2a2205;
+  --secondary-foreground: #231705;
   --bmi-low: #8a99a3;
   --bmi-low-ink: #a3b2bd;
-  --primary-rgb: 139 168 221;
-  --ink-rgb: 8 9 10;
+  --primary-rgb: 127 198 133;
+  --ink-rgb: 6 10 8;
   --shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --shadow-clay: 0 3px 8px rgb(0 0 0 / 0.55);
   color-scheme: dark;
@@ -171,24 +165,24 @@
 @media print {
   :root,
   :root[data-theme] {
-    --bg: #fdfcf8;
-    --text-h: #2c2c24;
-    --text: #3f3f35;
-    --primary: #203a70;
-    --primary-strong: #16274d;
-    --primary-foreground: #f2f5fb;
-    --secondary: #ffcf35;
-    --secondary-strong: #e8b81f;
-    --secondary-ink: #7a5600;
-    --accent: #e6dccd;
-    --muted-surface: #f0ebe5;
-    --muted: #6b6b5f;
-    --panel: #fffefa;
-    --field: #fffdf7;
-    --field-soft: #f7f2ea;
-    --border: #9c9080;
+    --bg: #f7f9f4;
+    --text-h: #1b3a2b;
+    --text: #34483c;
+    --primary: #2e7d32;
+    --primary-strong: #1b5e20;
+    --primary-foreground: #ffffff;
+    --secondary: #e8a33d;
+    --secondary-strong: #d98f26;
+    --secondary-ink: #a9532b;
+    --accent: #f0e4d3;
+    --muted-surface: #f0e4d3;
+    --muted: #6b7c70;
+    --panel: #ffffff;
+    --field: #ffffff;
+    --field-soft: #f7f9f4;
+    --border: #7e8f82;
     --danger: #b5182a;
-    --series-2: #b8860b;
+    --series-2: #d97b4f;
     --danger-ink: #8c1120;
     --danger-surface: #fbe7e9;
     --danger-line: #eec2c7;
@@ -200,11 +194,11 @@
     --success-line: #bcdfca;
     --danger-strong: #8c1120;
     --danger-foreground: #ffffff;
-    --secondary-foreground: #24221e;
+    --secondary-foreground: #1b3a2b;
     --bmi-low: #7d8c96;
     --bmi-low-ink: #63737d;
-    --primary-rgb: 32 58 112;
-    --ink-rgb: 44 44 36;
+    --primary-rgb: 46 125 50;
+    --ink-rgb: 27 58 43;
     color-scheme: light;
   }
 }
