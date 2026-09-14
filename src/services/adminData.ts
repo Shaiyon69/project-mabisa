@@ -1,4 +1,4 @@
-import { PULL_PAGE_SIZE, readAllPages, supabase } from '../lib/supabase';
+import { readAllPages, supabase } from '../lib/supabase';
 import { ADULT_BMI_MIN_AGE, ageInYears, isoLocalDay } from '../lib/utils';
 import type { ChartRow } from '../lib/charts';
 import type {
@@ -902,28 +902,6 @@ export async function fetchResidentPage(
     }),
     total: count ?? 0,
   };
-}
-
-/**
- * Every resident the current filters match, followed page by page to the end.
- * Takes the reader rather than calling `fetchResidentPage`, so the paging can
- * be exercised without a network.
- */
-export async function readAllResidentPages(
-  read: (offset: number) => Promise<ResidentPage>,
-): Promise<Individual[]> {
-  const rows: Individual[] = [];
-
-  for (let offset = 0; ; offset += PULL_PAGE_SIZE) {
-    const page = await read(offset);
-    rows.push(...page.rows);
-
-    // A short page ends the set; the total stops a reader that keeps handing
-    // back full pages from looping forever.
-    if (page.rows.length < PULL_PAGE_SIZE || rows.length >= page.total) {
-      return rows;
-    }
-  }
 }
 
 // -----------------------------------------------------------------------------

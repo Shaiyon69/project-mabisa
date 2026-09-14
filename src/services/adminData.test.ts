@@ -30,7 +30,6 @@ import {
   nutritionTally,
   presetRange,
   rankByUnderweight,
-  readAllResidentPages,
   REPORT_SECTIONS,
   residentHealthRows,
   reorderLevelOf,
@@ -46,12 +45,10 @@ import { filtersFromParams, paramsFromFilters } from '../hooks/useAdminData';
 import type {
   Barangay,
   HealthAssessment,
-  Individual,
   InventoryItem,
   NutritionStatus,
   SupplyDisbursement,
 } from '../types/database';
-import { PULL_PAGE_SIZE } from '../lib/supabase';
 
 // `fetchAdminSnapshot` is the one export here that talks to Supabase, so the
 // purok-narrowing test below needs a fake client. Only `.from()` and `.rpc()` are
@@ -430,48 +427,6 @@ describe('assessmentsBelowAdultBmiAge', () => {
   });
 });
 
-describe('readAllResidentPages', () => {
-  const resident = (id: string) => ({ resident_id: id }) as unknown as Individual;
-  const full = (offset: number) =>
-    Array.from({ length: PULL_PAGE_SIZE }, (_, index) => resident(`r${offset + index}`));
-
-  it('follows every page, not just the first', async () => {
-    // One oversized range is trimmed to the cap in silence, and the export prints
-    // its own row count as though the file were complete.
-    const pages = [
-      { rows: full(0), total: PULL_PAGE_SIZE + 2 },
-      { rows: [resident('last-1'), resident('last-2')], total: PULL_PAGE_SIZE + 2 },
-    ];
-
-    const rows = await readAllResidentPages((offset) => Promise.resolve(pages[offset / PULL_PAGE_SIZE]));
-
-    expect(rows).toHaveLength(PULL_PAGE_SIZE + 2);
-    expect(rows.at(-1)?.resident_id).toBe('last-2');
-  });
-
-  it('stops on a short page without asking for another', async () => {
-    const reads: number[] = [];
-    const rows = await readAllResidentPages((offset) => {
-      reads.push(offset);
-      return Promise.resolve({ rows: [resident('r1')], total: 1 });
-    });
-
-    expect(reads).toEqual([0]);
-    expect(rows).toHaveLength(1);
-  });
-
-  // A reader that keeps handing back full pages must not spin forever.
-  it('stops once the reported total is covered', async () => {
-    const reads: number[] = [];
-    const rows = await readAllResidentPages((offset) => {
-      reads.push(offset);
-      return Promise.resolve({ rows: full(offset), total: PULL_PAGE_SIZE });
-    });
-
-    expect(reads).toEqual([0]);
-    expect(rows).toHaveLength(PULL_PAGE_SIZE);
-  });
-});
 
 describe('barangayStats', () => {
   const barangay = (barangay_id: string, name: string) => ({

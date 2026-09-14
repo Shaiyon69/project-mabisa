@@ -2,19 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Individual, NutritionStatus } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
-import { exportReport, type CsvColumn } from '../../lib/csv';
 import {
   FILTER_PARAMS,
   NUTRITION_ORDER,
-  describeScope,
-  fetchBarangayScope,
   fetchResidentPage,
-  readAllResidentPages,
   type AdminFilters,
-  type AdminSnapshot,
   type ResidentStatusFilter,
 } from '../../services/adminData';
-import { PULL_PAGE_SIZE } from '../../lib/supabase';
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
@@ -64,21 +58,6 @@ const columns: TableColumn<Individual>[] = [
   },
 ];
 
-const exportColumns: CsvColumn<Individual>[] = [
-  { header: 'Resident ID', value: (row) => row.resident_id },
-  { header: 'Last name', value: (row) => row.last_name },
-  { header: 'First name', value: (row) => row.first_name },
-  { header: 'Middle name', value: (row) => row.middle_name },
-  { header: 'Sex', value: (row) => titleCase(row.sex) },
-  { header: 'Birthday', value: (row) => row.birthday },
-  { header: 'Age', value: (row) => ageInYears(row.birthday) },
-  { header: 'Household number', value: (row) => row.household_number },
-  { header: 'Barangay', value: (row) => row.barangay_name },
-  { header: 'Household head', value: (row) => (row.is_household_head ? 'Yes' : 'No') },
-  { header: 'Relationship to head', value: (row) => (row.relationship_to_head ? titleCase(row.relationship_to_head) : '') },
-  { header: 'Last updated', value: (row) => row.updated_at },
-];
-
 /**
  * The central resident registry. Reads Supabase rather than this browser's SQLite
  * mirror, which on a workstation is empty, and resolves search, paging and the
@@ -90,11 +69,9 @@ const exportColumns: CsvColumn<Individual>[] = [
  */
 type IndividualsTableProps = {
   filters: AdminFilters;
-  /** Only to name the active scope in the caption and the export preamble. */
-  snapshot: Pick<AdminSnapshot, 'barangays' | 'puroks'>;
 };
 
-export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
+export function IndividualsTable({ filters }: IndividualsTableProps) {
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -153,7 +130,6 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
     ...FILTER_PARAMS.map(([key]) => filters[key] ?? 'all'),
     statusFilter ? `${statusFilter.status}:${statusFilter.from}:${statusFilter.to}` : '',
   ].join('|');
-  const scopeName = describeScope(filters, snapshot);
   const { rows, total, error } = result;
   const loading = result.settledFor !== requestKey;
 
@@ -192,39 +168,6 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
 
   const totalPages = Math.ceil(total / ROWS_PER_PAGE) || 1;
 
-  /**
-   * Exports the whole filtered set, not the rows on screen. Paged, since asking
-   * for `total` rows in one call is capped and truncated silently.
-   */
-  async function exportResidents() {
-    const [all, scope] = await Promise.all([
-      readAllResidentPages((offset) => fetchResidentPage(query, PULL_PAGE_SIZE, offset, filters, statusFilter)),
-      fetchBarangayScope(),
-    ]);
-
-    exportReport(
-      {
-        title: 'Resident Registry',
-        barangay: scope.label,
-        // The band is assessed over a period; an unfiltered registry is not.
-        from: statusFilter?.from ?? 'all dates',
-        to: statusFilter?.to ?? 'all dates',
-        // Every filter that narrowed the rows, named on the file, so the
-        // preamble never describes a wider set than the file holds.
-        filters: [
-          ...(query.trim() ? [{ label: 'Search', value: query.trim() }] : []),
-          ...(statusFilter ? [{ label: 'Nutrition status', value: titleCase(statusFilter.status) }] : []),
-          { label: 'Area', value: scopeName },
-          ...(filters.sex ? [{ label: 'Sex', value: titleCase(filters.sex) }] : []),
-          ...(filters.ageBand ? [{ label: 'Age band', value: filters.ageBand }] : []),
-          ...(filters.membership ? [{ label: 'Membership', value: titleCase(filters.membership) }] : []),
-        ],
-      },
-      all,
-      exportColumns,
-    );
-  }
-
   return (
     <div className="ui-table-stack">
       <TableToolbar>
@@ -234,9 +177,6 @@ export function IndividualsTable({ filters, snapshot }: IndividualsTableProps) {
           onChange={(event) => handleQueryChange(event.target.value)}
           placeholder="Name or household number"
         />
-        <Button variant="ghost" onClick={() => void exportResidents()} disabled={loading || !total}>
-          Export CSV
-        </Button>
       </TableToolbar>
 
       {/* The filter arrived in a link, so it has to be visible and removable on
