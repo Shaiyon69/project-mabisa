@@ -22,7 +22,7 @@ import {
   nutritionByBarangay,
   nutritionTally,
   rankByUnderweight,
-  residentHealthRows,
+  fetchResidentHealthPage,
   supplyUtilization,
   tally,
   type AdminFilters,
@@ -37,7 +37,8 @@ import {
 import type { InventoryItemType } from '../../types/database';
 import { BarChart, DonutChart, GaugeRing, LineChart } from './Charts';
 import { Card } from '../common/Card';
-import { EmptyState } from '../common/StateMessage';
+import { EmptyState, ErrorState } from '../common/StateMessage';
+import { useServerPage } from '../../hooks/useServerPage';
 import { FormField } from '../common/FormField';
 import { ROWS_PER_PAGE, Table, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
@@ -132,7 +133,7 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
 export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
   return (
     <div className="activity-grid report-grid">
-      <ResidentHealthPanel snapshot={snapshot} filters={filters} scope={describeScope(filters, snapshot)} />
+      <ResidentHealthPanel filters={filters} scope={describeScope(filters, snapshot)} />
     </div>
   );
 }
@@ -165,18 +166,21 @@ const residentHealthColumns: TableColumn<ResidentHealthRow>[] = [
 ];
 
 /** Every resident checked in the period, one row each, searchable by name or household number. */
-function ResidentHealthPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & PanelProps) {
+function ResidentHealthPanel({ filters, scope }: PanelProps) {
   const [query, setQuery] = useState('');
-  const all = useMemo(() => residentHealthRows(snapshot), [snapshot]);
-  const needle = query.trim().toLowerCase();
-  const rows = needle
-    ? all.filter((row) => `${nameOf(row)} ${row.householdNumber}`.toLowerCase().includes(needle))
-    : all;
+  const needle = query.trim();
+  const scopeKey = [needle, filters.from, filters.to, filters.barangayId, filters.purokId].join('|');
+  const { rows, total, error, loading, page, pageCount, setPage, offset } = useServerPage(
+    scopeKey,
+    (limit, start) => fetchResidentHealthPage(needle, filters, limit, start),
+    { delayMs: 300 },
+  );
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead title="Resident health records" />
       <SummaryContext filters={filters} extra={scope} />
+      {error ? <ErrorState title="Could not read the health records" text={error} /> : null}
       <TableToolbar>
         <FormField
           label="Search residents"
@@ -189,12 +193,13 @@ function ResidentHealthPanel({ snapshot, filters, scope }: { snapshot: AdminSnap
         columns={residentHealthColumns}
         rows={rows}
         getRowKey={(row) => row.person.resident_id}
-        emptyTitle={needle ? 'No resident matches' : 'No health checks in this period'}
-        emptyText={needle ? 'Try a different name or household number.' : 'Try a wider date range.'}
-        pageSize={ROWS_PER_PAGE}
+        emptyTitle={loading ? 'Loading the health records' : needle ? 'No resident matches' : 'No health checks in this period'}
+        emptyText={loading ? 'One moment.' : needle ? 'Try a different name or household number.' : 'Try a wider date range.'}
         numbered
+        startIndex={offset}
       />
-      <TableMeta shown={rows.length} total={all.length} label="residents checked" />
+      <TableMeta shown={rows.length} total={total} label="residents checked" />
+      {pageCount > 1 ? <TablePager page={page} pageCount={pageCount} onPage={setPage} disabled={loading} /> : null}
       <p className="muted report-note">Each resident&rsquo;s most recent check in the period.</p>
     </Card>
   );

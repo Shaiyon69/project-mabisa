@@ -246,6 +246,35 @@ export type BhwItemStock = {
   updated_at: string;
 };
 
+/** public.inventory_item_rows — barangay stock with its barangay's name and low-stock state, for the paged table. */
+export type InventoryItemRow = InventoryItem & {
+  barangay_name: string | null;
+  is_low: boolean;
+};
+
+/** public.account_rows — a profile with its current purok, and the barangay it belongs to either way. */
+export type AccountViewRow = Profile & {
+  purok_id: string | null;
+  purok_name: string | null;
+  assigned_since: string | null;
+  scope_barangay_id: string | null;
+};
+
+/** One row of `resident_health_page`: a resident and their latest check in the period. */
+export type ResidentHealthPageRow = {
+  resident_id: string;
+  household_id: string;
+  first_name: string;
+  last_name: string;
+  sex: IndividualSex;
+  birthday: string;
+  household_number: string | null;
+  barangay_name: string;
+  checks: number;
+  latest: HealthAssessment;
+  total_count: number;
+};
+
 export type SupplyDisbursement = {
   log_id: string;
   item_id: string;
@@ -375,6 +404,8 @@ export type Database = {
     };
     Views: {
       bhw_item_stock: RowDefinition<BhwItemStock, never, never>;
+      inventory_item_rows: RowDefinition<InventoryItemRow, never, never>;
+      account_rows: RowDefinition<AccountViewRow, never, never>;
     };
     // The helpers granted to `authenticated`, plus the admin_* RPCs a surface
     // actually calls. Argument names are the SQL parameter names: the client sends
@@ -395,6 +426,18 @@ export type Database = {
       current_barangay_id: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      resident_health_page: {
+        Args: {
+          period_from: string;
+          period_to: string;
+          scope_barangay_id?: string | null;
+          scope_purok_id?: string | null;
+          search_text?: string | null;
+          page_limit?: number;
+          page_offset?: number;
+        };
+        Returns: ResidentHealthPageRow[];
       };
       // Account administration, RHU only. Both assert an active admin and write
       // the audit event in the same transaction, which is why the tables withhold
