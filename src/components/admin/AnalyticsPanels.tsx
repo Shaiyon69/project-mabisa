@@ -204,6 +204,12 @@ const distributionColumns: CsvColumn<Tally>[] = [
   { header: 'Residents', value: (row) => row.count },
 ];
 
+/** Same shape as `distributionColumns`, for the on-screen table next to the chart. */
+const distributionTableColumns: TableColumn<Tally>[] = [
+  { key: 'category', header: 'Category', render: (row) => titleCase(row.label) },
+  { key: 'residents', header: 'Residents', numeric: true, render: (row) => row.count },
+];
+
 /**
  * Who is on the register: the sex split as a ring, the age profile as bars. Both
  * count residents rather than assessments, so both ignore the period — which the
@@ -253,6 +259,15 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
           text="Resident profiles appear here once a household has been recorded in the selected area."
         />
       )}
+      {snapshot.residents.length ? (
+        <Table
+          columns={distributionTableColumns}
+          rows={[...sexes, ...ages]}
+          getRowKey={(row) => row.label}
+          emptyTitle="No residents in this scope"
+          emptyText="Resident profiles appear here once a household has been recorded in the selected area."
+        />
+      ) : null}
       <p className="muted report-note">
         Counts active residents on the register right now.
       </p>
@@ -263,6 +278,11 @@ function DemographicsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsh
 const stockColumns: CsvColumn<Tally>[] = [
   { header: 'Item type', value: (row) => titleCase(row.label) },
   { header: 'Units at the barangay', value: (row) => row.count },
+];
+
+const stockTableColumns: TableColumn<Tally>[] = [
+  { key: 'type', header: 'Item type', render: (row) => titleCase(row.label) },
+  { key: 'units', header: 'Units at the barangay', numeric: true, render: (row) => row.count },
 ];
 
 /**
@@ -327,6 +347,15 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
       ) : (
         <EmptyState title="Nothing stocked yet" text="A barangay administrator adds supplies from the Inventory screen." />
       )}
+      {byType.length ? (
+        <Table
+          columns={stockTableColumns}
+          rows={byType}
+          getRowKey={(row) => row.label}
+          emptyTitle="Nothing stocked yet"
+          emptyText="A barangay administrator adds supplies from the Inventory screen."
+        />
+      ) : null}
       <p className="muted report-note">
         Unallocated stock only — not what health workers are carrying.
       </p>
@@ -407,6 +436,13 @@ function ComparisonPanel({
  * How much of the register has been reached, which is a different question from
  * what the assessments found. Counts distinct residents, not assessments.
  */
+const coverageTableColumns: TableColumn<BarangayStats>[] = [
+  { key: 'name', header: 'Barangay', render: (row) => row.name },
+  { key: 'residents', header: 'Residents', numeric: true, render: (row) => row.residents },
+  { key: 'assessed', header: 'Residents assessed', numeric: true, render: (row) => row.residentsAssessed },
+  { key: 'coverage', header: 'Coverage', numeric: true, render: (row) => percent(row.coverageRate) },
+];
+
 function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & PanelProps) {
   // Emptiest first: a gap is what this panel is for, and at sixty-four barangays
   // the best-covered ones pushed it off the bottom of the grid.
@@ -444,6 +480,17 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
         <EmptyState title="No registered residents" text="Coverage is a share of the residents on file." />
       )}
       {pageCount > 1 ? <TablePager page={current} pageCount={pageCount} onPage={setPage} /> : null}
+      {ranked.length ? (
+        <Table
+          columns={coverageTableColumns}
+          rows={ranked}
+          getRowKey={(row) => row.barangayId || 'unassigned'}
+          emptyTitle="No registered residents"
+          emptyText="Coverage is a share of the residents on file."
+          pageSize={ROWS_PER_PAGE}
+          numbered
+        />
+      ) : null}
       <p className="muted report-note">
         A thin ring is a profiling gap, not a health finding.
         {pageCount > 1 ? ` All ${ranked.length} barangays, emptiest first.` : ''}
