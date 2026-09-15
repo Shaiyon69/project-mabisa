@@ -150,3 +150,8 @@ left join public.barangays as barangay on barangay.barangay_id = household.baran
 
 revoke all on public.resident_rows from public, anon, authenticated;
 grant select on public.resident_rows to authenticated;
+
+-- Only the authenticated policies call these; a signed-out caller has no use for them.
+-- Applied to the live project as migration `revoke_anon_execute_on_readable_ids`.
+revoke execute on function public.readable_household_ids() from public, anon;
+revoke execute on function public.readable_resident_ids() from public, anon;
