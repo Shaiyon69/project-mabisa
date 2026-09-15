@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
+import { NUTRITION_COLORS, SERIES_COLORS, VACCINATION_COLORS } from '../../lib/charts';
 import {
   ageInYears,
   formatCount,
@@ -94,12 +94,6 @@ export function AnalyticsPanels({
   // Health figures count a resident once, by their latest check.
   const latest = latestPerResident(snapshot.assessments);
   const vaccination = tally(latest, (row) => row.vaccination_status ?? null, VACCINATION_STATUS_OPTIONS);
-  const vaccinationColors: Record<string, string> = {
-    complete: SERIES_COLORS[0],
-    partial: SERIES_COLORS[1],
-    none: 'var(--danger)',
-    unknown: 'var(--bmi-low)',
-  };
 
   return (
     <>
@@ -141,7 +135,7 @@ export function AnalyticsPanels({
             <DistributionPanel
               title="Vaccination status"
               rows={vaccination}
-              colorFor={(row) => vaccinationColors[row.label]}
+              colorFor={(row) => VACCINATION_COLORS[row.label]}
               filters={filters}
               scope={scope}
             />
