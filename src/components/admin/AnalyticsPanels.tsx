@@ -337,7 +337,7 @@ function VitalsPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } &
   );
 }
 
-/** Rings per page. The grid stops being scannable past this, so the rest are a page away. */
+/** Rings drawn, emptiest first. The grid stops being scannable past this; the table below has the rest. */
 const COVERAGE_RINGS = 6;
 
 /** Bars for the busiest items. The table below pages through the rest. */
@@ -639,11 +639,7 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
   // Emptiest first: a gap is what this panel is for, and at sixty-four barangays
   // the best-covered ones pushed it off the bottom of the grid.
   const ranked = [...stats].filter((row) => row.residents > 0).sort((a, b) => (a.coverageRate ?? 0) - (b.coverageRate ?? 0));
-  const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(ranked.length / COVERAGE_RINGS));
-  // Clamped rather than reset: a narrower period can shorten the list past the page in view.
-  const current = Math.min(page, pageCount);
-  const shown = ranked.slice((current - 1) * COVERAGE_RINGS, current * COVERAGE_RINGS);
+  const shown = ranked.slice(0, COVERAGE_RINGS);
 
   return (
     <Card className="activity-card report-card report-card-wide" as="article">
@@ -668,7 +664,6 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
       ) : (
         <EmptyState title="No registered residents" text="Coverage is a share of the residents on file." />
       )}
-      {pageCount > 1 ? <TablePager page={current} pageCount={pageCount} onPage={setPage} /> : null}
       {ranked.length ? (
         <Table
           columns={coverageTableColumns}
@@ -682,7 +677,7 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
       ) : null}
       <p className="muted report-note">
         A thin ring is a profiling gap, not a health finding.
-        {pageCount > 1 ? ` All ${ranked.length} barangays, emptiest first.` : ''}
+        {ranked.length > shown.length ? ` Rings show the ${shown.length} emptiest; the table lists all ${ranked.length}.` : ''}
       </p>
     </Card>
   );
