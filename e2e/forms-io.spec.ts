@@ -299,6 +299,7 @@ test.describe('what comes back out', () => {
     await page.getByLabel('First Name').fill('Ana');
     await page.getByLabel('Last Name').fill('Cruz');
     await page.getByLabel('Birthdate').fill('1980-04-05');
+    await page.getByLabel('Sex').selectOption('female');
 
     // The three checkbox groups are all required; tick the first box of each the
     // way a person does -- on the label, one at a time.
