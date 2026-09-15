@@ -337,32 +337,6 @@ export function fetchAdminPeople(): Promise<AdminPerson[]> {
   );
 }
 
-/**
- * Barangay id → name, for the registry page's rows.
- *
- * Cached because `fetchResidentPage` runs on every page step and every debounced
- * keystroke, and this table is a handful of rows that change roughly never —
- * re-reading it per keystroke was a whole round trip for an answer that was
- * already known. Cleared by `invalidateAdminSnapshot` alongside the snapshot, so
- * a barangay added mid-session shows up on the portal's next refresh rather than
- * needing a reload.
- */
-let barangayNames: Promise<Map<string, string>> | null = null;
-
-function fetchBarangayNames(): Promise<Map<string, string>> {
-  barangayNames ??= readBarangayNames();
-
-  return barangayNames;
-}
-
-async function readBarangayNames(): Promise<Map<string, string>> {
-  const barangays = await readAllPages<{ barangay_id: string; name: string }>('Barangay', 'barangay_id', () =>
-    supabase.from('barangays').select('barangay_id, name'),
-  );
-
-  return new Map(barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
-}
-
 /** How long a read stands before the next caller goes back to the network. The same interval `useAdminData` re-reads on. */
 const SNAPSHOT_TTL_MS = 5 * 60_000;
 
@@ -384,7 +358,6 @@ let snapshotCache: { key: string; at: number; rows: Promise<Awaited<ReturnType<t
  */
 export function invalidateAdminSnapshot(): void {
   snapshotCache = null;
-  barangayNames = null;
   adminScope = null;
 }
 
@@ -805,13 +778,7 @@ export type ResidentStatusFilter = {
   to: string;
 };
 
-/**
- * One page of the central resident registry, with the household number and
- * barangay name joined in from `households` by a second query.
- *
- * `statusFilter` is separate from `filters` because it arrives only from the
- * dashboard's nutrition-band drill-down and names a period of its own.
- */
+/** One page of the central resident registry, read off `resident_rows` so the household number and barangay are columns. */
 export async function fetchResidentPage(
   query: string,
   limit: number,
@@ -820,30 +787,19 @@ export async function fetchResidentPage(
   statusFilter?: ResidentStatusFilter,
 ): Promise<Page<Individual>> {
   const search = sanitizeSearch(query);
-  // `!inner` joins rather than nests: only the households column is needed, and
-  // an inner join is what drops residents outside the scope. Filtering here
-  // instead of sending household ids keeps the URL a fixed length — the id list
-  // this replaced grew with the barangay and was refused past a few hundred.
-  // The band is a second `!inner`, for the same reason: an embed nests its matches
-  // under one parent row, so a resident assessed twice in the band is still one row.
-  // Two literal selects rather than one built string — the client types the shape
-  // from the text, and cannot parse one assembled at runtime.
+  // The band is an `!inner` embed: it nests matches under one parent row, so a
+  // resident assessed twice in the band is still one row. Two literal selects,
+  // since the client types the shape from the text.
   let request = statusFilter
-    ? supabase
-        .from('individuals')
-        .select('*, households!inner(household_number, barangay_id, purok_id), health_assessments!inner(assessment_id)', {
-          count: 'exact',
-        })
-    : supabase.from('individuals').select('*, households!inner(household_number, barangay_id, purok_id)', {
-        count: 'exact',
-      });
+    ? supabase.from('resident_rows').select('*, health_assessments!inner(assessment_id)', { count: 'exact' })
+    : supabase.from('resident_rows').select('*', { count: 'exact' });
 
   if (filters.barangayId) {
-    request = request.eq('households.barangay_id', filters.barangayId);
+    request = request.eq('barangay_id', filters.barangayId);
   }
 
   if (filters.purokId) {
-    request = request.eq('households.purok_id', filters.purokId);
+    request = request.eq('purok_id', filters.purokId);
   }
 
   if (filters.sex) {
@@ -874,23 +830,10 @@ export async function fetchResidentPage(
   }
 
   if (search) {
-    // Paged: past the server's cap the `.in()` clause below would lose household ids.
-    const households = await readAllPages<{ household_id: string }>('Household search', 'household_id', () =>
-      supabase.from('households').select('household_id').ilike('household_number', `%${search}%`),
-    );
-    const householdIds = households.map((household) => household.household_id);
-    const clauses = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`];
-
-    if (householdIds.length) {
-      clauses.push(`household_id.in.(${householdIds.join(',')})`);
-    }
-
-    request = request.or(clauses.join(','));
+    request = request.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,household_number.ilike.%${search}%`);
   }
 
-  // Secondary sort is the primary key, as on every other paged read: shared last
-  // names are the rule in a barangay, and ties have no stable order across
-  // separate LIMIT/OFFSET queries — a resident would land on two pages or none.
+  // Secondary sort is the primary key: shared last names have no stable order across LIMIT/OFFSET pages.
   const { data, count, error } = await request
     .order('last_name')
     .order('resident_id')
@@ -900,21 +843,11 @@ export async function fetchResidentPage(
     throw new Error(error.message);
   }
 
-  const rows = data ?? [];
-  const names = await fetchBarangayNames();
-
   return {
-    // `households` is the join above rather than a column of the row, so it is
-    // lifted into the two fields the registry shows and dropped. `health_assessments`
-    // is present only on the banded query, and rides along unread.
-    rows: rows.map(({ households, ...row }) => {
+    rows: (data ?? []).map((row) => {
       delete (row as { health_assessments?: unknown }).health_assessments;
 
-      return {
-        ...row,
-        household_number: households?.household_number,
-        barangay_name: households?.barangay_id ? names.get(households.barangay_id) : undefined,
-      };
+      return row;
     }),
     total: count ?? 0,
   };

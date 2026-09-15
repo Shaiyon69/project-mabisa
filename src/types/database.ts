@@ -252,6 +252,14 @@ export type InventoryItemRow = InventoryItem & {
   is_low: boolean;
 };
 
+/** public.resident_rows — a resident with their household's number, scope and barangay name, for the paged registry. */
+export type ResidentRow = Individual & {
+  household_number: string;
+  barangay_id: string | null;
+  purok_id: string | null;
+  barangay_name: string | null;
+};
+
 /** public.account_rows — a profile with its current purok, and the barangay it belongs to either way. */
 export type AccountViewRow = Profile & {
   purok_id: string | null;
@@ -369,6 +377,13 @@ type HealthAssessmentRelationships = [
     referencedRelation: 'individuals';
     referencedColumns: ['resident_id'];
   },
+  {
+    foreignKeyName: 'health_assessments_resident_id_fkey';
+    columns: ['resident_id'];
+    isOneToOne: false;
+    referencedRelation: 'resident_rows';
+    referencedColumns: ['resident_id'];
+  },
 ];
 
 type ImmunizationRelationships = [
@@ -406,6 +421,7 @@ export type Database = {
       bhw_item_stock: RowDefinition<BhwItemStock, never, never>;
       inventory_item_rows: RowDefinition<InventoryItemRow, never, never>;
       account_rows: RowDefinition<AccountViewRow, never, never>;
+      resident_rows: RowDefinition<ResidentRow, never, never>;
     };
     // The helpers granted to `authenticated`, plus the admin_* RPCs a surface
     // actually calls. Argument names are the SQL parameter names: the client sends
