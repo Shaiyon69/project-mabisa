@@ -10,7 +10,7 @@ import { BhwStockTable } from '../../components/admin/BhwStockTable';
 import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ErrorState } from '../../components/common/StateMessage';
-import { useAdminData } from '../../hooks/useAdminData';
+import { useAdminData, useAdminScope } from '../../hooks/useAdminData';
 
 // The two biggest screens in the portal, and the two the officer opening the
 // dashboard has not asked for. Each has exactly one consumer below, so splitting
@@ -48,7 +48,7 @@ export function AdminDashboardPage() {
 }
 
 export function ResidentsPage() {
-  const { snapshot, filters, setFilters, loading, error } = useAdminData();
+  const { scope, filters, setFilters, loading, error } = useAdminScope();
   const role = useAdminRole();
 
   return (
@@ -62,7 +62,7 @@ export function ResidentsPage() {
             filters={filters}
             onChange={setFilters}
             loading={loading}
-            snapshot={snapshot}
+            snapshot={scope}
             role={role}
             fields={['sex', 'ageBand', 'membership']}
           />
@@ -77,10 +77,10 @@ export function ResidentsPage() {
 }
 
 export function InventoryPage() {
-  const { snapshot, filters, setFilters, loading, error, refresh } = useAdminData();
+  const { scope, filters, setFilters, loading, error, refresh } = useAdminScope();
   const role = useAdminRole();
   const canMoveStock = role === 'barangay_admin';
-  // Bumped after a movement so both server-paged stock tables re-read, along with the snapshot.
+  // Bumped after a movement so both server-paged stock tables and the item list re-read.
   const [movementToken, setMovementToken] = useState(0);
 
   function handleChanged() {
@@ -99,7 +99,7 @@ export function InventoryPage() {
             filters={filters}
             onChange={setFilters}
             loading={loading}
-            snapshot={snapshot}
+            snapshot={scope}
             role={role}
             fields={['itemType', 'stockLevel']}
             // No purok control: stock is held at barangay level, and
@@ -115,7 +115,7 @@ export function InventoryPage() {
         screen. Hiding them keeps the portal honest about that rather than
         offering a button whose only outcome is a permission error.
       */}
-      {canMoveStock ? <InventoryControls items={snapshot.inventoryItems} onChanged={handleChanged} /> : null}
+      {canMoveStock ? <InventoryControls onChanged={handleChanged} reloadToken={movementToken} /> : null}
       <Card className="admin-monitor">
         {error ? <ErrorState title="Could not load the supplies" text={error} /> : null}
         <div className="panel-heading">
@@ -139,14 +139,7 @@ export function InventoryPage() {
 }
 
 export function AccountsPage() {
-  // ponytail: `useAdminData` fires the full snapshot read — households,
-  // residents, assessments — on a screen that renders none of them, just to
-  // populate the drawer's barangay and purok lists. It is the smallest correct
-  // wiring and the portal is a wired workstation against tables of tens to
-  // hundreds of rows. If it ever costs anything, switch to `useAdminFilters()`
-  // and lift `AccountsTable`'s own `fetchAccounts()` + `fetchActivePuroks()`
-  // (AccountsTable.tsx:88) up to here, adding a barangays read beside them.
-  const { snapshot, filters, setFilters, loading } = useAdminData();
+  const { scope, filters, setFilters, loading } = useAdminScope();
   const role = useAdminRole();
 
   return (
@@ -164,7 +157,7 @@ export function AccountsPage() {
             filters={filters}
             onChange={setFilters}
             loading={loading}
-            snapshot={snapshot}
+            snapshot={scope}
             role={role}
             fields={['accountActive']}
           />
@@ -202,7 +195,7 @@ export function AnalyticsPage() {
 }
 
 export function HealthPage() {
-  const { snapshot, filters, setFilters, loading, error } = useAdminData();
+  const { scope, filters, setFilters, loading, error } = useAdminScope();
   const role = useAdminRole();
 
   return (
@@ -211,7 +204,7 @@ export function HealthPage() {
         icon="heart"
         title="Health"
         description="Each resident's latest health check in the period: vitals, illness and vaccination."
-        actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
+        actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={scope} role={role} />}
       />
       {error ? (
         <Card className="admin-monitor">
@@ -220,7 +213,7 @@ export function HealthPage() {
       ) : null}
       <div aria-busy={loading}>
         <Suspense fallback={null}>
-          <HealthPanels snapshot={snapshot} filters={filters} />
+          <HealthPanels scope={scope} filters={filters} />
         </Suspense>
       </div>
     </>

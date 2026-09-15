@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FILTER_PARAMS,
   defaultAdminFilters,
   emptyAdminSnapshot,
+  fetchAdminScope,
   fetchAdminSnapshot,
   invalidateAdminSnapshot,
   type AdminFilters,
+  type AdminScope,
   type AdminSnapshot,
 } from '../services/adminData';
 import { isCalendarDate } from '../lib/utils';
 
-/** How often an open portal re-reads. Slow enough to stay a monitor, not a poller. */
-const AUTO_REFRESH_MS = 60_000;
+/** How often an open portal re-reads. Each re-read downloads the period again, so it stays minutes apart. */
+const AUTO_REFRESH_MS = 5 * 60_000;
 
 type AdminData = {
   snapshot: AdminSnapshot;
@@ -110,47 +112,52 @@ export function useAdminFilters(): AdminFiltersState {
   return { filters, setFilters };
 }
 
+type AdminRead<T> = {
+  filters: AdminFilters;
+  setFilters: (filters: AdminFilters) => void;
+  loading: boolean;
+  error: string | null;
+  refresh: () => void;
+  data: T;
+};
+
 /**
- * Central data for one admin screen, refetched whenever a filter changes. Each
- * page reads its own scope rather than sharing a provider, and callers get the
- * snapshot and the filters that produced it from the same hook.
+ * One admin read, refetched whenever a filter in `filterKeyOf` changes and on the
+ * auto-refresh. Filters live in the query string, so callers get the read and the
+ * filters that produced it from the same hook.
  */
-export function useAdminData(): AdminData {
+function useAdminRead<T>(
+  read: (filters: AdminFilters) => Promise<T>,
+  empty: T,
+  filterKeyOf: (filters: AdminFilters) => string,
+): AdminRead<T> {
   const { filters, setFilters } = useAdminFilters();
   const [reloadToken, setReloadToken] = useState(0);
-
-  const [result, setResult] = useState<{ snapshot: AdminSnapshot; error: string | null; settledFor: string }>({
-    snapshot: emptyAdminSnapshot,
+  const [result, setResult] = useState<{ data: T; error: string | null; settledFor: string }>({
+    data: empty,
     error: null,
     settledFor: '',
   });
+  const lastRefresh = useRef(0);
 
-  // The scope this render is asking for: every key in `FILTER_PARAMS`, plus
-  // `from`/`to` and `reportSections`. A filter missing here never triggers a
-  // refetch. Derived rather than set in the effect, so `loading` is the
-  // difference between it and the scope the state last settled against. The
-  // reload token stays out, so a re-read of the same scope keeps the numbers up.
-  const filterKey = [
-    filters.from,
-    filters.to,
-    ...FILTER_PARAMS.map(([key]) => filters[key] ?? 'none'),
-    filters.reportSections?.join(',') ?? 'none',
-  ].join('|');
+  // The reload token stays out of `filterKey`, so a re-read of the same scope keeps the numbers up.
+  const filterKey = filterKeyOf(filters);
   const requestKey = `${filterKey}|${reloadToken}`;
-  // Drops the cached read before bumping the token: `fetchAdminSnapshot` serves
-  // one period from memory for a minute, and a refresh is precisely the request
-  // to go past that. Everything else — a tab change, a barangay picked, an age
-  // band — leaves the cache alone and re-narrows rows already in hand.
+  const latestRead = useRef(read);
+
+  // Drops the cached reads first: a refresh is precisely the request to go past them.
   const refresh = useCallback(() => {
     invalidateAdminSnapshot();
+    lastRefresh.current = Date.now();
     setReloadToken((token) => token + 1);
   }, []);
 
-  // Re-reads on its own, since BHWs write to the database all day. Only while the
-  // tab is in front, with the visibility listener catching the return.
+  // Re-reads on its own while the tab is in front. Returning to the tab re-reads only once the interval has passed.
   useEffect(() => {
+    lastRefresh.current = Date.now();
+
     const reread = () => {
-      if (document.visibilityState === 'visible') refresh();
+      if (document.visibilityState === 'visible' && Date.now() - lastRefresh.current >= AUTO_REFRESH_MS) refresh();
     };
 
     const timer = window.setInterval(reread, AUTO_REFRESH_MS);
@@ -164,13 +171,18 @@ export function useAdminData(): AdminData {
   }, [refresh]);
 
   useEffect(() => {
+    latestRead.current = read;
+  });
+
+  useEffect(() => {
     // Guards against a scope changing mid-flight and the slower response landing last.
     let current = true;
 
-    fetchAdminSnapshot(filters)
-      .then((snapshot) => {
+    latestRead
+      .current(filters)
+      .then((data) => {
         if (current) {
-          setResult({ snapshot, error: null, settledFor: filterKey });
+          setResult({ data, error: null, settledFor: filterKey });
         }
       })
       .catch((cause: unknown) => {
@@ -186,16 +198,43 @@ export function useAdminData(): AdminData {
     return () => {
       current = false;
     };
-    // `filterKey` is already a substring of `requestKey`, so listing it adds no
-    // re-runs; it is here only to satisfy the lint rule.
   }, [filters, requestKey, filterKey]);
 
-  return {
-    snapshot: result.snapshot,
-    filters,
-    setFilters,
-    loading: result.settledFor !== filterKey,
-    error: result.error,
-    refresh,
-  };
+  return { filters, setFilters, loading: result.settledFor !== filterKey, error: result.error, refresh, data: result.data };
+}
+
+/** Every filter the snapshot narrows by. A filter missing here never triggers a refetch. */
+function snapshotKey(filters: AdminFilters): string {
+  return [
+    filters.from,
+    filters.to,
+    ...FILTER_PARAMS.map(([key]) => filters[key] ?? 'none'),
+    filters.reportSections?.join(',') ?? 'none',
+  ].join('|');
+}
+
+/** Central data for one admin screen: the period's field data, narrowed to the filters. */
+export function useAdminData(): AdminData {
+  const { data, ...rest } = useAdminRead(fetchAdminSnapshot, emptyAdminSnapshot, snapshotKey);
+
+  return { ...rest, snapshot: data };
+}
+
+const emptyScope: AdminScope & { fetchedAt: string } = {
+  barangays: [],
+  puroks: [],
+  sessionBarangayId: null,
+  barangayLabel: '',
+  fetchedAt: emptyAdminSnapshot.fetchedAt,
+};
+
+/** Filters plus the barangay and purok lists, for a screen whose tables page on the server and need no snapshot. */
+export function useAdminScope() {
+  const { data, ...rest } = useAdminRead(
+    () => fetchAdminScope().then((scope) => ({ ...scope, fetchedAt: new Date().toISOString() })),
+    emptyScope,
+    () => 'scope',
+  );
+
+  return { ...rest, scope: data };
 }

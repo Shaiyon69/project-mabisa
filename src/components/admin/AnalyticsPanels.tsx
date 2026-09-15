@@ -171,10 +171,10 @@ export function AnalyticsPanels({
 }
 
 /** Each resident's own record for the period, one row per resident. */
-export function HealthPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
+export function HealthPanels({ scope, filters }: { scope: Pick<AdminSnapshot, 'barangays' | 'puroks'>; filters: AdminFilters }) {
   return (
     <div className="activity-grid report-grid">
-      <ResidentHealthPanel filters={filters} scope={describeScope(filters, snapshot)} />
+      <ResidentHealthPanel filters={filters} scope={describeScope(filters, scope)} />
     </div>
   );
 }
