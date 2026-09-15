@@ -194,11 +194,9 @@ export function AnalyticsPage() {
           <ErrorState title="Could not load the records" text={error} />
         </Card>
       ) : null}
-      <div aria-busy={loading}>
-        <Suspense fallback={null}>
-          <AnalyticsPanels snapshot={snapshot} filters={filters} />
-        </Suspense>
-      </div>
+      <Suspense fallback={null}>
+        <AnalyticsPanels snapshot={snapshot} filters={filters} loading={loading} />
+      </Suspense>
     </>
   );
 }
