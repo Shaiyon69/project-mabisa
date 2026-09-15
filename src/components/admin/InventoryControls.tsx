@@ -3,6 +3,7 @@ import {
   allocateStockToBhw,
   createInventoryItem,
   fetchAllocatableBhws,
+  fetchInventoryItems,
   reorderLevelOf,
   restockInventoryItem,
   setReorderLevel,
@@ -18,7 +19,7 @@ const ITEM_TYPES: InventoryItemType[] = ['medicine', 'food', 'equipment', 'hygie
 
 type InventoryControlsProps = {
   items: InventoryItem[];
-  /** Refetch the snapshot, so the table reflects what the RPC just did. */
+  /** Re-read the stock tables, so they reflect what the RPC just did. */
   onChanged: () => void;
 };
 
@@ -28,8 +29,9 @@ type InventoryControlsProps = {
  * only way a field device gets anything to release. Every submission goes to a
  * database function that re-checks the same rules.
  */
-export function InventoryControls({ items, onChanged }: InventoryControlsProps) {
+export function InventoryControls({ onChanged, reloadToken }: Omit<InventoryControlsProps, 'items'> & { reloadToken: number }) {
   const [bhws, setBhws] = useState<AccountRow[]>([]);
+  const [items, setItems] = useState<InventoryItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,6 +45,18 @@ export function InventoryControls({ items, onChanged }: InventoryControlsProps) 
       current = false;
     };
   }, []);
+
+  useEffect(() => {
+    let current = true;
+
+    fetchInventoryItems()
+      .then((rows) => current && setItems(rows))
+      .catch((cause: unknown) => current && setLoadError(cause instanceof Error ? cause.message : 'Could not read the stock list.'));
+
+    return () => {
+      current = false;
+    };
+  }, [reloadToken]);
 
   // activity-grid, not dashboard-grid: the twelve-column grid spans only children
   // it knows about, and a card without one lands in a single 76px column.

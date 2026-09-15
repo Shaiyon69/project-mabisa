@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ADULT_BMI_MIN_AGE,
@@ -18,6 +18,7 @@ import {
   assessmentsBelowAdultBmiAge,
   latestPerResident,
   describeScope,
+  fetchAdminPeople,
   monthlyTrend,
   monthlyVitals,
   disbursementsByItem,
@@ -29,6 +30,7 @@ import {
   showsSection,
   tally,
   type AdminFilters,
+  type AdminPerson,
   type AdminSnapshot,
   type Tally,
 } from '../../services/adminData';
@@ -36,6 +38,7 @@ import type { UserRole } from '../../types/database';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { SelectField } from '../common/FormField';
+import { ErrorState } from '../common/StateMessage';
 import { SummaryContext } from './AdminFilterBar';
 import { SummaryBars } from './SummaryBars';
 
@@ -57,6 +60,32 @@ export function ReportCards({ snapshot, filters, onFiltersChange, loading, role 
   const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
   const scope = filters.barangayId ? describeScope(filters, snapshot) : snapshot.barangayLabel;
   const [kind, setKind] = useState<ReportKind>('summary');
+  const [printing, setPrinting] = useState<{ kind: ReportKind; people: AdminPerson[] } | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // After the report has rendered, so the print dialog sees it. Unmounted again once printed.
+  useEffect(() => {
+    if (printing) {
+      printReport(REPORT_KINDS[printing.kind].title, scope, () => setPrinting(null));
+    }
+  }, [printing, scope]);
+
+  async function exportReport() {
+    setPreparing(true);
+    setExportError(null);
+
+    try {
+      // Names are read only for the reports that list people.
+      const people = kind === 'summary' || kind === 'supplies' ? [] : await fetchAdminPeople();
+
+      setPrinting({ kind, people });
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : 'Could not read the residents for this report.');
+    } finally {
+      setPreparing(false);
+    }
+  }
 
   return (
     <div className="report-grid-wrap">
@@ -83,11 +112,14 @@ export function ReportCards({ snapshot, filters, onFiltersChange, loading, role 
           ))}
         </SelectField>
         {/* Disabled mid-read, so a report printed right after an area change cannot carry the previous area's rows. */}
-        <Button onClick={() => printReport(REPORT_KINDS[kind].title, scope)} disabled={loading}>
-          Export report
+        <Button onClick={exportReport} disabled={loading || preparing}>
+          {preparing ? 'Preparing report…' : 'Export report'}
         </Button>
       </div>
-      <PrintReport snapshot={snapshot} filters={filters} scope={scope} kind={kind} />
+      {exportError ? <ErrorState title="Could not prepare the report" text={exportError} /> : null}
+      {printing ? (
+        <PrintReport snapshot={snapshot} filters={filters} scope={scope} kind={printing.kind} people={printing.people} />
+      ) : null}
       <div className="activity-grid report-grid">
       {showsSection(filters, 'demographics') ? (
         <ReportPanel
@@ -230,11 +262,18 @@ const REPORT_KINDS = {
 type ReportKind = keyof typeof REPORT_KINDS;
 
 /** Opens the print dialog on the report document, titled so "Save as PDF" names the file after it. */
-function printReport(title: string, scope: string) {
+function printReport(title: string, scope: string, done: () => void) {
   const previous = document.title;
 
   document.title = `BRHP-MSAM ${title} - ${scope} - ${isoLocalDay(new Date())}`;
-  window.addEventListener('afterprint', () => (document.title = previous), { once: true });
+  window.addEventListener(
+    'afterprint',
+    () => {
+      document.title = previous;
+      done();
+    },
+    { once: true },
+  );
   window.print();
 }
 
@@ -242,8 +281,10 @@ const DATE_TIME = new Intl.DateTimeFormat('en-PH', { dateStyle: 'long', timeStyl
 
 type PrintProps = ReportCardsProps & { period: string };
 
+type PeopleProps = { people: AdminPerson[] };
+
 /** The print-only report: hidden on screen, the only thing on the page when printed. */
-function PrintReport({ snapshot, filters, scope, kind }: ReportCardsProps & { scope: string; kind: ReportKind }) {
+function PrintReport({ snapshot, filters, scope, kind, people }: ReportCardsProps & PeopleProps & { scope: string; kind: ReportKind }) {
   const period = `${formatDate(filters.from)} – ${formatDate(filters.to)}`;
 
   return createPortal(
@@ -265,8 +306,8 @@ function PrintReport({ snapshot, filters, scope, kind }: ReportCardsProps & { sc
       </header>
 
       {kind === 'summary' ? <PrintSummary snapshot={snapshot} filters={filters} period={period} /> : null}
-      {kind === 'residents' ? <PrintResidents snapshot={snapshot} /> : null}
-      {kind === 'health' ? <PrintHealth snapshot={snapshot} filters={filters} period={period} /> : null}
+      {kind === 'residents' ? <PrintResidents snapshot={snapshot} people={people} /> : null}
+      {kind === 'health' ? <PrintHealth snapshot={snapshot} filters={filters} period={period} people={people} /> : null}
       {kind === 'supplies' ? <PrintSupplies snapshot={snapshot} filters={filters} period={period} /> : null}
 
       <footer className="pr-sign">
@@ -422,11 +463,11 @@ function PrintTrend({ snapshot, filters }: Pick<ReportCardsProps, 'snapshot' | '
 }
 
 /** Every active resident on the register, by barangay and household. */
-function PrintResidents({ snapshot }: Pick<ReportCardsProps, 'snapshot'>) {
+function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'> & PeopleProps) {
   const active = new Set(snapshot.residents.map((resident) => resident.resident_id));
   const households = new Map(snapshot.households.map((household) => [household.household_id, household]));
   const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
-  const rows = snapshot.people
+  const rows = people
     .filter((person) => active.has(person.resident_id))
     .map((person) => {
       const household = households.get(person.household_id);
@@ -494,8 +535,8 @@ function PrintResidents({ snapshot }: Pick<ReportCardsProps, 'snapshot'>) {
 }
 
 /** Each resident's latest check in the period, one row each. Printed landscape for the width. */
-function PrintHealth({ snapshot, period }: PrintProps) {
-  const rows = residentHealthRows(snapshot);
+function PrintHealth({ snapshot, period, people }: PrintProps & PeopleProps) {
+  const rows = residentHealthRows({ ...snapshot, people });
   const blank = (value: number | null | undefined) => value ?? '—';
 
   return (
