@@ -40,6 +40,7 @@ import { Card } from '../common/Card';
 import { SelectField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
 import { SummaryContext } from './AdminFilterBar';
+import { LowStockList } from './LowStockList';
 import { SummaryBars } from './SummaryBars';
 
 type ReportCardsProps = {
@@ -178,16 +179,7 @@ export function ReportCards({ snapshot, filters, onFiltersChange, loading, role 
           filterNote="none beyond the period (stock is current, not historical)"
         >
           {lowStock.length ? (
-            <ul className="compact-list">
-              {lowStock.map((item) => (
-                <li key={item.item_id}>
-                  <span>{item.item_name}</span>
-                  <small>
-                    {item.current_stock} unallocated • {titleCase(item.type)}
-                  </small>
-                </li>
-              ))}
-            </ul>
+            <LowStockList items={lowStock} barangayId={filters.barangayId} />
           ) : (
             <p className="muted">No item is at or below the low-stock threshold.</p>
           )}
