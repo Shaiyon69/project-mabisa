@@ -672,6 +672,7 @@ function UtilizationPanel({ snapshot, filters, scope }: { snapshot: AdminSnapsho
   const colorFor = (row: Tally) => POSITIONS.find((entry) => entry.label === row.label)?.color ?? SERIES_COLORS[0];
   const columns: TableColumn<ItemUtilization>[] = [
     { key: 'item', header: 'Item', render: (row) => row.itemName },
+    { key: 'barangay', header: 'Barangay', render: (row) => row.barangay },
     { key: 'on-hand', header: 'At the barangay', numeric: true, render: (row) => row.onHand },
     { key: 'allocated', header: 'With health workers', numeric: true, render: (row) => row.allocated },
     { key: 'released', header: 'Released', numeric: true, render: (row) => row.releasedInPeriod },

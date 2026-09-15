@@ -1445,6 +1445,8 @@ export function monthlyReleases(
 export type ItemUtilization = {
   itemId: string;
   itemName: string;
+  /** The barangay holding the item, or "Unassigned". */
+  barangay: string;
   type: InventoryItemType;
   /** Barangay stock not yet handed to any BHW. */
   onHand: number;
@@ -1463,6 +1465,7 @@ export type ItemUtilization = {
 export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
   const allocated = new Map<string, number>();
   const released = new Map<string, number>();
+  const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
 
   for (const allocation of snapshot.allocations) {
     allocated.set(allocation.item_id, (allocated.get(allocation.item_id) ?? 0) + allocation.quantity);
@@ -1476,6 +1479,7 @@ export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
     .map((item) => ({
       itemId: item.item_id,
       itemName: item.item_name,
+      barangay: (item.barangay_id && barangays.get(item.barangay_id)) || 'Unassigned',
       type: item.type,
       onHand: item.current_stock,
       allocated: allocated.get(item.item_id) ?? 0,
