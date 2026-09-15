@@ -214,6 +214,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         getRowKey={(account) => account.profile.user_id}
         numbered
         startIndex={offset}
+        busy={loading}
         emptyTitle={loading ? 'Loading the accounts' : 'No accounts found'}
         emptyText={
           loading

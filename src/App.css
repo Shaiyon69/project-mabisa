@@ -996,6 +996,27 @@ tbody tr:hover td:first-child {
   transition: opacity 120ms ease;
 }
 
+/* A bar across the top of the window while any region on screen is still reading. */
+body:has([aria-busy='true'])::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent) 0 0 / 40% 100% no-repeat;
+  animation: busy-bar 1.1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes busy-bar {
+  from {
+    background-position: -67% 0;
+  }
+  to {
+    background-position: 167% 0;
+  }
+}
+
 /* Figures line up by digit position, which needs equal-width digits and a right
    edge to hang from. Nunito's default digits are proportional, so a column of
    them is ragged. */
@@ -2323,8 +2344,12 @@ td,
     scroll-behavior: auto !important;
   }
 
-  /* The spinner is exempt: it is the only signal that work is still running, and
+  /* The loading bar is exempt: it is the only signal that work is still running, and
      a frozen one reads as a hung screen. Slowed, not stopped. */
+  body::before {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
+  }
 
 }
 

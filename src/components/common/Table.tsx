@@ -27,6 +27,8 @@ type TableProps<Row> = {
   /** Numbers the rows. `startIndex` continues the count for a table paged on the server. */
   numbered?: boolean;
   startIndex?: number;
+  /** Still reading: dims the rows in hand and raises the loading bar. */
+  busy?: boolean;
 };
 
 function cell<Row>(column: TableColumn<Row>, row: Row): ReactNode {
@@ -45,6 +47,7 @@ export function Table<Row>({
   pageSize,
   numbered,
   startIndex = 0,
+  busy = false,
 }: TableProps<Row>) {
   const [page, setPage] = useState(1);
   const pageCount = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
@@ -61,12 +64,16 @@ export function Table<Row>({
   // No rows means no table: the header strip and its 640px scrollbar over an
   // empty state read as a table that failed to load.
   if (!rows.length) {
-    return <TableEmpty title={emptyTitle} text={emptyText} />;
+    return (
+      <div aria-busy={busy}>
+        <TableEmpty title={emptyTitle} text={emptyText} />
+      </div>
+    );
   }
 
   return (
     <>
-      <div className="ui-table-wrap">
+      <div className="ui-table-wrap" aria-busy={busy}>
         <table>
           <thead>
             <tr>

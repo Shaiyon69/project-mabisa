@@ -39,6 +39,7 @@ export function BhwStockTable({ reloadToken }: { reloadToken: number }) {
         getRowKey={(row) => `${row.bhw_id}:${row.item_id}`}
         numbered
         startIndex={offset}
+        busy={loading}
         emptyTitle={loading ? 'Loading carried stock' : 'Nothing given out yet'}
         emptyText={
           loading ? 'One moment.' : 'Stock handed to a health worker appears here, less whatever they have already released.'

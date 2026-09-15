@@ -193,6 +193,7 @@ function ResidentHealthPanel({ filters, scope }: PanelProps) {
         columns={residentHealthColumns}
         rows={rows}
         getRowKey={(row) => row.person.resident_id}
+        busy={loading}
         emptyTitle={loading ? 'Loading the health records' : needle ? 'No resident matches' : 'No health checks in this period'}
         emptyText={loading ? 'One moment.' : needle ? 'Try a different name or household number.' : 'Try a wider date range.'}
         numbered
