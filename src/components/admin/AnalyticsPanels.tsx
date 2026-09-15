@@ -618,7 +618,7 @@ function ComparisonPanel({
         numbered
       />
       <p className="muted report-note">
-        Worst underweight share first.
+        Worst underweight share first, weighted towards the RHU average where few residents were checked.
       </p>
     </Card>
   );
@@ -627,7 +627,7 @@ function ComparisonPanel({
 const coverageTableColumns: TableColumn<BarangayStats>[] = [
   { key: 'name', header: 'Barangay', render: (row) => row.name },
   { key: 'residents', header: 'Residents', numeric: true, render: (row) => row.residents },
-  { key: 'assessed', header: 'Residents assessed', numeric: true, render: (row) => row.residentsAssessed },
+  { key: 'assessed', header: 'Residents assessed', numeric: true, render: (row) => row.activeResidentsAssessed },
   { key: 'coverage', header: 'Coverage', numeric: true, render: (row) => percent(row.coverageRate) },
 ];
 
@@ -658,10 +658,10 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
           {shown.map((row) => (
             <GaugeRing
               key={row.barangayId || 'unassigned'}
-              value={row.residentsAssessed}
+              value={row.activeResidentsAssessed}
               total={row.residents}
               label={row.name}
-              caption={`${row.residentsAssessed} of ${row.residents} residents`}
+              caption={`${row.activeResidentsAssessed} of ${row.residents} residents`}
             />
           ))}
         </div>

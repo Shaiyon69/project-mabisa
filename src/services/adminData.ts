@@ -172,6 +172,8 @@ export type BarangayRollup = {
   barangays: Barangay[];
   households: AdminHousehold[];
   residents: AdminResident[];
+  /** Residents of every status, so a check on someone since moved out still reaches their barangay. Falls back to `residents`. */
+  everyResident?: Pick<AdminResident, 'resident_id' | 'household_id'>[];
   assessments: HealthAssessment[];
   disbursements: SupplyDisbursement[];
 };
@@ -466,7 +468,7 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
     allocations: allocationRows,
-    unscoped: { barangays, households, residents, assessments, disbursements },
+    unscoped: { barangays, households, residents, everyResident: individuals, assessments, disbursements },
     sessionBarangayId,
     barangayLabel,
     fetchedAt: new Date().toISOString(),
@@ -1079,8 +1081,10 @@ export type BarangayStats = {
   residents: number;
   /** Assessments recorded in the period, not residents. */
   assessments: number;
-  /** Distinct residents with at least one assessment in the period. */
+  /** Distinct residents with at least one assessment in the period, whatever their status now. */
   residentsAssessed: number;
+  /** The same, among active residents only: the numerator of `coverageRate`. */
+  activeResidentsAssessed: number;
   /** Residents whose latest assessment in the period was underweight. */
   underweight: number;
   /** Share of `residentsAssessed`, null when the barangay assessed nobody. */
@@ -1095,13 +1099,16 @@ export type BarangayStats = {
  * that records one. Empty string covers an unstamped household and a missing
  * one alike, which both callers fold into an "Unassigned" bucket.
  */
-function residentBarangayMap(snapshot: Pick<AdminSnapshot, 'households' | 'residents'>): Map<string, string> {
+function residentBarangayMap(snapshot: Pick<BarangayRollup, 'households' | 'residents' | 'everyResident'>): Map<string, string> {
   const householdBarangay = new Map(
     snapshot.households.map((household) => [household.household_id, household.barangay_id ?? '']),
   );
 
   return new Map(
-    snapshot.residents.map((resident) => [resident.resident_id, householdBarangay.get(resident.household_id) ?? '']),
+    (snapshot.everyResident ?? snapshot.residents).map((resident) => [
+      resident.resident_id,
+      householdBarangay.get(resident.household_id) ?? '',
+    ]),
   );
 }
 
@@ -1126,6 +1133,7 @@ export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: strin
     residents: 0,
     assessments: 0,
     residentsAssessed: 0,
+    activeResidentsAssessed: 0,
     underweight: 0,
     underweightRate: null,
     coverageRate: null,
@@ -1184,10 +1192,15 @@ export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: strin
     at(residentBarangay.get(disbursement.resident_id) ?? '').unitsReleased += disbursement.quantity;
   }
 
+  const active = new Set(snapshot.residents.map((resident) => resident.resident_id));
+
   for (const [barangayId, row] of rows) {
-    row.residentsAssessed = assessedResidents.get(barangayId)?.size ?? 0;
+    const assessed = [...(assessedResidents.get(barangayId) ?? [])];
+
+    row.residentsAssessed = assessed.length;
+    row.activeResidentsAssessed = assessed.filter((residentId) => active.has(residentId)).length;
     row.underweightRate = row.residentsAssessed ? row.underweight / row.residentsAssessed : null;
-    row.coverageRate = row.residents ? row.residentsAssessed / row.residents : null;
+    row.coverageRate = row.residents ? row.activeResidentsAssessed / row.residents : null;
   }
 
   // Unassigned last, then by name: it is a data-quality row, not a barangay.
