@@ -19,6 +19,13 @@ export const NUTRITION_COLORS: Record<string, string> = {
 /** Fixed order, never cycled: a fourth series belongs in the table instead. */
 export const SERIES_COLORS = ['var(--primary)', 'var(--series-2)', 'var(--bmi-low)'];
 
+export const VACCINATION_COLORS: Record<string, string> = {
+  complete: SERIES_COLORS[0],
+  partial: SERIES_COLORS[1],
+  none: 'var(--danger)',
+  unknown: 'var(--bmi-low)',
+};
+
 export type ChartSeries = {
   label: string;
   color: string;

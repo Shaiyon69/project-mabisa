@@ -532,6 +532,21 @@ describe('barangayStats', () => {
     // Nothing may go missing between the snapshot and the summary.
     expect(stats.reduce((sum, row) => sum + row.residents, 0)).toBe(snapshot.residents.length);
   });
+
+  it('puts a check on a resident who has since moved out under their barangay, not Unassigned', () => {
+    const moved = barangayStats({
+      ...snapshot,
+      everyResident: [...snapshot.residents, { resident_id: 'gone', household_id: 'h3' }],
+      assessments: [...snapshot.assessments, assessment('a-gone', 'gone', '2026-02-01', 'underweight')],
+    });
+    const row = (id: string) => moved.find((stat) => stat.barangayId === id)!;
+
+    expect(row('small').assessments).toBe(at('small').assessments + 1);
+    expect(row('').assessments).toBe(at('').assessments);
+    // A reading for the underweight rate, but not a registered resident reached.
+    expect(row('small').residentsAssessed).toBe(at('small').residentsAssessed + 1);
+    expect(row('small').coverageRate).toBe(at('small').coverageRate);
+  });
 });
 
 describe('monthlyTrend', () => {
@@ -843,6 +858,7 @@ describe('rankByUnderweight', () => {
     residents: 0,
     assessments,
     residentsAssessed: 0,
+    activeResidentsAssessed: 0,
     underweight,
     underweightRate: assessments ? underweight / assessments : null,
     coverageRate: null,

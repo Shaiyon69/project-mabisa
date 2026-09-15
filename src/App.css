@@ -211,6 +211,12 @@
   background: var(--muted-surface);
 }
 
+/* On the row: a native radio draws no box-shadow, so the global focus ring never shows on it. */
+.choice:focus-within {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .member-card {
   display: flex;
   min-width: 0;
@@ -996,6 +1002,27 @@ tbody tr:hover td:first-child {
   transition: opacity 120ms ease;
 }
 
+/* A bar across the top of the window while any region on screen is still reading. */
+body:has([aria-busy='true'])::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent) 0 0 / 40% 100% no-repeat;
+  animation: busy-bar 1.1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes busy-bar {
+  from {
+    background-position: -67% 0;
+  }
+  to {
+    background-position: 167% 0;
+  }
+}
+
 /* Figures line up by digit position, which needs equal-width digits and a right
    edge to hang from. Nunito's default digits are proportional, so a column of
    them is ragged. */
@@ -1741,7 +1768,7 @@ td,
 
 .bhw-bottom-nav .nav-short {
   display: inline;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -2323,8 +2350,12 @@ td,
     scroll-behavior: auto !important;
   }
 
-  /* The spinner is exempt: it is the only signal that work is still running, and
+  /* The loading bar is exempt: it is the only signal that work is still running, and
      a frozen one reads as a hung screen. Slowed, not stopped. */
+  body::before {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
+  }
 
 }
 
@@ -2421,6 +2452,7 @@ td,
 
 .back-link {
   display: inline-flex;
+  min-height: 44px;
   align-items: center;
   gap: 6px;
   margin-bottom: 10px;
@@ -2627,6 +2659,13 @@ td,
 .admin-pager .muted {
   margin: 0;
   font-size: 13px;
+}
+
+.pager-jump input {
+  width: 4.5em;
+  min-height: 36px;
+  padding: 4px 8px;
+  text-align: center;
 }
 
 /* Every summary states the period and filters that produced it, so the caption
@@ -3279,13 +3318,13 @@ td,
 
     @bottom-left {
       content: 'BRHP-MSAM';
-      color: #6b7c70;
+      color: #56675b;
       font: 7pt 'Nunito Variable', system-ui, sans-serif;
     }
 
     @bottom-right {
       content: 'Page ' counter(page) ' of ' counter(pages);
-      color: #6b7c70;
+      color: #56675b;
       font: 7pt 'Nunito Variable', system-ui, sans-serif;
     }
   }

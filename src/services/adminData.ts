@@ -172,6 +172,8 @@ export type BarangayRollup = {
   barangays: Barangay[];
   households: AdminHousehold[];
   residents: AdminResident[];
+  /** Residents of every status, so a check on someone since moved out still reaches their barangay. Falls back to `residents`. */
+  everyResident?: Pick<AdminResident, 'resident_id' | 'household_id'>[];
   assessments: HealthAssessment[];
   disbursements: SupplyDisbursement[];
 };
@@ -187,8 +189,6 @@ export type AdminSnapshot = {
   householdCount: number;
   residentCount: number;
   residents: AdminResident[];
-  /** Every resident in scope whatever their status, for naming who an assessment belongs to. */
-  people: AdminPerson[];
   /** Period-scoped. */
   assessments: HealthAssessment[];
   disbursements: SupplyDisbursement[];
@@ -219,7 +219,6 @@ export const emptyAdminSnapshot: AdminSnapshot = {
   householdCount: 0,
   residentCount: 0,
   residents: [],
-  people: [],
   assessments: [],
   disbursements: [],
   inventoryItems: [],
@@ -241,6 +240,9 @@ function newestFirst<TRow>(rows: TRow[], field: keyof TRow): TRow[] {
   return rows.sort((a, b) => String(b[field] ?? '').localeCompare(String(a[field] ?? '')));
 }
 
+/** The resident columns the snapshot reads, status included so one read serves both the active count and the scoping. */
+type SnapshotIndividual = AdminResident & Pick<Individual, 'status'>;
+
 /**
  * Reads every table the admin portal summarises, then narrows to the filters.
  *
@@ -251,24 +253,14 @@ function newestFirst<TRow>(rows: TRow[], field: keyof TRow): TRow[] {
  */
 function readSnapshotRows(filters: AdminFilters) {
   return Promise.all([
-    readAllPages<Barangay>('Barangay', 'barangay_id', () => supabase.from('barangays').select('*')).then((rows) =>
-      byText(rows, 'name'),
-    ),
-    fetchActivePuroks(),
+    fetchAdminScope(),
     // Rows rather than a count: `individuals` carries no barangay of its own, so
     // every per-barangay figure below joins through this list.
     readAllPages<AdminHousehold>('Household', 'household_id', () =>
       supabase.from('households').select('household_id, household_number, purok_id, barangay_id, updated_at'),
     ),
-    // Active members only: someone who moved out or died is still on file, but
-    // is not counted in the resident-facing demographics.
-    readAllPages<AdminResident>('Resident', 'resident_id', () =>
-      supabase.from('individuals').select('resident_id, household_id, sex, birthday, updated_at').eq('status', 'active'),
-    ),
-    // Every status: scopes assessments/disbursements below, which must not drop a
-    // record just because the resident later changed status.
-    readAllPages<AdminPerson>('Resident (all statuses)', 'resident_id', () =>
-      supabase.from('individuals').select('resident_id, household_id, first_name, last_name, sex, birthday'),
+    readAllPages<SnapshotIndividual>('Resident', 'resident_id', () =>
+      supabase.from('individuals').select('resident_id, household_id, sex, birthday, updated_at, status'),
     ),
     readAllPages<HealthAssessment>('Health assessment', 'assessment_id', () =>
       supabase
@@ -284,50 +276,69 @@ function readSnapshotRows(filters: AdminFilters) {
         .gte('disbursement_date', filters.from)
         .lte('disbursement_date', filters.to),
     ).then((rows) => newestFirst(rows, 'disbursement_date')),
-    readAllPages<InventoryItem>('Inventory', 'item_id', () => supabase.from('inventory_items').select('*')).then(
-      (rows) => byText(rows, 'item_name'),
-    ),
+    fetchInventoryItems(),
     readAllPages<InventoryAllocation>('Allocation', 'allocation_id', () =>
       supabase.from('inventory_allocations').select('*'),
     ),
-    // Returns the label and the session's own barangay together: which barangays
-    // a rollup may name comes from the latter, not from the picker.
-    fetchBarangayScope(),
   ]);
 }
 
-/**
- * Barangay id → name, for the registry page's rows.
- *
- * Cached because `fetchResidentPage` runs on every page step and every debounced
- * keystroke, and this table is a handful of rows that change roughly never —
- * re-reading it per keystroke was a whole round trip for an answer that was
- * already known. Cleared by `invalidateAdminSnapshot` alongside the snapshot, so
- * a barangay added mid-session shows up on the portal's next refresh rather than
- * needing a reload.
- */
-let barangayNames: Promise<Map<string, string>> | null = null;
-
-function fetchBarangayNames(): Promise<Map<string, string>> {
-  barangayNames ??= readBarangayNames();
-
-  return barangayNames;
-}
-
-async function readBarangayNames(): Promise<Map<string, string>> {
-  const barangays = await readAllPages<{ barangay_id: string; name: string }>('Barangay', 'barangay_id', () =>
-    supabase.from('barangays').select('barangay_id, name'),
+/** Every inventory item the session can read, by name. */
+export function fetchInventoryItems(): Promise<InventoryItem[]> {
+  return readAllPages<InventoryItem>('Inventory', 'item_id', () => supabase.from('inventory_items').select('*')).then((rows) =>
+    byText(rows, 'item_name'),
   );
-
-  return new Map(barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
 }
 
-/**
- * How long a read stands before the next caller goes back to the network. The
- * same 60 seconds the portal already re-reads on (`useAdminData`), so a cached
- * screen is never showing anything older than the timer would have allowed.
- */
-const SNAPSHOT_TTL_MS = 60_000;
+/** What the filter bar and a report header need, without any field data. */
+export type AdminScope = Pick<AdminSnapshot, 'barangays' | 'puroks' | 'sessionBarangayId' | 'barangayLabel'>;
+
+let adminScope: Promise<AdminScope> | null = null;
+
+/** Barangays, puroks and the session's own barangay. Cached until `invalidateAdminSnapshot`. */
+export function fetchAdminScope(): Promise<AdminScope> {
+  const entry = (adminScope ??= readAdminScope());
+
+  entry.catch(() => {
+    if (adminScope === entry) {
+      adminScope = null;
+    }
+  });
+
+  return entry;
+}
+
+async function readAdminScope(): Promise<AdminScope> {
+  const [barangays, puroks, scope] = await Promise.all([
+    readAllPages<Barangay>('Barangay', 'barangay_id', () => supabase.from('barangays').select('*')).then((rows) =>
+      byText(rows, 'name'),
+    ),
+    fetchActivePuroks(),
+    // Null for an RHU account.
+    supabase.rpc('current_barangay_id'),
+  ]);
+
+  if (scope.error) {
+    throw new Error(scope.error.message);
+  }
+
+  return {
+    barangays,
+    puroks,
+    sessionBarangayId: scope.data,
+    barangayLabel: describeBarangayScope(scope.data, barangays),
+  };
+}
+
+/** Every resident of any status, named. Read only for an export that lists people. */
+export function fetchAdminPeople(): Promise<AdminPerson[]> {
+  return readAllPages<AdminPerson>('Resident (all statuses)', 'resident_id', () =>
+    supabase.from('individuals').select('resident_id, household_id, first_name, last_name, sex, birthday'),
+  );
+}
+
+/** How long a read stands before the next caller goes back to the network. The same interval `useAdminData` re-reads on. */
+const SNAPSHOT_TTL_MS = 5 * 60_000;
 
 /**
  * One entry, not a `Map`: the portal looks at one period at a time, and coming
@@ -347,7 +358,7 @@ let snapshotCache: { key: string; at: number; rows: Promise<Awaited<ReturnType<t
  */
 export function invalidateAdminSnapshot(): void {
   snapshotCache = null;
-  barangayNames = null;
+  adminScope = null;
 }
 
 // Both caches above hold rows RLS narrowed to whoever was signed in, and signing
@@ -390,8 +401,11 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     throw cause;
   }
 
-  const [barangays, puroks, households, residents, residentHouseholds, assessments, disbursements, inventory, allocations, sessionScope] =
+  const [{ barangays, puroks, sessionBarangayId, barangayLabel }, households, individuals, assessments, disbursements, inventory, allocations] =
     rows;
+  // Active members only: someone who moved out or died is still on file, but
+  // is not counted in the resident-facing demographics.
+  const residents = individuals.filter((resident) => resident.status === 'active');
 
   // Narrow to the selected barangay and purok. Both reach everything below
   // through the household, the only table carrying `barangay_id`.
@@ -405,8 +419,9 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
 
   // All statuses, not just active: a record made before a resident moved out or
   // died must still count in the period it happened.
-  const people = residentHouseholds.filter((resident) => inScope.has(resident.household_id));
-  const scopedResidentIds = new Set(people.map((resident) => resident.resident_id));
+  const scopedResidentIds = new Set(
+    individuals.filter((resident) => inScope.has(resident.household_id)).map((resident) => resident.resident_id),
+  );
 
   const assessmentRows = assessments.filter((row) => scopedResidentIds.has(row.resident_id));
   const disbursementRows = disbursements.filter((row) => scopedResidentIds.has(row.resident_id));
@@ -422,37 +437,23 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     householdCount: householdRows.length,
     residentCount: residentRows.length,
     residents: residentRows,
-    people,
     assessments: assessmentRows,
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
     allocations: allocationRows,
-    unscoped: { barangays, households, residents, assessments, disbursements },
-    sessionBarangayId: sessionScope.barangayId,
-    barangayLabel: sessionScope.label,
+    unscoped: { barangays, households, residents, everyResident: individuals, assessments, disbursements },
+    sessionBarangayId,
+    barangayLabel,
     fetchedAt: new Date().toISOString(),
     newestRecordAt: newest([...residentRows, ...assessmentRows, ...disbursementRows, ...inventoryRows]),
   };
 }
 
-/**
- * What an export should call the area it covers, and the barangay the session is
- * confined to. Both come off one `current_barangay_id` call.
- */
+/** What an export should call the area it covers, and the barangay the session is confined to. */
 export async function fetchBarangayScope(): Promise<{ label: string; barangayId: string | null }> {
-  const [scope, barangays] = await Promise.all([
-    // Null for an RHU account.
-    supabase.rpc('current_barangay_id'),
-    readAllPages<{ barangay_id: string; name: string }>('Barangay', 'barangay_id', () =>
-      supabase.from('barangays').select('barangay_id, name'),
-    ),
-  ]);
+  const scope = await fetchAdminScope();
 
-  if (scope.error) {
-    throw new Error(scope.error.message);
-  }
-
-  return { label: describeBarangayScope(scope.data, barangays), barangayId: scope.data };
+  return { label: scope.barangayLabel, barangayId: scope.sessionBarangayId };
 }
 
 export function describeBarangayScope(scopeId: string | null, barangays: { barangay_id: string; name: string }[]): string {
@@ -777,13 +778,7 @@ export type ResidentStatusFilter = {
   to: string;
 };
 
-/**
- * One page of the central resident registry, with the household number and
- * barangay name joined in from `households` by a second query.
- *
- * `statusFilter` is separate from `filters` because it arrives only from the
- * dashboard's nutrition-band drill-down and names a period of its own.
- */
+/** One page of the central resident registry, read off `resident_rows` so the household number and barangay are columns. */
 export async function fetchResidentPage(
   query: string,
   limit: number,
@@ -792,30 +787,19 @@ export async function fetchResidentPage(
   statusFilter?: ResidentStatusFilter,
 ): Promise<Page<Individual>> {
   const search = sanitizeSearch(query);
-  // `!inner` joins rather than nests: only the households column is needed, and
-  // an inner join is what drops residents outside the scope. Filtering here
-  // instead of sending household ids keeps the URL a fixed length — the id list
-  // this replaced grew with the barangay and was refused past a few hundred.
-  // The band is a second `!inner`, for the same reason: an embed nests its matches
-  // under one parent row, so a resident assessed twice in the band is still one row.
-  // Two literal selects rather than one built string — the client types the shape
-  // from the text, and cannot parse one assembled at runtime.
+  // The band is an `!inner` embed: it nests matches under one parent row, so a
+  // resident assessed twice in the band is still one row. Two literal selects,
+  // since the client types the shape from the text.
   let request = statusFilter
-    ? supabase
-        .from('individuals')
-        .select('*, households!inner(household_number, barangay_id, purok_id), health_assessments!inner(assessment_id)', {
-          count: 'exact',
-        })
-    : supabase.from('individuals').select('*, households!inner(household_number, barangay_id, purok_id)', {
-        count: 'exact',
-      });
+    ? supabase.from('resident_rows').select('*, health_assessments!inner(assessment_id)', { count: 'exact' })
+    : supabase.from('resident_rows').select('*', { count: 'exact' });
 
   if (filters.barangayId) {
-    request = request.eq('households.barangay_id', filters.barangayId);
+    request = request.eq('barangay_id', filters.barangayId);
   }
 
   if (filters.purokId) {
-    request = request.eq('households.purok_id', filters.purokId);
+    request = request.eq('purok_id', filters.purokId);
   }
 
   if (filters.sex) {
@@ -846,23 +830,10 @@ export async function fetchResidentPage(
   }
 
   if (search) {
-    // Paged: past the server's cap the `.in()` clause below would lose household ids.
-    const households = await readAllPages<{ household_id: string }>('Household search', 'household_id', () =>
-      supabase.from('households').select('household_id').ilike('household_number', `%${search}%`),
-    );
-    const householdIds = households.map((household) => household.household_id);
-    const clauses = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`];
-
-    if (householdIds.length) {
-      clauses.push(`household_id.in.(${householdIds.join(',')})`);
-    }
-
-    request = request.or(clauses.join(','));
+    request = request.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,household_number.ilike.%${search}%`);
   }
 
-  // Secondary sort is the primary key, as on every other paged read: shared last
-  // names are the rule in a barangay, and ties have no stable order across
-  // separate LIMIT/OFFSET queries — a resident would land on two pages or none.
+  // Secondary sort is the primary key: shared last names have no stable order across LIMIT/OFFSET pages.
   const { data, count, error } = await request
     .order('last_name')
     .order('resident_id')
@@ -872,21 +843,11 @@ export async function fetchResidentPage(
     throw new Error(error.message);
   }
 
-  const rows = data ?? [];
-  const names = await fetchBarangayNames();
-
   return {
-    // `households` is the join above rather than a column of the row, so it is
-    // lifted into the two fields the registry shows and dropped. `health_assessments`
-    // is present only on the banded query, and rides along unread.
-    rows: rows.map(({ households, ...row }) => {
+    rows: (data ?? []).map((row) => {
       delete (row as { health_assessments?: unknown }).health_assessments;
 
-      return {
-        ...row,
-        household_number: households?.household_number,
-        barangay_name: households?.barangay_id ? names.get(households.barangay_id) : undefined,
-      };
+      return row;
     }),
     total: count ?? 0,
   };
@@ -1053,8 +1014,10 @@ export type BarangayStats = {
   residents: number;
   /** Assessments recorded in the period, not residents. */
   assessments: number;
-  /** Distinct residents with at least one assessment in the period. */
+  /** Distinct residents with at least one assessment in the period, whatever their status now. */
   residentsAssessed: number;
+  /** The same, among active residents only: the numerator of `coverageRate`. */
+  activeResidentsAssessed: number;
   /** Residents whose latest assessment in the period was underweight. */
   underweight: number;
   /** Share of `residentsAssessed`, null when the barangay assessed nobody. */
@@ -1069,13 +1032,16 @@ export type BarangayStats = {
  * that records one. Empty string covers an unstamped household and a missing
  * one alike, which both callers fold into an "Unassigned" bucket.
  */
-function residentBarangayMap(snapshot: Pick<AdminSnapshot, 'households' | 'residents'>): Map<string, string> {
+function residentBarangayMap(snapshot: Pick<BarangayRollup, 'households' | 'residents' | 'everyResident'>): Map<string, string> {
   const householdBarangay = new Map(
     snapshot.households.map((household) => [household.household_id, household.barangay_id ?? '']),
   );
 
   return new Map(
-    snapshot.residents.map((resident) => [resident.resident_id, householdBarangay.get(resident.household_id) ?? '']),
+    (snapshot.everyResident ?? snapshot.residents).map((resident) => [
+      resident.resident_id,
+      householdBarangay.get(resident.household_id) ?? '',
+    ]),
   );
 }
 
@@ -1100,6 +1066,7 @@ export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: strin
     residents: 0,
     assessments: 0,
     residentsAssessed: 0,
+    activeResidentsAssessed: 0,
     underweight: 0,
     underweightRate: null,
     coverageRate: null,
@@ -1158,10 +1125,15 @@ export function barangayStats(snapshot: BarangayRollup, sessionBarangayId: strin
     at(residentBarangay.get(disbursement.resident_id) ?? '').unitsReleased += disbursement.quantity;
   }
 
+  const active = new Set(snapshot.residents.map((resident) => resident.resident_id));
+
   for (const [barangayId, row] of rows) {
-    row.residentsAssessed = assessedResidents.get(barangayId)?.size ?? 0;
+    const assessed = [...(assessedResidents.get(barangayId) ?? [])];
+
+    row.residentsAssessed = assessed.length;
+    row.activeResidentsAssessed = assessed.filter((residentId) => active.has(residentId)).length;
     row.underweightRate = row.residentsAssessed ? row.underweight / row.residentsAssessed : null;
-    row.coverageRate = row.residents ? row.residentsAssessed / row.residents : null;
+    row.coverageRate = row.residents ? row.activeResidentsAssessed / row.residents : null;
   }
 
   // Unassigned last, then by name: it is a data-quality row, not a barangay.
@@ -1343,7 +1315,7 @@ export type ResidentHealthRow = {
 
 /** One row per resident checked in the period, by last name. */
 export function residentHealthRows(
-  snapshot: Pick<AdminSnapshot, 'people' | 'households' | 'barangays' | 'assessments'>,
+  snapshot: Pick<AdminSnapshot, 'households' | 'barangays' | 'assessments'> & { people: AdminPerson[] },
 ): ResidentHealthRow[] {
   const people = new Map(snapshot.people.map((person) => [person.resident_id, person]));
   const households = new Map(snapshot.households.map((household) => [household.household_id, household]));
@@ -1445,6 +1417,8 @@ export function monthlyReleases(
 export type ItemUtilization = {
   itemId: string;
   itemName: string;
+  /** The barangay holding the item, or "Unassigned". */
+  barangay: string;
   type: InventoryItemType;
   /** Barangay stock not yet handed to any BHW. */
   onHand: number;
@@ -1463,6 +1437,7 @@ export type ItemUtilization = {
 export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
   const allocated = new Map<string, number>();
   const released = new Map<string, number>();
+  const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
 
   for (const allocation of snapshot.allocations) {
     allocated.set(allocation.item_id, (allocated.get(allocation.item_id) ?? 0) + allocation.quantity);
@@ -1476,6 +1451,7 @@ export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
     .map((item) => ({
       itemId: item.item_id,
       itemName: item.item_name,
+      barangay: (item.barangay_id && barangays.get(item.barangay_id)) || 'Unassigned',
       type: item.type,
       onHand: item.current_stock,
       allocated: allocated.get(item.item_id) ?? 0,
