@@ -249,7 +249,8 @@ sets aside entries that keep failing, then pulls what changed on the server.
 The portal queries Supabase directly and never touches the device database. Dashboards,
 charts and reports read one snapshot of everything the account may see for the chosen
 period. The record lists — residents, inventory, carried stock, accounts and per-resident
-health records — are paged, filtered, searched and counted by the database.
+health records — are paged, filtered, searched and counted by the database. While any panel
+or list is still reading, it dims and a bar runs across the top of the window.
 
 ## Project Layout
 

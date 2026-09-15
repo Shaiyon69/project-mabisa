@@ -152,6 +152,7 @@ export function IndividualsTable({ filters }: IndividualsTableProps) {
         columns={columns}
         rows={rows}
         getRowKey={(individual) => individual.resident_id}
+        busy={loading}
         emptyTitle={loading ? 'Loading the records' : 'No residents found'}
         emptyText={loading ? 'One moment.' : "Try a different search, or wait for a health worker's phone to send its records."}
         numbered
