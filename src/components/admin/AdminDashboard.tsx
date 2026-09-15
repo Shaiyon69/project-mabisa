@@ -7,11 +7,11 @@ import {
   type AdminSnapshot,
 } from '../../services/adminData';
 import { NUTRITION_COLORS } from '../../lib/charts';
-import { titleCase } from '../../lib/utils';
 import { Card } from '../common/Card';
 import { ErrorState } from '../common/StateMessage';
 import { BarangayRates } from './BarangayRates';
 import { DonutChart } from './Charts';
+import { LowStockList } from './LowStockList';
 import { StatCard } from './StatCard';
 import { SummaryBars } from './SummaryBars';
 import { SummaryContext } from './AdminFilterBar';
@@ -176,16 +176,7 @@ export function AdminDashboard({ snapshot, filters, loading, error, onScope }: A
             </Link>
           </div>
           {lowStock.length ? (
-            <ul className="compact-list">
-              {lowStock.map((item) => (
-                <li key={item.item_id}>
-                  <span>{item.item_name}</span>
-                  <small>
-                    {item.current_stock} on hand • {titleCase(item.type)}
-                  </small>
-                </li>
-              ))}
-            </ul>
+            <LowStockList items={lowStock} barangayId={filters.barangayId} />
           ) : (
             <p className="muted">Every item is above the low-stock threshold.</p>
           )}

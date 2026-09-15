@@ -14,13 +14,13 @@ type BarangayRatesProps = {
 /** Rows per page. The pager reaches every barangay without the panel growing to sixty-four rows. */
 const PAGE_SIZE = 8;
 
-/** `12 of 48 (25%)`, or a phrase when the denominator is zero. */
+/** `12 of 48`, or a phrase when the denominator is zero. The rate itself is printed beside it. */
 function describeRate(row: BarangayStats): string {
   if (row.underweightRate === null) {
     return 'no assessments in this period';
   }
 
-  return `${row.underweight} of ${row.residentsAssessed} (${Math.round(row.underweightRate * 100)}%)`;
+  return `${row.underweight} of ${row.residentsAssessed}`;
 }
 
 /**
@@ -106,7 +106,8 @@ export function BarangayRates({ stats, selected, onSelect }: BarangayRatesProps)
         <>
           <TablePager page={current} pageCount={pageCount} onPage={setPage} />
           <p className="summary-context">
-            All {ranked.length} barangays, highest underweight share first.
+            All {ranked.length} barangays, highest underweight share first, weighted towards the RHU average where few
+            residents were checked.
           </p>
         </>
       ) : null}

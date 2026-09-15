@@ -27,6 +27,8 @@ type TableProps<Row> = {
   /** Numbers the rows. `startIndex` continues the count for a table paged on the server. */
   numbered?: boolean;
   startIndex?: number;
+  /** Still reading: dims the rows in hand and raises the loading bar. */
+  busy?: boolean;
 };
 
 function cell<Row>(column: TableColumn<Row>, row: Row): ReactNode {
@@ -45,6 +47,7 @@ export function Table<Row>({
   pageSize,
   numbered,
   startIndex = 0,
+  busy = false,
 }: TableProps<Row>) {
   const [page, setPage] = useState(1);
   const pageCount = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
@@ -61,12 +64,16 @@ export function Table<Row>({
   // No rows means no table: the header strip and its 640px scrollbar over an
   // empty state read as a table that failed to load.
   if (!rows.length) {
-    return <TableEmpty title={emptyTitle} text={emptyText} />;
+    return (
+      <div aria-busy={busy}>
+        <TableEmpty title={emptyTitle} text={emptyText} />
+      </div>
+    );
   }
 
   return (
     <>
-      <div className="ui-table-wrap">
+      <div className="ui-table-wrap" aria-busy={busy}>
         <table>
           <thead>
             <tr>
@@ -108,14 +115,43 @@ type TablePagerProps = {
 };
 
 export function TablePager({ page, pageCount, onPage, disabled = false }: TablePagerProps) {
+  // Committed on Enter or blur, so typing "12" does not read page 1 on the way.
+  const jump = (value: string) => {
+    const next = Math.min(Math.max(1, Math.round(Number(value)) || page), pageCount);
+
+    if (next !== page) {
+      onPage(next);
+    }
+  };
+
   return (
     <div className="admin-pager">
       <Button variant="ghost" onClick={() => onPage(page - 1)} disabled={disabled || page <= 1}>
         Previous
       </Button>
-      <span className="muted">
-        Page {page} of {pageCount}
-      </span>
+      {pageCount > 2 ? (
+        <label className="muted pager-jump">
+          Page{' '}
+          <input
+            key={page}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={pageCount}
+            defaultValue={page}
+            disabled={disabled}
+            onBlur={(event) => jump(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') jump(event.currentTarget.value);
+            }}
+          />{' '}
+          of {formatCount(pageCount)}
+        </label>
+      ) : (
+        <span className="muted">
+          Page {page} of {pageCount}
+        </span>
+      )}
       <Button variant="ghost" onClick={() => onPage(page + 1)} disabled={disabled || page >= pageCount}>
         Next
       </Button>
@@ -147,6 +183,11 @@ type TableMetaProps = {
 };
 
 export function TableMeta({ shown, total, label }: TableMetaProps) {
+  // Nothing to count yet, or nothing matched: the table's own empty state says which.
+  if (!total) {
+    return null;
+  }
+
   return (
     <p className="ui-table-meta">
       Showing {formatCount(shown)} of {formatCount(total)} {label}.

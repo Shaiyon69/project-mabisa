@@ -89,6 +89,8 @@ export async function signIn(page: Page, { role, userId = `user-${role}`, cacheR
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
   );
   await page.route('**/auth/v1/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  // A scalar RPC answers null, as the server does for an unassigned account; `[]` would be read as a purok id.
+  await page.route('**/rest/v1/rpc/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
 
   // The one call the shell makes before deciding which surface a session belongs
   // to. An array of one row serves both callers: `.maybeSingle()` takes the row

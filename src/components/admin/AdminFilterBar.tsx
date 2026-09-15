@@ -46,11 +46,14 @@ function optionLabel(field: FilterFieldId, value: string): string {
   return field === 'accountRole' ? ROLE_LABELS[value as UserRole] : titleCase(value);
 }
 
+/** A snapshot, or just the scope lists for a page without one. `newestRecordAt` is absent on the latter. */
+type FilterBarData = Pick<AdminSnapshot, 'barangays' | 'puroks' | 'barangayLabel' | 'fetchedAt'> & { newestRecordAt?: string | null };
+
 type AdminFilterBarProps = {
   filters: AdminFilters;
   onChange: (filters: AdminFilters) => void;
   loading: boolean;
-  snapshot: AdminSnapshot;
+  snapshot: FilterBarData;
   /** Only an `admin` sees more than one barangay, so only an admin gets the picker. */
   role: UserRole | null;
   /** The narrow filters this tab offers, in the order they should appear. */
@@ -291,7 +294,7 @@ function SectionPicker({ filters, onChange }: { filters: AdminFilters; onChange:
   );
 }
 
-function DataFreshness({ snapshot, loading }: { snapshot: AdminSnapshot; loading: boolean }) {
+function DataFreshness({ snapshot, loading }: { snapshot: FilterBarData; loading: boolean }) {
   if (loading) {
     return <small className="muted">Reading…</small>;
   }
@@ -312,9 +315,11 @@ function DataFreshness({ snapshot, loading }: { snapshot: AdminSnapshot; loading
       */}
       {snapshot.barangayLabel ? `${snapshot.barangayLabel}. ` : ''}
       Central data read {new Date(snapshot.fetchedAt).toLocaleTimeString()}.{' '}
-      {snapshot.newestRecordAt
-        ? `Newest synced record ${formatDate(snapshot.newestRecordAt)}.`
-        : 'No records received for this period.'}
+      {snapshot.newestRecordAt === undefined
+        ? null
+        : snapshot.newestRecordAt
+          ? `Newest synced record ${formatDate(snapshot.newestRecordAt)}.`
+          : 'No records received for this period.'}
     </small>
   );
 }

@@ -19,7 +19,7 @@ The system was previously called MABISA. The rename covers what people read — 
 ## Application Surfaces
 
 - **Mobile BHW client** (`/bhw`): offline-first screens for households and residents, health checks, immunizations, supply releases and sync status, behind a device PIN.
-- **Web LGU portal** (`/admin`): Dashboard, Residents, Health, Inventory, Analytics, Reports (print-ready documents) and Accounts.
+- **Web LGU portal** (`/admin`): Dashboard, Residents, Health, Inventory, Analytics (split into Residents, Health and Supplies sub-tabs), Reports (print-ready documents) and Accounts.
 - **Backend database**: Supabase PostgreSQL with Row Level Security enabled and enforced on every table.
 
 Both surfaces live in this one codebase but ship as separate deployments —
@@ -249,7 +249,8 @@ sets aside entries that keep failing, then pulls what changed on the server.
 The portal queries Supabase directly and never touches the device database. Dashboards,
 charts and reports read one snapshot of everything the account may see for the chosen
 period. The record lists — residents, inventory, carried stock, accounts and per-resident
-health records — are paged, filtered, searched and counted by the database.
+health records — are paged, filtered, searched and counted by the database. While any panel
+or list is still reading, it dims and a bar runs across the top of the window.
 
 ## Project Layout
 

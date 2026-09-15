@@ -80,6 +80,7 @@ export function InventoryTable({ filters, spansBarangays, reloadToken }: Invento
         getRowKey={(item) => item.item_id}
         numbered
         startIndex={offset}
+        busy={loading}
         emptyTitle={loading ? 'Loading the supplies' : query ? 'No item matches' : 'No supplies yet'}
         emptyText={
           loading

@@ -1,13 +1,26 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ADULT_BMI_MIN_AGE, ageInYears, formatCount, formatDate, isoLocalDay, titleCase } from '../../lib/utils';
-import { NUTRITION_COLORS } from '../../lib/charts';
+import {
+  ADULT_BMI_MIN_AGE,
+  ageInYears,
+  formatCount,
+  formatDate,
+  HEALTH_COMPLICATION_OPTIONS,
+  isoLocalDay,
+  PRIMARY_ILLNESS_OPTIONS,
+  titleCase,
+  VACCINATION_STATUS_OPTIONS,
+} from '../../lib/utils';
+import { NUTRITION_COLORS, VACCINATION_COLORS } from '../../lib/charts';
 import {
   AGE_BANDS,
   ageBandOf,
   assessmentsBelowAdultBmiAge,
   latestPerResident,
   describeScope,
+  fetchAdminPeople,
+  monthlyTrend,
+  monthlyVitals,
   disbursementsByItem,
   lowStockItems,
   nutritionTally,
@@ -17,6 +30,7 @@ import {
   showsSection,
   tally,
   type AdminFilters,
+  type AdminPerson,
   type AdminSnapshot,
   type Tally,
 } from '../../services/adminData';
@@ -24,7 +38,9 @@ import type { UserRole } from '../../types/database';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { SelectField } from '../common/FormField';
+import { ErrorState } from '../common/StateMessage';
 import { SummaryContext } from './AdminFilterBar';
+import { LowStockList } from './LowStockList';
 import { SummaryBars } from './SummaryBars';
 
 type ReportCardsProps = {
@@ -45,6 +61,32 @@ export function ReportCards({ snapshot, filters, onFiltersChange, loading, role 
   const releasedTotal = snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0);
   const scope = filters.barangayId ? describeScope(filters, snapshot) : snapshot.barangayLabel;
   const [kind, setKind] = useState<ReportKind>('summary');
+  const [printing, setPrinting] = useState<{ kind: ReportKind; people: AdminPerson[] } | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // After the report has rendered, so the print dialog sees it. Unmounted again once printed.
+  useEffect(() => {
+    if (printing) {
+      printReport(REPORT_KINDS[printing.kind].title, scope, () => setPrinting(null));
+    }
+  }, [printing, scope]);
+
+  async function exportReport() {
+    setPreparing(true);
+    setExportError(null);
+
+    try {
+      // Names are read only for the reports that list people.
+      const people = kind === 'summary' || kind === 'supplies' ? [] : await fetchAdminPeople();
+
+      setPrinting({ kind, people });
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : 'Could not read the residents for this report.');
+    } finally {
+      setPreparing(false);
+    }
+  }
 
   return (
     <div className="report-grid-wrap">
@@ -71,11 +113,14 @@ export function ReportCards({ snapshot, filters, onFiltersChange, loading, role 
           ))}
         </SelectField>
         {/* Disabled mid-read, so a report printed right after an area change cannot carry the previous area's rows. */}
-        <Button onClick={() => printReport(REPORT_KINDS[kind].title, scope)} disabled={loading}>
-          Export report
+        <Button onClick={exportReport} disabled={loading || preparing}>
+          {preparing ? 'Preparing report…' : 'Export report'}
         </Button>
       </div>
-      <PrintReport snapshot={snapshot} filters={filters} scope={scope} kind={kind} />
+      {exportError ? <ErrorState title="Could not prepare the report" text={exportError} /> : null}
+      {printing ? (
+        <PrintReport snapshot={snapshot} filters={filters} scope={scope} kind={printing.kind} people={printing.people} />
+      ) : null}
       <div className="activity-grid report-grid">
       {showsSection(filters, 'demographics') ? (
         <ReportPanel
@@ -134,16 +179,7 @@ export function ReportCards({ snapshot, filters, onFiltersChange, loading, role 
           filterNote="none beyond the period (stock is current, not historical)"
         >
           {lowStock.length ? (
-            <ul className="compact-list">
-              {lowStock.map((item) => (
-                <li key={item.item_id}>
-                  <span>{item.item_name}</span>
-                  <small>
-                    {item.current_stock} unallocated • {titleCase(item.type)}
-                  </small>
-                </li>
-              ))}
-            </ul>
+            <LowStockList items={lowStock} barangayId={filters.barangayId} />
           ) : (
             <p className="muted">No item is at or below the low-stock threshold.</p>
           )}
@@ -212,16 +248,24 @@ const REPORT_KINDS = {
   summary: { label: 'Summary charts', title: 'Health and Supply Summary' },
   residents: { label: 'Resident list', title: 'Resident List' },
   health: { label: 'Resident health records', title: 'Resident Health Records' },
+  supplies: { label: 'Supply report', title: 'Supply Report' },
 } as const;
 
 type ReportKind = keyof typeof REPORT_KINDS;
 
 /** Opens the print dialog on the report document, titled so "Save as PDF" names the file after it. */
-function printReport(title: string, scope: string) {
+function printReport(title: string, scope: string, done: () => void) {
   const previous = document.title;
 
   document.title = `BRHP-MSAM ${title} - ${scope} - ${isoLocalDay(new Date())}`;
-  window.addEventListener('afterprint', () => (document.title = previous), { once: true });
+  window.addEventListener(
+    'afterprint',
+    () => {
+      document.title = previous;
+      done();
+    },
+    { once: true },
+  );
   window.print();
 }
 
@@ -229,8 +273,10 @@ const DATE_TIME = new Intl.DateTimeFormat('en-PH', { dateStyle: 'long', timeStyl
 
 type PrintProps = ReportCardsProps & { period: string };
 
+type PeopleProps = { people: AdminPerson[] };
+
 /** The print-only report: hidden on screen, the only thing on the page when printed. */
-function PrintReport({ snapshot, filters, scope, kind }: ReportCardsProps & { scope: string; kind: ReportKind }) {
+function PrintReport({ snapshot, filters, scope, kind, people }: ReportCardsProps & PeopleProps & { scope: string; kind: ReportKind }) {
   const period = `${formatDate(filters.from)} – ${formatDate(filters.to)}`;
 
   return createPortal(
@@ -252,8 +298,9 @@ function PrintReport({ snapshot, filters, scope, kind }: ReportCardsProps & { sc
       </header>
 
       {kind === 'summary' ? <PrintSummary snapshot={snapshot} filters={filters} period={period} /> : null}
-      {kind === 'residents' ? <PrintResidents snapshot={snapshot} /> : null}
-      {kind === 'health' ? <PrintHealth snapshot={snapshot} filters={filters} period={period} /> : null}
+      {kind === 'residents' ? <PrintResidents snapshot={snapshot} people={people} /> : null}
+      {kind === 'health' ? <PrintHealth snapshot={snapshot} filters={filters} period={period} people={people} /> : null}
+      {kind === 'supplies' ? <PrintSupplies snapshot={snapshot} filters={filters} period={period} /> : null}
 
       <footer className="pr-sign">
         {['Prepared by', 'Noted by'].map((role) => (
@@ -265,7 +312,7 @@ function PrintReport({ snapshot, filters, scope, kind }: ReportCardsProps & { sc
       </footer>
       <p className="pr-foot">
         Generated by BRHP-MSAM from records synced by barangay health workers.
-        {kind === 'residents' ? '' : ' A nutrition status is a reading, not a diagnosis.'}
+        {kind === 'residents' || kind === 'supplies' ? '' : ' A nutrition status is a reading, not a diagnosis.'}
       </p>
     </article>,
     document.body,
@@ -285,19 +332,16 @@ function PrintFigures({ figures }: { figures: { label: string; value: number }[]
   );
 }
 
-/** The period summaries as tables and bars, honouring the section picker. */
+/** The period summaries as tables and bars, honouring the section picker. Supplies show as totals only. */
 function PrintSummary({ snapshot, filters, period }: PrintProps) {
-  const lowStock = new Set(lowStockItems(snapshot.inventoryItems).map((item) => item.item_id));
-  const stock = [...snapshot.inventoryItems].sort(
-    (a, b) => Number(lowStock.has(b.item_id)) - Number(lowStock.has(a.item_id)) || a.item_name.localeCompare(b.item_name),
-  );
   const sections = REPORT_SECTIONS.filter((section) => showsSection(filters, section.id));
   const numberOf = (id: (typeof REPORT_SECTIONS)[number]['id']) =>
     String(sections.findIndex((section) => section.id === id) + 1).padStart(2, '0');
+  const latest = latestPerResident(snapshot.assessments);
   const figures = [
     { id: 'demographics', label: 'Residents profiled', value: snapshot.residentCount },
-    { id: 'nutrition', label: 'Residents checked', value: latestPerResident(snapshot.assessments).length },
-    { id: 'stock', label: 'Items low on stock', value: lowStock.size },
+    { id: 'nutrition', label: 'Residents checked', value: latest.length },
+    { id: 'stock', label: 'Items low on stock', value: lowStockItems(snapshot.inventoryItems).length },
     { id: 'supply', label: 'Units released', value: snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0) },
   ] as const;
 
@@ -319,74 +363,103 @@ function PrintSummary({ snapshot, filters, period }: PrintProps) {
       ) : null}
 
       {showsSection(filters, 'nutrition') ? (
-        <PrintSection number={numberOf('nutrition')} title="Nutrition status" context={`Health checks from ${period}.`}>
-          <ShareTable
-            caption="Residents by latest nutrition status"
-            heading="Status"
-            rows={nutritionTally(snapshot.assessments)}
-            colorFor={(row) => NUTRITION_COLORS[row.label]}
-          />
-          <p className="pr-note">{nutritionNote(snapshot)}</p>
-        </PrintSection>
-      ) : null}
-
-      {showsSection(filters, 'stock') ? (
-        <PrintSection number={numberOf('stock')} title="Stock still at the barangay" context="Unallocated stock as of the data date, not what health workers are carrying.">
-          {stock.length ? (
-            <table className="pr-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Type</th>
-                  <th className="num">On hand</th>
-                  <th className="num">Reorder level</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stock.map((item) => (
-                  <tr key={item.item_id}>
-                    <td>{item.item_name}</td>
-                    <td>{titleCase(item.type)}</td>
-                    <td className="num">{formatCount(item.current_stock)}</td>
-                    <td className="num">{reorderLevelOf(item) || 'Off'}</td>
-                    <td>
-                      {lowStock.has(item.item_id) ? <span className="pr-flag">Low</span> : <span className="pr-flag pr-flag-ok">OK</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="pr-empty">No items stocked.</p>
-          )}
-        </PrintSection>
-      ) : null}
-
-      {showsSection(filters, 'supply') ? (
-        <PrintSection
-          number={numberOf('supply')}
-          title="Supplies given out"
-          context={`${formatCount(snapshot.disbursements.length)} release(s) to residents from ${period}.`}
-        >
-          <ShareTable
-            caption="Units released by item"
-            heading="Item"
-            unit="Units"
-            rows={disbursementsByItem(snapshot.disbursements, snapshot.inventoryItems)}
-          />
+        <PrintSection number={numberOf('nutrition')} title="Health status" context={`Each resident's latest health check from ${period}.`}>
+          <div className="pr-split">
+            <ShareTable
+              caption="Nutrition status"
+              heading="Status"
+              rows={nutritionTally(snapshot.assessments)}
+              colorFor={(row) => NUTRITION_COLORS[row.label]}
+            />
+            <ShareTable
+              caption="Vaccination status"
+              heading="Status"
+              rows={tally(latest, (row) => row.vaccination_status ?? null, VACCINATION_STATUS_OPTIONS)}
+              colorFor={(row) => VACCINATION_COLORS[row.label]}
+            />
+            <ShareTable caption="Primary illness" heading="Illness" rows={illnessTally(latest)} />
+            <ShareTable
+              caption="Health complications"
+              heading="Complication"
+              rows={[
+                ...tally(
+                  latest.flatMap((row) => row.health_complications ?? []),
+                  (complication) => complication,
+                  HEALTH_COMPLICATION_OPTIONS,
+                ),
+                { label: 'none', count: latest.filter((row) => !row.health_complications?.length).length },
+              ]}
+            />
+          </div>
+          <p className="pr-note">{nutritionNote(snapshot)} A resident can have more than one complication.</p>
+          <PrintTrend snapshot={snapshot} filters={filters} />
         </PrintSection>
       ) : null}
     </>
   );
 }
 
+/** Every illness option, with each "other" broken out by the name the health worker typed. */
+function illnessTally(latest: ReturnType<typeof latestPerResident>): Tally[] {
+  const fixed = tally(latest, (row) => row.primary_illness ?? null, PRIMARY_ILLNESS_OPTIONS).filter((row) => row.label !== 'other');
+  const others = tally(
+    latest.filter((row) => row.primary_illness === 'other'),
+    (row) => `Other: ${row.illness_other?.trim() || 'unspecified'}`,
+  );
+
+  return [...fixed, ...others];
+}
+
+/** The period month by month: checks, underweight readings and average vitals. */
+function PrintTrend({ snapshot, filters }: Pick<ReportCardsProps, 'snapshot' | 'filters'>) {
+  const vitals = new Map(monthlyVitals(snapshot.assessments, filters).map((point) => [point.month, point]));
+  const blank = (value: number | null | undefined) => value ?? '—';
+
+  return (
+    <table className="pr-table">
+      <caption>By month</caption>
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th className="num">Checks</th>
+          <th className="num">Underweight</th>
+          <th className="num">Underweight rate</th>
+          <th className="num">Checks with vitals</th>
+          <th className="num">Avg BP</th>
+          <th className="num">Avg temp (°C)</th>
+          <th className="num">Avg pulse</th>
+        </tr>
+      </thead>
+      <tbody>
+        {monthlyTrend(snapshot.assessments, filters).map((point) => {
+          const month = vitals.get(point.month);
+
+          return (
+            <tr key={point.month}>
+              <td>{point.label}</td>
+              <td className="num">{formatCount(point.assessments)}</td>
+              <td className="num">{formatCount(point.underweight)}</td>
+              <td className="num">{point.rate === null ? '—' : `${Math.round(point.rate * 100)}%`}</td>
+              <td className="num">{formatCount(month?.readings ?? 0)}</td>
+              <td className="num">
+                {month?.systolic_bp != null ? `${month.systolic_bp}/${blank(month.diastolic_bp)}` : '—'}
+              </td>
+              <td className="num">{blank(month?.temperature_c)}</td>
+              <td className="num">{blank(month?.pulse_rate)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 /** Every active resident on the register, by barangay and household. */
-function PrintResidents({ snapshot }: Pick<ReportCardsProps, 'snapshot'>) {
+function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'> & PeopleProps) {
   const active = new Set(snapshot.residents.map((resident) => resident.resident_id));
   const households = new Map(snapshot.households.map((household) => [household.household_id, household]));
   const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
-  const rows = snapshot.people
+  const rows = people
     .filter((person) => active.has(person.resident_id))
     .map((person) => {
       const household = households.get(person.household_id);
@@ -454,8 +527,8 @@ function PrintResidents({ snapshot }: Pick<ReportCardsProps, 'snapshot'>) {
 }
 
 /** Each resident's latest check in the period, one row each. Printed landscape for the width. */
-function PrintHealth({ snapshot, period }: PrintProps) {
-  const rows = residentHealthRows(snapshot);
+function PrintHealth({ snapshot, period, people }: PrintProps & PeopleProps) {
+  const rows = residentHealthRows({ ...snapshot, people });
   const blank = (value: number | null | undefined) => value ?? '—';
 
   return (
@@ -533,6 +606,70 @@ function PrintHealth({ snapshot, period }: PrintProps) {
         ) : (
           <p className="pr-empty">No health checks in this period.</p>
         )}
+      </PrintSection>
+    </>
+  );
+}
+
+/** Every stocked item and every item released in the period. */
+function PrintSupplies({ snapshot, period }: PrintProps) {
+  const lowStock = new Set(lowStockItems(snapshot.inventoryItems).map((item) => item.item_id));
+  const stock = [...snapshot.inventoryItems].sort(
+    (a, b) => Number(lowStock.has(b.item_id)) - Number(lowStock.has(a.item_id)) || a.item_name.localeCompare(b.item_name),
+  );
+
+  return (
+    <>
+      <PrintFigures
+        figures={[
+          { label: 'Items stocked', value: stock.length },
+          { label: 'Items low on stock', value: lowStock.size },
+          { label: 'Releases', value: snapshot.disbursements.length },
+          { label: 'Units released', value: snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0) },
+        ]}
+      />
+      <PrintSection number="01" title="Stock still at the barangay" context="Unallocated stock as of the data date, not what health workers are carrying.">
+        {stock.length ? (
+          <table className="pr-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Type</th>
+                <th className="num">On hand</th>
+                <th className="num">Reorder level</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stock.map((item) => (
+                <tr key={item.item_id}>
+                  <td>{item.item_name}</td>
+                  <td>{titleCase(item.type)}</td>
+                  <td className="num">{formatCount(item.current_stock)}</td>
+                  <td className="num">{reorderLevelOf(item) || 'Off'}</td>
+                  <td>
+                    {lowStock.has(item.item_id) ? <span className="pr-flag">Low</span> : <span className="pr-flag pr-flag-ok">OK</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="pr-empty">No items stocked.</p>
+        )}
+      </PrintSection>
+
+      <PrintSection
+        number="02"
+        title="Supplies given out"
+        context={`${formatCount(snapshot.disbursements.length)} release(s) to residents from ${period}.`}
+      >
+        <ShareTable
+          caption="Units released by item"
+          heading="Item"
+          unit="Units"
+          rows={disbursementsByItem(snapshot.disbursements, snapshot.inventoryItems)}
+        />
       </PrintSection>
     </>
   );
