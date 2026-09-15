@@ -211,6 +211,12 @@
   background: var(--muted-surface);
 }
 
+/* On the row: a native radio draws no box-shadow, so the global focus ring never shows on it. */
+.choice:focus-within {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .member-card {
   display: flex;
   min-width: 0;
@@ -1762,7 +1768,7 @@ td,
 
 .bhw-bottom-nav .nav-short {
   display: inline;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -2446,6 +2452,7 @@ td,
 
 .back-link {
   display: inline-flex;
+  min-height: 44px;
   align-items: center;
   gap: 6px;
   margin-bottom: 10px;
@@ -2652,6 +2659,13 @@ td,
 .admin-pager .muted {
   margin: 0;
   font-size: 13px;
+}
+
+.pager-jump input {
+  width: 4.5em;
+  min-height: 36px;
+  padding: 4px 8px;
+  text-align: center;
 }
 
 /* Every summary states the period and filters that produced it, so the caption
@@ -3304,13 +3318,13 @@ td,
 
     @bottom-left {
       content: 'BRHP-MSAM';
-      color: #6b7c70;
+      color: #56675b;
       font: 7pt 'Nunito Variable', system-ui, sans-serif;
     }
 
     @bottom-right {
       content: 'Page ' counter(page) ' of ' counter(pages);
-      color: #6b7c70;
+      color: #56675b;
       font: 7pt 'Nunito Variable', system-ui, sans-serif;
     }
   }

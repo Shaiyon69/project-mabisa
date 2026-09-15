@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { AccountsTable } from '../../components/admin/AccountsTable';
 import { AdminDashboard } from '../../components/admin/AdminDashboard';
 import { useAdminRole } from '../../components/admin/adminRole';
@@ -9,8 +9,22 @@ import { IndividualsTable } from '../../components/admin/IndividualsTable';
 import { BhwStockTable } from '../../components/admin/BhwStockTable';
 import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ErrorState } from '../../components/common/StateMessage';
+import { EmptyState, ErrorState } from '../../components/common/StateMessage';
 import { useAdminData, useAdminScope } from '../../hooks/useAdminData';
+import { emptyAdminSnapshot, type AdminSnapshot } from '../../services/adminData';
+
+/** Before the first read lands, an empty snapshot would render as "nothing recorded". */
+function FirstRead({ snapshot, loading, children }: { snapshot: AdminSnapshot; loading: boolean; children: ReactNode }) {
+  if (loading && snapshot === emptyAdminSnapshot) {
+    return (
+      <Card className="admin-monitor" aria-busy>
+        <EmptyState title="Reading the central database" text="Large areas take a few seconds." />
+      </Card>
+    );
+  }
+
+  return children;
+}
 
 // The two biggest screens in the portal, and the two the officer opening the
 // dashboard has not asked for. Each has exactly one consumer below, so splitting
@@ -42,7 +56,9 @@ export function AdminDashboardPage() {
         description={role === 'admin' ? 'Every barangay in the RHU, at a glance.' : 'Your barangay, at a glance.'}
         actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
-      <AdminDashboard snapshot={snapshot} filters={filters} loading={loading} error={error} onScope={setFilters} />
+      <FirstRead snapshot={snapshot} loading={loading}>
+        <AdminDashboard snapshot={snapshot} filters={filters} loading={loading} error={error} onScope={setFilters} />
+      </FirstRead>
     </>
   );
 }
@@ -92,7 +108,7 @@ export function InventoryPage() {
     <>
       <PageHeader
         icon="package"
-        title="Supplies"
+        title="Inventory"
         description="What the barangay still holds, and what the health workers are carrying."
         actions={
           <AdminFilterBar
@@ -178,7 +194,7 @@ export function AnalyticsPage() {
     <>
       <PageHeader
         icon="chart"
-        title="Charts"
+        title="Analytics"
         description="Trends over time, barangay by barangay, how supplies are being used, and what the health checks found."
         actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={snapshot} role={role} />}
       />
@@ -187,9 +203,11 @@ export function AnalyticsPage() {
           <ErrorState title="Could not load the records" text={error} />
         </Card>
       ) : null}
-      <Suspense fallback={null}>
-        <AnalyticsPanels snapshot={snapshot} filters={filters} loading={loading} />
-      </Suspense>
+      <FirstRead snapshot={snapshot} loading={loading}>
+        <Suspense fallback={null}>
+          <AnalyticsPanels snapshot={snapshot} filters={filters} loading={loading} />
+        </Suspense>
+      </FirstRead>
     </>
   );
 }
@@ -236,9 +254,11 @@ export function ReportsPage() {
       />
       <Card className="activity-panel" aria-busy={loading}>
         {error ? <ErrorState title="Could not load the records" text={error} /> : null}
-        <Suspense fallback={null}>
-          <ReportCards snapshot={snapshot} filters={filters} onFiltersChange={setFilters} loading={loading} role={role} />
-        </Suspense>
+        <FirstRead snapshot={snapshot} loading={loading}>
+          <Suspense fallback={null}>
+            <ReportCards snapshot={snapshot} filters={filters} onFiltersChange={setFilters} loading={loading} role={role} />
+          </Suspense>
+        </FirstRead>
       </Card>
     </>
   );
