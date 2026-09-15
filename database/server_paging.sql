@@ -117,3 +117,36 @@ $$;
 
 revoke execute on function public.resident_health_page(date, date, uuid, uuid, text, integer, integer) from public, anon;
 grant execute on function public.resident_health_page(date, date, uuid, uuid, text, integer, integer) to authenticated;
+
+-- Every resident with their household's number and scope, so the registry can search and filter on one row.
+-- Applied to the live project as migration `resident_rows`.
+create or replace view public.resident_rows with (security_invoker = true) as
+select
+  person.resident_id,
+  person.household_id,
+  person.first_name,
+  person.middle_name,
+  person.last_name,
+  person.sex,
+  person.birthday,
+  person.is_household_head,
+  person.relationship_to_head,
+  person.occupation,
+  person.educational_attainment,
+  person.is_out_of_school_youth,
+  person.is_pregnant_nursing_fp,
+  person.philhealth_number,
+  person.status,
+  person.status_changed_on,
+  person.created_at,
+  person.updated_at,
+  household.household_number,
+  household.barangay_id,
+  household.purok_id,
+  barangay.name as barangay_name
+from public.individuals as person
+join public.households as household on household.household_id = person.household_id
+left join public.barangays as barangay on barangay.barangay_id = household.barangay_id;
+
+revoke all on public.resident_rows from public, anon, authenticated;
+grant select on public.resident_rows to authenticated;
