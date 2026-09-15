@@ -1,13 +1,25 @@
 import { useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ADULT_BMI_MIN_AGE, ageInYears, formatCount, formatDate, isoLocalDay, titleCase } from '../../lib/utils';
-import { NUTRITION_COLORS } from '../../lib/charts';
+import {
+  ADULT_BMI_MIN_AGE,
+  ageInYears,
+  formatCount,
+  formatDate,
+  HEALTH_COMPLICATION_OPTIONS,
+  isoLocalDay,
+  PRIMARY_ILLNESS_OPTIONS,
+  titleCase,
+  VACCINATION_STATUS_OPTIONS,
+} from '../../lib/utils';
+import { NUTRITION_COLORS, VACCINATION_COLORS } from '../../lib/charts';
 import {
   AGE_BANDS,
   ageBandOf,
   assessmentsBelowAdultBmiAge,
   latestPerResident,
   describeScope,
+  monthlyTrend,
+  monthlyVitals,
   disbursementsByItem,
   lowStockItems,
   nutritionTally,
@@ -292,9 +304,10 @@ function PrintSummary({ snapshot, filters, period }: PrintProps) {
   const sections = REPORT_SECTIONS.filter((section) => showsSection(filters, section.id));
   const numberOf = (id: (typeof REPORT_SECTIONS)[number]['id']) =>
     String(sections.findIndex((section) => section.id === id) + 1).padStart(2, '0');
+  const latest = latestPerResident(snapshot.assessments);
   const figures = [
     { id: 'demographics', label: 'Residents profiled', value: snapshot.residentCount },
-    { id: 'nutrition', label: 'Residents checked', value: latestPerResident(snapshot.assessments).length },
+    { id: 'nutrition', label: 'Residents checked', value: latest.length },
     { id: 'stock', label: 'Items low on stock', value: lowStockItems(snapshot.inventoryItems).length },
     { id: 'supply', label: 'Units released', value: snapshot.disbursements.reduce((sum, row) => sum + row.quantity, 0) },
   ] as const;
@@ -317,17 +330,94 @@ function PrintSummary({ snapshot, filters, period }: PrintProps) {
       ) : null}
 
       {showsSection(filters, 'nutrition') ? (
-        <PrintSection number={numberOf('nutrition')} title="Nutrition status" context={`Health checks from ${period}.`}>
-          <ShareTable
-            caption="Residents by latest nutrition status"
-            heading="Status"
-            rows={nutritionTally(snapshot.assessments)}
-            colorFor={(row) => NUTRITION_COLORS[row.label]}
-          />
-          <p className="pr-note">{nutritionNote(snapshot)}</p>
+        <PrintSection number={numberOf('nutrition')} title="Health status" context={`Each resident's latest health check from ${period}.`}>
+          <div className="pr-split">
+            <ShareTable
+              caption="Nutrition status"
+              heading="Status"
+              rows={nutritionTally(snapshot.assessments)}
+              colorFor={(row) => NUTRITION_COLORS[row.label]}
+            />
+            <ShareTable
+              caption="Vaccination status"
+              heading="Status"
+              rows={tally(latest, (row) => row.vaccination_status ?? null, VACCINATION_STATUS_OPTIONS)}
+              colorFor={(row) => VACCINATION_COLORS[row.label]}
+            />
+            <ShareTable caption="Primary illness" heading="Illness" rows={illnessTally(latest)} />
+            <ShareTable
+              caption="Health complications"
+              heading="Complication"
+              rows={[
+                ...tally(
+                  latest.flatMap((row) => row.health_complications ?? []),
+                  (complication) => complication,
+                  HEALTH_COMPLICATION_OPTIONS,
+                ),
+                { label: 'none', count: latest.filter((row) => !row.health_complications?.length).length },
+              ]}
+            />
+          </div>
+          <p className="pr-note">{nutritionNote(snapshot)} A resident can have more than one complication.</p>
+          <PrintTrend snapshot={snapshot} filters={filters} />
         </PrintSection>
       ) : null}
     </>
+  );
+}
+
+/** Every illness option, with each "other" broken out by the name the health worker typed. */
+function illnessTally(latest: ReturnType<typeof latestPerResident>): Tally[] {
+  const fixed = tally(latest, (row) => row.primary_illness ?? null, PRIMARY_ILLNESS_OPTIONS).filter((row) => row.label !== 'other');
+  const others = tally(
+    latest.filter((row) => row.primary_illness === 'other'),
+    (row) => `Other: ${row.illness_other?.trim() || 'unspecified'}`,
+  );
+
+  return [...fixed, ...others];
+}
+
+/** The period month by month: checks, underweight readings and average vitals. */
+function PrintTrend({ snapshot, filters }: Pick<ReportCardsProps, 'snapshot' | 'filters'>) {
+  const vitals = new Map(monthlyVitals(snapshot.assessments, filters).map((point) => [point.month, point]));
+  const blank = (value: number | null | undefined) => value ?? '—';
+
+  return (
+    <table className="pr-table">
+      <caption>By month</caption>
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th className="num">Checks</th>
+          <th className="num">Underweight</th>
+          <th className="num">Underweight rate</th>
+          <th className="num">Checks with vitals</th>
+          <th className="num">Avg BP</th>
+          <th className="num">Avg temp (°C)</th>
+          <th className="num">Avg pulse</th>
+        </tr>
+      </thead>
+      <tbody>
+        {monthlyTrend(snapshot.assessments, filters).map((point) => {
+          const month = vitals.get(point.month);
+
+          return (
+            <tr key={point.month}>
+              <td>{point.label}</td>
+              <td className="num">{formatCount(point.assessments)}</td>
+              <td className="num">{formatCount(point.underweight)}</td>
+              <td className="num">{point.rate === null ? '—' : `${Math.round(point.rate * 100)}%`}</td>
+              <td className="num">{formatCount(month?.readings ?? 0)}</td>
+              <td className="num">
+                {month?.systolic_bp != null ? `${month.systolic_bp}/${blank(month.diastolic_bp)}` : '—'}
+              </td>
+              <td className="num">{blank(month?.temperature_c)}</td>
+              <td className="num">{blank(month?.pulse_rate)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
