@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { NUTRITION_COLORS, SERIES_COLORS } from '../../lib/charts';
 import {
   ageInYears,
@@ -43,13 +44,40 @@ import { FormField } from '../common/FormField';
 import { ROWS_PER_PAGE, Table, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
+const ANALYTICS_VIEWS = [
+  { id: 'residents', label: 'Residents' },
+  { id: 'health', label: 'Health' },
+  { id: 'supplies', label: 'Supplies' },
+] as const;
+
+type AnalyticsView = (typeof ANALYTICS_VIEWS)[number]['id'];
+
 /**
  * The analyses the period summaries cannot answer: how the numbers are moving,
  * how the barangays compare, how much of the register has been reached, where
  * the supplies went, and what the health checks found. All are computed from the
  * one snapshot the page already read.
  */
-export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot; filters: AdminFilters }) {
+export function AnalyticsPanels({
+  snapshot,
+  filters,
+  loading,
+}: {
+  snapshot: AdminSnapshot;
+  filters: AdminFilters;
+  loading: boolean;
+}) {
+  const [params, setParams] = useSearchParams();
+  const view = ANALYTICS_VIEWS.find((option) => option.id === params.get('view'))?.id ?? 'residents';
+  const setView = (next: AnalyticsView) =>
+    setParams(
+      (current) => {
+        const updated = new URLSearchParams(current);
+        updated.set('view', next);
+        return updated;
+      },
+      { replace: true },
+    );
   // Read off `unscoped` and the session's own barangay, so picking one barangay
   // narrows the panels below but never deletes the others from a comparison.
   // An RHU account compares every barangay; a barangay administrator has one.
@@ -74,58 +102,77 @@ export function AnalyticsPanels({ snapshot, filters }: { snapshot: AdminSnapshot
   };
 
   return (
-    // The half-width panels are adjacent so they share a row, and there are two
-    // rather than three: an odd one leaves the last row half empty. The trend took
-    // the full width instead, its line chart being the worst squeezed by half.
-    <div className="activity-grid report-grid">
-      {/* Demographics and stock lead because they are the two panels drawn from
-          rows that exist the moment a barangay is profiled. Everything below
-          them counts assessments and releases, which only appear once field
-          devices start syncing — a screen that opens on four empty states reads
-          as broken rather than as new. */}
-      <DemographicsPanel snapshot={snapshot} filters={filters} scope={scope} />
-      <StockPanel snapshot={snapshot} filters={filters} scope={scope} />
-      <CoveragePanel stats={stats} filters={filters} scope={everyBarangay} />
-      <TrendPanel snapshot={snapshot} filters={filters} scope={scope} />
-      {/* Nothing to compare against on a barangay administrator's account: it reads
-          one barangay, so the panel would rank it against itself. */}
-      {snapshot.sessionBarangayId ? null : (
-        <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={everyBarangay} />
-      )}
-      <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
-      <DistributionPanel
-        title="Nutrition status"
-        rows={nutritionTally(snapshot.assessments)}
-        colorFor={(row) => NUTRITION_COLORS[row.label]}
-        filters={filters}
-        scope={scope}
-      />
-      <DistributionPanel
-        title="Vaccination status"
-        rows={vaccination}
-        colorFor={(row) => vaccinationColors[row.label]}
-        filters={filters}
-        scope={scope}
-      />
-      <DistributionPanel
-        title="Primary illness"
-        rows={tally(latest, (row) => row.primary_illness ?? null, PRIMARY_ILLNESS_OPTIONS)
-          .filter((row) => row.label !== 'none')}
-        filters={filters}
-        scope={scope}
-      />
-      <DistributionPanel
-        title="Health complications"
-        rows={tally(
-          latest.flatMap((row) => row.health_complications ?? []),
-          (complication) => complication,
-          HEALTH_COMPLICATION_OPTIONS,
-        )}
-        filters={filters}
-        scope={scope}
-      />
-      <VitalsPanel snapshot={snapshot} filters={filters} scope={scope} />
-    </div>
+    <>
+      <div className="period-presets" role="tablist" aria-label="Analytics">
+        {ANALYTICS_VIEWS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="tab"
+            className={`period-chip${view === option.id ? ' is-active' : ''}`}
+            aria-selected={view === option.id}
+            onClick={() => setView(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div className="activity-grid report-grid" role="tabpanel" aria-busy={loading}>
+        {view === 'residents' ? (
+          <>
+            <DemographicsPanel snapshot={snapshot} filters={filters} scope={scope} />
+            <CoveragePanel stats={stats} filters={filters} scope={everyBarangay} />
+            {/* A barangay administrator reads one barangay, so the panel would rank it against itself. */}
+            {snapshot.sessionBarangayId ? null : (
+              <ComparisonPanel snapshot={snapshot} stats={stats} filters={filters} scope={everyBarangay} />
+            )}
+          </>
+        ) : null}
+        {view === 'health' ? (
+          <>
+            <TrendPanel snapshot={snapshot} filters={filters} scope={scope} />
+            <DistributionPanel
+              title="Nutrition status"
+              rows={nutritionTally(snapshot.assessments)}
+              colorFor={(row) => NUTRITION_COLORS[row.label]}
+              filters={filters}
+              scope={scope}
+            />
+            <DistributionPanel
+              title="Vaccination status"
+              rows={vaccination}
+              colorFor={(row) => vaccinationColors[row.label]}
+              filters={filters}
+              scope={scope}
+            />
+            <DistributionPanel
+              title="Primary illness"
+              rows={tally(latest, (row) => row.primary_illness ?? null, PRIMARY_ILLNESS_OPTIONS)
+                .filter((row) => row.label !== 'none')}
+              filters={filters}
+              scope={scope}
+            />
+            <DistributionPanel
+              title="Health complications"
+              rows={tally(
+                latest.flatMap((row) => row.health_complications ?? []),
+                (complication) => complication,
+                HEALTH_COMPLICATION_OPTIONS,
+              )}
+              filters={filters}
+              scope={scope}
+            />
+            <VitalsPanel snapshot={snapshot} filters={filters} scope={scope} />
+          </>
+        ) : null}
+        {view === 'supplies' ? (
+          <>
+            <StockPanel snapshot={snapshot} filters={filters} scope={scope} />
+            <UtilizationPanel snapshot={snapshot} filters={filters} scope={scope} />
+          </>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -471,7 +518,7 @@ function StockPanel({ snapshot, filters, scope }: { snapshot: AdminSnapshot } & 
   };
 
   return (
-    <Card className="activity-card report-card" as="article">
+    <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead title="Stock position" />
       <SummaryContext filters={filters} extra={scope} />
       {snapshot.inventoryItems.length ? (
@@ -605,7 +652,7 @@ function CoveragePanel({ stats, filters, scope }: { stats: BarangayStats[] } & P
   const shown = ranked.slice((current - 1) * COVERAGE_RINGS, current * COVERAGE_RINGS);
 
   return (
-    <Card className="activity-card report-card" as="article">
+    <Card className="activity-card report-card report-card-wide" as="article">
       <PanelHead title="Assessment coverage" />
       <SummaryContext filters={filters} extra={scope} />
       {/* A ring per barangay, emptiest first, so the gaps are the first rings read
