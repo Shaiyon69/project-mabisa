@@ -6,7 +6,10 @@ import { AppRoutes, SurfaceNotice } from './app/AppRoutes';
 import { LoginPage } from './pages/auth/LoginPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { authLinkError, supabase } from './lib/supabase';
-import { describeAuthError } from './lib/authErrors';
+import { describeAuthError, isCredentialError } from './lib/authErrors';
+import { lockExpiry, readThrottle, recordFailure, recordSuccess, writeThrottle, type ThrottleState } from './lib/loginThrottle';
+import { turnstileSiteKey } from './lib/captcha';
+import { TERMS_VERSION } from './components/common/TermsNotice';
 import type { Handover } from './services/deviceHandover';
 import { clearPin } from './lib/devicePin';
 import { buildsBhw } from './app/surface';
@@ -79,6 +82,12 @@ export function App() {
   // Whether this account may use this phone's local records, and which account the
   // answer is about. An id rather than a flag, like `checkedUserId` above.
   const [handover, setHandover] = useState<{ userId: string; result: Handover } | null>(null);
+  // Wrong-password counts per address on this device. See loginThrottle.
+  const [throttle, setThrottle] = useState(readThrottle);
+  // Supabase spends a captcha token on each request, so after every sign-in or
+  // reset attempt the widget is reset and the next request waits for a new one.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
 
   const bhwId = useMemo(() => session?.user.id ?? null, [session]);
   const role = cachedRole?.userId === bhwId ? cachedRole.role : null;
@@ -206,24 +215,61 @@ export function App() {
     };
   }, [bhwId]);
 
+  function updateThrottle(next: ThrottleState) {
+    writeThrottle(next);
+    setThrottle(next);
+  }
+
+  /** Called after any request that sent the captcha token, since each is good once. */
+  function spendCaptchaToken() {
+    if (turnstileSiteKey) {
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
+    }
+  }
+
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const email = loginState.email;
+
+    // The button is disabled while locked; this covers Enter pressed in a field.
+    if (lockExpiry(throttle, email) > Date.now()) {
+      return;
+    }
+
     setAuthMessage(null);
     setAuthLoading(true);
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: loginState.email,
+      email,
       password: loginState.password,
+      options: { captchaToken: captchaToken ?? undefined },
     });
 
     setAuthLoading(false);
+    spendCaptchaToken();
 
     if (error) {
       // Raw text goes to the log; the screen gets a sentence naming what to try next.
       logDev('Supabase login failed', error.message);
       setAuthMessage(describeAuthError(error.message));
+
+      if (isCredentialError(error.message)) {
+        updateThrottle(recordFailure(throttle, email, Date.now()));
+      }
+
       return;
     }
+
+    updateThrottle(recordSuccess(throttle, email));
+
+    // Only a ticked agreement lets the form submit, so reaching here means this
+    // person agreed. A failed write does not undo the sign-in: until
+    // database/terms_acceptances.sql is applied, the table is not there to write.
+    void supabase
+      .from('terms_acceptances')
+      .insert({ terms_version: TERMS_VERSION })
+      .then(({ error: termsError }) => termsError && logDev('Terms acceptance not recorded', termsError.message));
 
     setLoginState({
       email: '',
@@ -247,9 +293,11 @@ export function App() {
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin,
+      captchaToken: captchaToken ?? undefined,
     });
 
     setAuthLoading(false);
+    spendCaptchaToken();
 
     if (error) {
       logDev('Password reset request failed', error.message);
@@ -322,6 +370,10 @@ export function App() {
         authMessage={authMessage}
         authLoading={authLoading}
         pendingRecordCount={pendingRecordCount}
+        lockedUntil={lockExpiry(throttle, loginState.email)}
+        captchaReady={!turnstileSiteKey || captchaToken !== null}
+        captchaResetKey={captchaResetKey}
+        onCaptchaToken={setCaptchaToken}
         onEmailChange={(email) =>
           setLoginState((current) => ({
             ...current,

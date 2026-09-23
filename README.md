@@ -175,6 +175,36 @@ For the same reason the first release-signed APK will not install over a debug b
 debug keys are generated per machine. Any device already carrying a debug install has to
 sync its records, uninstall, then install the release APK fresh.
 
+## Sign-in Protection and Privacy Terms
+
+Every sign-in asks the person to tick a box, just above the Sign in button, agreeing to the
+Terms and Conditions and Privacy Notice under the Data Privacy Act of 2012 (RA 10173). The
+blue "Terms and Conditions" link in that line opens the full text, which is bundled in
+`src/components/common/TermsNotice.tsx` so a BHW can read it with no connection. Each
+agreement is recorded in `terms_acceptances` with the wording's `TERMS_VERSION`. Bump that
+version whenever the text changes what a user agrees to.
+
+Three limits on sign-in attempts:
+
+1. **Captcha.** A Cloudflare Turnstile widget appears on the sign-in screen when the build has
+   `VITE_TURNSTILE_SITE_KEY`, and its token goes to Supabase with the sign-in and reset
+   requests. To turn it on:
+   - Create a Turnstile widget. Its hostnames must list the portal's domain and `localhost`,
+     because the APK's WebView serves from `https://localhost`.
+   - Set `VITE_TURNSTILE_SITE_KEY` everywhere the app is built: `.env`, Vercel, and the
+     repository secrets for the release workflow.
+   - Ship a portal and an APK built with the key.
+   - Only then, in Supabase, go to Authentication → Attack Protection, enable captcha, choose
+     Turnstile and paste the secret key. From that moment a build without the key cannot
+     sign in.
+2. **Server rate limit.** Supabase Auth limits sign-in attempts per IP address
+   (Authentication → Rate Limits). This is the limit a script cannot skip.
+3. **Device lock.** After five wrong passwords for one email address, the sign-in screen
+   locks that address for 30 seconds. Each further wrong password doubles the lock, up to
+   15 minutes. A successful sign-in, or a day with no failures, resets the count. This lock
+   is only for the person at the screen and is easy to get around. The first two limits are
+   the ones that stop an attacker.
+
 ## Roles and Access
 
 Every account has a role in `public.profiles`, and the role decides both which surface
@@ -216,6 +246,7 @@ database/health_assessment_extensions.sql  vitals on health checks
 database/immunizations.sql                 the vaccination log
 database/server_paging.sql                 views and RPC behind the portal's paged tables
 database/drop_legacy_users.sql             removal of the pre-profiles role model
+database/terms_acceptances.sql             who agreed to which privacy terms (not yet applied)
 database/seed_demo_data.sql                rerunnable demo data for every barangay
 ```
 

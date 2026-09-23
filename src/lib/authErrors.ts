@@ -1,3 +1,10 @@
+/** A wrong email or password, the only failure the sign-in throttle counts. */
+export function isCredentialError(rawMessage: string): boolean {
+  const message = rawMessage.toLowerCase();
+
+  return message.includes('invalid login credentials') || message.includes('invalid email or password');
+}
+
 /**
  * Turns a Supabase auth error into a sentence naming what to try next. The raw
  * text still reaches `logDev`.
@@ -7,8 +14,13 @@ export function describeAuthError(rawMessage: string): string {
 
   // Ordered by how often a BHW hits it, and matched on fragments, since GoTrue's
   // exact wording changes across versions.
-  if (message.includes('invalid login credentials') || message.includes('invalid email or password')) {
+  if (isCredentialError(rawMessage)) {
     return 'That email or password did not match. Check for a capital letter at the start, or a space at the end.';
+  }
+
+  // A missing, expired or already-spent Turnstile token.
+  if (message.includes('captcha')) {
+    return 'The security check did not go through. Wait for it to finish below, then try again.';
   }
 
   // What an offline sign-in looks like from the browser and from the WebView.

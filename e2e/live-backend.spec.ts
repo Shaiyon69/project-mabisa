@@ -31,7 +31,7 @@ async function signIn(page: Page) {
   await page.goto('/');
   await page.getByLabel('Email').fill(email!);
   await page.getByPlaceholder('Enter password').fill(password!);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByRole('button', { name: /log in/i }).click();
   await expect(page).toHaveURL(/\/admin/, { timeout: 30_000 });
 }
 

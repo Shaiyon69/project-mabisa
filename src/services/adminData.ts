@@ -337,6 +337,46 @@ export function fetchAdminPeople(): Promise<AdminPerson[]> {
   );
 }
 
+//ADDITION FOR SKILLTEST
+// Fetch every new entry with created_at/updated_at that's newer to the latest created_at/updated_at of last fetched data.
+export async function fetchRecentRecords(since: string) {
+  const [households, individuals, assessments, disbursements, people, items] = await Promise.all([
+    readAllPages<{ household_number: string; updated_at: string }>('households', 'household_id', () =>
+      supabase.from('households').select('household_id, household_number, updated_at').gt('updated_at', since),
+    ),
+    readAllPages<{ first_name: string; last_name: string; updated_at: string }>('individuals', 'resident_id', () =>
+      supabase.from('individuals').select('resident_id, first_name, last_name, updated_at').gt('updated_at', since),
+    ),
+    readAllPages<{ resident_id: string; nutrition_status: string; updated_at: string }>('health_assessments', 'assessment_id', () =>
+      supabase.from('health_assessments').select('assessment_id, resident_id, nutrition_status, updated_at').gt('updated_at', since),
+    ),
+    readAllPages<{ resident_id: string; item_id: string; quantity: number; updated_at: string }>('supply_disbursements', 'log_id', () =>
+      supabase.from('supply_disbursements').select('log_id, resident_id, item_id, quantity, updated_at').gt('updated_at', since),
+    ),
+    // Already have full fetchers for these — just reuse them to get names instead of re-querying.
+    fetchAdminPeople(),
+    fetchInventoryItems(),
+  ]);
+
+  const personName = (id: string) => {
+    const person = people.find((row) => row.resident_id === id);
+    return person ? `${person.first_name} ${person.last_name}` : 'Unknown resident';
+  };
+
+  return [
+    ...households.map((row) => ({ updatedAt: row.updated_at, label: `Household: ${row.household_number}` })),
+    ...individuals.map((row) => ({ updatedAt: row.updated_at, label: `Resident: ${row.first_name} ${row.last_name}` })),
+    ...assessments.map((row) => ({
+      updatedAt: row.updated_at,
+      label: `Health check — ${personName(row.resident_id)} (${row.nutrition_status})`,
+    })),
+    ...disbursements.map((row) => ({
+      updatedAt: row.updated_at,
+      label: `${row.quantity}x ${items.find((item) => item.item_id === row.item_id)?.item_name ?? 'item'} to ${personName(row.resident_id)}`,
+    })),
+  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 /** How long a read stands before the next caller goes back to the network. The same interval `useAdminData` re-reads on. */
 const SNAPSHOT_TTL_MS = 5 * 60_000;
 

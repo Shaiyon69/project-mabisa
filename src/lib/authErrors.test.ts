@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeAuthError } from './authErrors';
+import { describeAuthError, isCredentialError } from './authErrors';
 
 describe('describeAuthError', () => {
   it('says which part to re-check on a wrong password', () => {
@@ -32,6 +32,16 @@ describe('describeAuthError', () => {
     expect(describeAuthError('Password should be at least 6 characters.')).toContain('too short');
     expect(describeAuthError('New password should be different from the old password.')).toContain('already has');
     expect(describeAuthError('Auth session missing!')).toContain('run out');
+  });
+
+  it('points at the security check on a captcha failure', () => {
+    expect(describeAuthError('captcha verification process failed')).toContain('security check');
+  });
+
+  it('counts only a wrong email or password as a credential failure', () => {
+    expect(isCredentialError('Invalid login credentials')).toBe(true);
+    expect(isCredentialError('captcha verification process failed')).toBe(false);
+    expect(isCredentialError('Failed to fetch')).toBe(false);
   });
 
   it('matches whatever casing the client hands over', () => {
