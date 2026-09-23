@@ -24,6 +24,9 @@ COPY . .
 
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_PUBLISHABLE_KEY
+# Optional: the Cloudflare Turnstile site key (public, like the key above). Without
+# it the portal shows no captcha, which fails every sign-in once Supabase enforces one.
+ARG VITE_TURNSTILE_SITE_KEY
 
 # Fail here rather than serving a portal that cannot reach the database.
 RUN test -n "$VITE_SUPABASE_URL" \

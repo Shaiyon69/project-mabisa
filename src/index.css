@@ -54,6 +54,8 @@
   --primary: #2e7d32;
   --primary-strong: #1b5e20;
   --primary-foreground: #ffffff;
+  /* Text links. Blue, not --primary, so a link does not read as one more green button. 6.4:1 on white. */
+  --link: #1a5fb4;
   --secondary: #e8a33d;
   --secondary-strong: #d98f26;
   --secondary-ink: #a9532b;
@@ -124,6 +126,7 @@
   --primary: #7fc685;
   --primary-strong: #a5d9a8;
   --primary-foreground: #0e2411;
+  --link: #8cb8ff;
   --secondary: #e8a33d;
   --secondary-strong: #f0b75c;
   --secondary-ink: #f0b56b;
@@ -171,6 +174,7 @@
     --primary: #2e7d32;
     --primary-strong: #1b5e20;
     --primary-foreground: #ffffff;
+    --link: #1a5fb4;
     --secondary: #e8a33d;
     --secondary-strong: #d98f26;
     --secondary-ink: #a9532b;

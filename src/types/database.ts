@@ -346,6 +346,16 @@ export type SupplyDisbursementInsert = Omit<SupplyDisbursement, 'log_id' | 'disb
 };
 export type SupplyDisbursementUpdate = Partial<Omit<SupplyDisbursement, 'log_id'>>;
 
+/** One sign-in that agreed to the Terms of Use and Privacy Notice. */
+export type TermsAcceptance = {
+  acceptance_id: string;
+  user_id: string;
+  terms_version: string;
+  accepted_at: string;
+};
+
+export type TermsAcceptanceInsert = Pick<TermsAcceptance, 'terms_version'>;
+
 type RowDefinition<Row, Insert, Update, Relationships extends unknown[] = never[]> = {
   Row: Row;
   Insert: Insert;
@@ -416,6 +426,8 @@ export type Database = {
       supply_disbursements: RowDefinition<SupplyDisbursement, SupplyDisbursementInsert, SupplyDisbursementUpdate>;
       // Written only by barangay_admin_allocate_stock — never for both write shapes.
       inventory_allocations: RowDefinition<InventoryAllocation, never, never>;
+      // Append-only: the account and the time are stamped by a trigger.
+      terms_acceptances: RowDefinition<TermsAcceptance, TermsAcceptanceInsert, never>;
     };
     Views: {
       bhw_item_stock: RowDefinition<BhwItemStock, never, never>;

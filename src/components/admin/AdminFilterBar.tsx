@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatDate, titleCase } from '../../lib/utils';
 import { Button } from '../common/Button';
 import { FormField, SelectField } from '../common/FormField';
@@ -11,6 +11,7 @@ import {
   REPORT_SECTIONS,
   activePreset,
   describeScope,
+  fetchRecentRecords,
   presetRange,
   type AdminFilters,
   type AdminSnapshot,
@@ -103,12 +104,45 @@ export function AdminFilterBar({
     FILTER_PARAMS.filter(([key]) => key !== 'barangayId' && key !== 'purokId' && filters[key]).length +
     (filters.reportSections?.length ? 1 : 0);
 
+//MY ADDITIONS FOR SKILLTEST
+  const [newRecords, setNewRecords] = useState<{ updatedAt: string; label: string }[]>([]);
+  const [seenAt, setSeenAt] = useState(localStorage.getItem('mabisa.seen_at') ?? new Date(0).toISOString());
+  const [bellOpen, setBellOpen] = useState(false);
+
+  useEffect(() => {
+    fetchRecentRecords(seenAt).then(setNewRecords);
+  }, [seenAt]);
+
   return (
     <div className="admin-filter-bar">
-      {/* Closed, the trigger is still the caption: it names the active range,
-          the barangay whenever the view is not all of them, and how many
-          further filters are on. The full resolved dates go on the label, so
-          the button stays one line without hiding them from a screen reader. */}
+      <button type="button" onClick={() => setBellOpen(true)}>
+        <Icon name="bell" size={16} /> {newRecords.length || null}
+      </button>
+
+      <Modal
+        open={bellOpen}
+        title="New records"
+
+        onClose={() => {
+          const now = new Date().toISOString();
+          localStorage.setItem('mabisa.seen_at', now);
+          setSeenAt(now);
+          setBellOpen(false);
+        }}
+      >
+        {newRecords.length ? (
+          <ul>
+            {newRecords.map((record, i) => (
+              <li key={i}>
+                {record.label} - {new Date(record.updatedAt).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No items right now</p>
+        )}
+      </Modal>
+
       <Button
         className="scope-trigger"
         variant="secondary"
