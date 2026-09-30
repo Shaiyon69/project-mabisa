@@ -1,31 +1,43 @@
-# Tagging is the whole release process. Everything a phone in the field needs — a
-# signed APK on a GitHub release — comes from `git push --tags`, because a step that
-# has to be remembered is a step that gets skipped.
+# A push to main that changes the mobile app is the whole release process. Everything a
+# phone in the field needs — a signed APK on a GitHub release — comes from that push,
+# because a step that has to be remembered is a step that gets skipped.
 name: Release APK
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    # Admin-only screens never reach the APK, so editing them ships nothing to phones.
+    paths:
+      - 'src/**'
+      - '!src/pages/admin/**'
+      - '!src/components/admin/**'
+      - 'android/**'
+      - 'public/**'
+      - 'capacitor.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'index.html'
+      - 'vite.config.ts'
+  workflow_dispatch:
+
+# Two quick pushes must not race to publish; the later run carries the higher number.
+concurrency: release-apk
 
 jobs:
   apk:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # The run number only grows, so every release is newer than the last. versionName is
+    # what an installed app compares against the release tag, and the tag is built from
+    # it, so the two cannot disagree. versionCode starts above the 2 of earlier builds.
+    env:
+      VERSION_NAME: 1.1.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
-      # The tag is what an installed app compares itself against; versionName is what it
-      # reports. If they disagree, every device sees an update banner that reinstalling
-      # never clears.
-      - name: Tag must match versionName
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          name=$(sed -n 's/.*versionName "\(.*\)".*/\1/p' android/app/build.gradle)
-          if [ "$tag" != "$name" ]; then
-            echo "tag $tag does not match versionName $name in android/app/build.gradle"
-            exit 1
-          fi
+      # Expressions have no arithmetic, so the offset is added in the shell.
+      - run: echo "VERSION_CODE=$(( ${{ github.run_number }} + 10 ))" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -41,9 +53,8 @@ jobs:
 
       - run: npm ci
 
-      # ci.yml runs on branches and pull requests, which a tag push is neither — so
-      # without these three the only build that reaches a phone is the one build
-      # nothing checked. Placeholders, same as ci.yml: nothing here reaches the network.
+      # Gate the release on the same checks ci.yml runs, rather than trusting that job
+      # finished first. Placeholders, same as ci.yml: nothing here reaches the network.
       - run: npx tsc -b --pretty false
       - run: npm run lint
       - run: npm test
@@ -71,8 +82,20 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
-      # The update check reads this release's .apk asset. Nothing else about the release
-      # matters to a device.
+      # Devices read two things from the release: its .apk asset and, in the body, an
+      # optional `min-version:` line. Builds below it stop syncing and must update.
+      # Empty file, no line: every build keeps syncing.
+      - name: Release notes
+        run: |
+          min=$(tr -d '[:space:]' < android/min-app-version.txt)
+          {
+            git log -1 --pretty=%s
+            if [ -n "$min" ]; then printf '\nmin-version: %s\n' "$min"; fi
+          } > "$RUNNER_TEMP/notes.md"
+
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION_NAME }}
+          body_path: ${{ runner.temp }}/notes.md
+          target_commitish: ${{ github.sha }}
           files: android/app/build/outputs/apk/release/app-release.apk

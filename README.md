@@ -68,6 +68,7 @@ APK. `vercel.json` at the repo root pins the build to the admin surface:
 {
   "buildCommand": "npm run build:admin",
   "outputDirectory": "dist-admin",
+  "cleanUrls": true,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
 ```
@@ -83,27 +84,6 @@ and `VITE_SUPABASE_PUBLISHABLE_KEY`. `.env` is gitignored, so the build has noth
 without them, and the Supabase client is constructed at module scope — a missing value is
 a blank page rather than a warning. Both are publishable client values and Row Level
 Security is the real boundary; the service role key never goes here.
-
-## Admin Portal Deployment
-
-The LGU portal can also be served as a static bundle by nginx. Fill in `.env` from
-`.env.example`, then:
-
-```bash
-docker compose up -d --build
-```
-
-The portal is on `http://localhost:8080`; override with `ADMIN_PORT` in `.env`.
-
-Vite substitutes `import.meta.env.VITE_*` at build time, so the Supabase URL and the
-publishable key are build arguments rather than runtime environment. Changing either
-requires `--build` again — a restart alone keeps serving the values that were baked in.
-Only the publishable (anon) key belongs here; it is exposed in the bundle by design and is
-safe only because row level security is enabled on every table. The service role key must
-never be passed.
-
-The BHW client is deliberately not containerised. It ships as an APK wrapping
-`dist/`, and nothing in the field workflow may depend on a server.
 
 ## Android Build
 
@@ -142,15 +122,47 @@ hands the APK to the system browser, which downloads it and lets Android's insta
 over. Nothing downloads without a tap, and a check that fails for any reason — no
 connection, no release yet, a rate-limited barangay IP — shows nothing at all.
 
-Cutting a release:
+Every push to `main` that touches the mobile app is a release. `.github/workflows/release.yml`
+runs on pushes that change `src/`, `android/`, `public/` or the build config — admin-only
+screens under `src/pages/admin/` and `src/components/admin/` excluded — and:
 
-1. Bump `versionCode` and `versionName` in `android/app/build.gradle`. `versionCode` is
-   what Android compares to decide an install is an upgrade; `versionName` is what the
-   update check reads.
-2. Commit, then `git tag vX.Y.Z && git push --tags`, where `X.Y.Z` is exactly the new
-   `versionName`. `.github/workflows/release.yml` fails the build if the two disagree.
-3. The workflow builds the mobile bundle, syncs it into Android, builds a signed APK and
-   attaches it to a GitHub release. Phones prompt on their next launch.
+1. runs the type-check, lint and tests;
+2. builds the mobile bundle with the real Supabase values and syncs it into Android;
+3. builds a signed APK with `versionName` `1.1.<run number>` and `versionCode`
+   `10 + <run number>`, both passed to Gradle as `VERSION_NAME` / `VERSION_CODE`;
+4. publishes it as GitHub release `v1.1.<run number>`. Phones prompt on their next launch.
+
+A release can also be started by hand from the Actions tab (`workflow_dispatch`). The
+values in `android/app/build.gradle` are only the defaults for a local build.
+
+### First install
+
+BHWs install from `/download` on the admin portal's Vercel domain. The page links to
+`https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk`,
+which always resolves to the newest release, so the page never needs editing. After that
+first install the update bar handles every later version.
+
+### Compatibility
+
+Phones update when a BHW taps Install, not when a release lands, so several app versions
+are always syncing against the same database at once. The rules that keep them all working:
+
+- **Server changes are additive.** New columns are nullable or have a default, so an older
+  build's upsert, which does not name them, still succeeds. Older builds also ignore new
+  columns when they pull, because the local write names its own columns
+  (`buildUpsert` in `src/services/localDatabase.ts`).
+- **Never drop or rename a column, view or RPC argument an app version in the field still
+  uses.** Add the new one, ship the build that uses it, then remove the old one after
+  every device has moved past that version.
+- **The local database only moves forward.** Add columns with `columnUpgrades`, drop them
+  with `columnRemovals`; both run on every launch, so a phone that skipped several
+  versions catches up in one go. Updating over the installed app keeps its database and
+  sync queue.
+- **When a break is unavoidable,** put the first compatible version in
+  `android/min-app-version.txt` (for example `1.1.20`) and push. The release body then
+  carries `min-version: 1.1.20`. Older builds keep working offline, but they stop syncing
+  and show an update bar with no "Later" button. Their queue waits, untouched, and sends
+  after the update. Leave the file empty the rest of the time.
 
 ### Signing
 
@@ -216,7 +228,6 @@ database/health_assessment_extensions.sql  vitals on health checks
 database/immunizations.sql                 the vaccination log
 database/server_paging.sql                 views and RPC behind the portal's paged tables
 database/drop_legacy_users.sql             removal of the pre-profiles role model
-database/seed_demo_data.sql                rerunnable demo data for every barangay
 ```
 
 `barangay_roles.sql` is the file to read before touching a policy.
@@ -225,10 +236,6 @@ The field tables are `households`, `individuals`, `health_assessments`, `immuniz
 `inventory_items` and `supply_disbursements`; the access model adds `profiles`,
 `barangays`, `puroks`, `bhw_purok_assignments`, `inventory_allocations` and
 `audit_events`. Row Level Security is enabled and policied on all of them.
-
-`seed_demo_data.sql` wipes and regenerates households, residents, checks, immunizations
-and supplies, keeping barangays, puroks, accounts and assignments. It must never run
-against a database holding real records.
 
 Row shapes are declared in `src/types/database.ts` and the Supabase client is typed against it, so a column that drifts from this file is a build error rather than a runtime failure. The file carries columns and nullability only — check constraints are not represented, so introspect the live schema before writing SQL against any table.
 
