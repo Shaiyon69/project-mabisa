@@ -280,18 +280,31 @@ export async function serveScaleBackend(page: Page, data: Record<string, Row[]>,
 
   await page.route('**/rest/v1/**', async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/rest\/v1\//, '');
+    let path = url.pathname.replace(/^.*\/rest\/v1\//, '');
+    // The fuzzy search functions return a view's rows, then filter and page like it.
+    // A contains-match stands in for the trigram score.
+    let searched: ((row: Row) => boolean) | null = null;
 
     if (path.startsWith('rpc/')) {
       const name = path.slice(4);
       const args = route.request().postDataJSON() ?? {};
+      const term = String(args.search_text ?? '').toLowerCase();
 
       if (name === 'current_barangay_id') return reply(route, signedIn.barangayId);
       if (name === 'resident_health_page') return reply(route, residentHealthPage(data, households, args));
-      return reply(route, null);
+
+      if (name === 'search_resident_rows') {
+        path = 'resident_rows';
+        searched = (row) => [row.first_name, row.last_name, row.household_number].join(' ').toLowerCase().includes(term);
+      } else if (name === 'search_inventory_item_rows') {
+        path = 'inventory_item_rows';
+        searched = (row) => [row.item_name, row.type, row.barangay_name].join(' ').toLowerCase().includes(term);
+      } else {
+        return reply(route, null);
+      }
     }
 
-    let rows = data[path] ?? [];
+    let rows = searched ? (data[path] ?? []).filter(searched) : (data[path] ?? []);
 
     if (path === 'profiles' && url.searchParams.get('user_id') === `eq.${signedIn.userId}`) {
       rows = [{ user_id: signedIn.userId, role: signedIn.role, is_active: true, full_name: 'Test Account', barangay_id: signedIn.barangayId }];

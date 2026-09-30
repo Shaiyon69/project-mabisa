@@ -457,6 +457,15 @@ export type Database = {
         };
         Returns: ResidentHealthPageRow[];
       };
+      // Typo-tolerant search, best match first. Filters, count and range chain on as for the views.
+      search_resident_rows: {
+        Args: { search_text: string };
+        Returns: ResidentRow[];
+      };
+      search_inventory_item_rows: {
+        Args: { search_text: string };
+        Returns: InventoryItemRow[];
+      };
       // Account administration, RHU only. Both assert an active admin and write
       // the audit event in the same transaction, which is why the tables withhold
       // their grants.

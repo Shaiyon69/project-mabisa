@@ -646,7 +646,14 @@ export async function fetchInventoryPage(
   sort: ColumnSort = null,
 ): Promise<Page<InventoryItemRow>> {
   const search = sanitizeSearch(query);
-  let request = supabase.from('inventory_item_rows').select('*', { count: 'exact' });
+  // A search reads the fuzzy function, which returns the view's rows best match
+  // first; the filters below chain onto either. Cast since the client types the
+  // two builders apart though PostgREST treats them alike.
+  let request = search
+    ? (supabase
+        .rpc('search_inventory_item_rows', { search_text: search }, { count: 'exact' })
+        .select('*') as unknown as ReturnType<typeof inventoryRows>)
+    : inventoryRows();
 
   if (filters.barangayId) {
     request = request.eq('barangay_id', filters.barangayId);
@@ -660,21 +667,20 @@ export async function fetchInventoryPage(
     request = request.eq('is_low', filters.stockLevel === 'low');
   }
 
-  if (search) {
-    request = request.or(`item_name.ilike.%${search}%,type.ilike.%${search}%,barangay_name.ilike.%${search}%`);
-  }
-
   if (sort) {
     request = request.order(...orderOf(sort));
   }
 
-  return pageOf(
-    await request
-      .order('is_low', { ascending: false })
-      .order('item_name')
-      .order('item_id')
-      .range(offset, offset + limit - 1),
-  );
+  // An unsorted search keeps the function's relevance order, which already ends on the primary key.
+  if (sort || !search) {
+    request = request.order('is_low', { ascending: false }).order('item_name').order('item_id');
+  }
+
+  return pageOf(await request.range(offset, offset + limit - 1));
+}
+
+function inventoryRows() {
+  return supabase.from('inventory_item_rows').select('*', { count: 'exact' });
 }
 
 /** Quantity released per item over the period, largest first. */
@@ -828,6 +834,16 @@ export async function fetchResidentPage(
     ? supabase.from('resident_rows').select('*, health_assessments!inner(assessment_id)', { count: 'exact' })
     : supabase.from('resident_rows').select('*', { count: 'exact' });
 
+  // A search reads the fuzzy function instead, which returns `resident_rows` best
+  // match first; filters and the embed chain on the same. Cast as for inventory.
+  if (search) {
+    const matches = supabase.rpc('search_resident_rows', { search_text: search }, { count: 'exact' });
+
+    request = (
+      statusFilter ? matches.select('*, health_assessments!inner(assessment_id)') : matches.select('*')
+    ) as unknown as typeof request;
+  }
+
   if (filters.barangayId) {
     request = request.eq('barangay_id', filters.barangayId);
   }
@@ -863,19 +879,18 @@ export async function fetchResidentPage(
       .lte('health_assessments.assessment_date', statusFilter.to);
   }
 
-  if (search) {
-    request = request.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,household_number.ilike.%${search}%`);
-  }
-
   if (sort) {
     request = request.order(...orderOf(sort));
   }
 
-  // Secondary sort is the primary key: shared last names have no stable order across LIMIT/OFFSET pages.
-  const { data, count, error } = await request
-    .order('last_name')
-    .order('resident_id')
-    .range(offset, offset + limit - 1);
+  // Secondary sort is the primary key: shared last names have no stable order across
+  // LIMIT/OFFSET pages. An unsorted search keeps the function's relevance order,
+  // which already ends on the primary key.
+  if (sort || !search) {
+    request = request.order('last_name').order('resident_id');
+  }
+
+  const { data, count, error } = await request.range(offset, offset + limit - 1);
 
   if (error) {
     throw new Error(error.message);

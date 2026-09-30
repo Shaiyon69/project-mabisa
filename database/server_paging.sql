@@ -134,19 +134,21 @@ as $$
         when 'temperature' then (checked.latest ->> 'temperature_c')::numeric
         when 'pulse' then (checked.latest ->> 'pulse_rate')::numeric
         when 'checks' then checked.checks::numeric
-      end as by_number
+      end as by_number,
+      -- Typo-tolerant, from fuzzy_search.sql. Ranks the page when nothing else sorts it.
+      case when coalesce(search_text, '') <> '' then
+        public.search_score(concat_ws(' ', person.first_name, person.last_name, household.household_number), search_text)
+      end as by_match
   ) as sort_key
   where (scope_barangay_id is null or household.barangay_id = scope_barangay_id)
     and (scope_purok_id is null or household.purok_id = scope_purok_id)
-    and (
-      coalesce(search_text, '') = ''
-      or strpos(lower(concat_ws(' ', person.first_name, person.last_name, household.household_number)), lower(search_text)) > 0
-    )
+    and (sort_key.by_match is null or sort_key.by_match >= 0.6)
   order by
     case when sort_ascending then sort_key.by_text end asc nulls last,
     case when not sort_ascending then sort_key.by_text end desc nulls last,
     case when sort_ascending then sort_key.by_number end asc nulls last,
     case when not sort_ascending then sort_key.by_number end desc nulls last,
+    sort_key.by_match desc nulls last,
     person.last_name, person.first_name, person.resident_id
   limit greatest(page_limit, 1)
   offset greatest(page_offset, 0)
