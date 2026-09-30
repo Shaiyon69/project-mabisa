@@ -259,8 +259,8 @@ database/immunizations.sql                 the vaccination log
 database/server_paging.sql                 views and RPC behind the portal's paged tables
 database/drop_legacy_users.sql             removal of the pre-profiles role model
 database/terms_acceptances.sql             who agreed to which privacy terms (not yet applied)
-database/rls_initplan.sql                  RLS helpers checked once per query (not yet applied)
-database/fuzzy_search.sql                  typo-tolerant admin search (not yet applied)
+database/rls_initplan.sql                  RLS helpers checked once per query
+database/fuzzy_search.sql                  typo-tolerant admin search
 ```
 
 `barangay_roles.sql` is the file to read before touching a policy.
