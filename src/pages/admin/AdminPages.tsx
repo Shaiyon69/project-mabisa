@@ -9,18 +9,15 @@ import { IndividualsTable } from '../../components/admin/IndividualsTable';
 import { BhwStockTable } from '../../components/admin/BhwStockTable';
 import { Card } from '../../components/common/Card';
 import { PageHeader } from '../../components/common/PageHeader';
-import { EmptyState, ErrorState } from '../../components/common/StateMessage';
+import { ErrorState } from '../../components/common/StateMessage';
+import { PageSkeleton } from '../../components/common/Skeleton';
 import { useAdminData, useAdminScope } from '../../hooks/useAdminData';
 import { emptyAdminSnapshot, type AdminSnapshot } from '../../services/adminData';
 
 /** Before the first read lands, an empty snapshot would render as "nothing recorded". */
 function FirstRead({ snapshot, loading, children }: { snapshot: AdminSnapshot; loading: boolean; children: ReactNode }) {
   if (loading && snapshot === emptyAdminSnapshot) {
-    return (
-      <Card className="admin-monitor" aria-busy>
-        <EmptyState title="Reading the central database" text="Large areas take a few seconds." />
-      </Card>
-    );
+    return <PageSkeleton />;
   }
 
   return children;
@@ -204,7 +201,7 @@ export function AnalyticsPage() {
         </Card>
       ) : null}
       <FirstRead snapshot={snapshot} loading={loading}>
-        <Suspense fallback={null}>
+        <Suspense fallback={<PageSkeleton />}>
           <AnalyticsPanels snapshot={snapshot} filters={filters} loading={loading} />
         </Suspense>
       </FirstRead>
@@ -230,7 +227,7 @@ export function HealthPage() {
         </Card>
       ) : null}
       <div aria-busy={loading}>
-        <Suspense fallback={null}>
+        <Suspense fallback={<PageSkeleton />}>
           <HealthPanels scope={scope} filters={filters} />
         </Suspense>
       </div>
@@ -255,7 +252,7 @@ export function ReportsPage() {
       <Card className="activity-panel" aria-busy={loading}>
         {error ? <ErrorState title="Could not load the records" text={error} /> : null}
         <FirstRead snapshot={snapshot} loading={loading}>
-          <Suspense fallback={null}>
+          <Suspense fallback={<PageSkeleton />}>
             <ReportCards snapshot={snapshot} filters={filters} onFiltersChange={setFilters} loading={loading} role={role} />
           </Suspense>
         </FirstRead>

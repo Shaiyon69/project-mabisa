@@ -3,6 +3,7 @@ import { formatCount } from '../../lib/utils';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { SkeletonLine } from './Skeleton';
 import { EmptyState } from './StateMessage';
 
 /** Rows per page, everywhere. The search box above a table narrows the list; the pager reaches the rest. */
@@ -73,6 +74,42 @@ export function Table<Row>({
 
   // No rows means no table: the header strip and its 640px scrollbar over an
   // empty state read as a table that failed to load.
+  // A first read still out: the table's own shape in grey, not a "loading" notice.
+  if (!rows.length && busy) {
+    return (
+      <div className="ui-table-wrap" role="status" aria-label="Loading">
+        <table>
+          <thead>
+            <tr>
+              {numbered ? <th data-numeric="">No.</th> : null}
+              {columns.map((column) => (
+                <th key={column.key} data-numeric={column.numeric ? '' : undefined}>
+                  {column.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: pageSize ?? limit ?? ROWS_PER_PAGE }, (_, row) => (
+              <tr key={row}>
+                {numbered ? (
+                  <td>
+                    <SkeletonLine width="60%" />
+                  </td>
+                ) : null}
+                {columns.map((column) => (
+                  <td key={column.key}>
+                    <SkeletonLine width={column.numeric ? '50%' : '80%'} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   if (!rows.length) {
     return (
       <div aria-busy={busy}>
