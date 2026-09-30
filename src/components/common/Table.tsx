@@ -35,9 +35,12 @@ type TableProps<Row> = {
   startIndex?: number;
   /** Still reading: dims the rows in hand and raises the loading bar. */
   busy?: boolean;
-  /** Given, a column with `sortBy` gets a clickable header. The caller re-reads in that order. */
+  /**
+   * Given, a column with `sortBy` gets a clickable header. Clicks cycle ascending,
+   * descending, then off (null, the list's own order). The caller re-reads in that order.
+   */
   sort?: TableSort | null;
-  onSort?: (sort: TableSort) => void;
+  onSort?: (sort: TableSort | null) => void;
 };
 
 function cell<Row>(column: TableColumn<Row>, row: Row): ReactNode {
@@ -139,7 +142,15 @@ export function Table<Row>({
                         type="button"
                         className="th-sort"
                         data-descending={active && !active.ascending ? '' : undefined}
-                        onClick={() => onSort({ column: column.sortBy!, ascending: active ? !active.ascending : true })}
+                        onClick={() =>
+                          onSort(
+                            !active
+                              ? { column: column.sortBy!, ascending: true }
+                              : active.ascending
+                                ? { column: column.sortBy!, ascending: false }
+                                : null,
+                          )
+                        }
                       >
                         {/* Task Manager's cue: only the sorted column shows a chevron, above its label. */}
                         <span className="th-sort-arrow" aria-hidden="true">
