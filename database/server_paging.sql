@@ -50,7 +50,12 @@ left join public.puroks as purok on purok.purok_id = assignment.purok_id;
 revoke all on public.account_rows from public, anon, authenticated;
 grant select on public.account_rows to authenticated;
 
--- One page of residents checked in the period: each one's latest check, by last name.
+-- One page of residents checked in the period: each one's latest check, by last name
+-- unless `sort_column` names a clicked header. The name is only ever compared in a
+-- CASE, never spliced into SQL, so an unknown one falls back to the default order.
+-- Applied to the live project as migration `resident_health_page_sort`.
+drop function if exists public.resident_health_page(date, date, uuid, uuid, text, integer, integer);
+
 create or replace function public.resident_health_page(
   period_from date,
   period_to date,
@@ -58,7 +63,9 @@ create or replace function public.resident_health_page(
   scope_purok_id uuid default null,
   search_text text default null,
   page_limit integer default 10,
-  page_offset integer default 0
+  page_offset integer default 0,
+  sort_column text default null,
+  sort_ascending boolean default true
 )
 returns table (
   resident_id uuid,
@@ -104,19 +111,49 @@ as $$
   join public.individuals as person on person.resident_id = checked.resident_id
   join public.households as household on household.household_id = person.household_id
   left join public.barangays as barangay on barangay.barangay_id = household.barangay_id
+  -- One text key and one number key, since a CASE takes a single type.
+  cross join lateral (
+    select
+      case sort_column
+        when 'name' then lower(concat_ws(' ', person.last_name, person.first_name))
+        when 'sex' then person.sex
+        when 'barangay' then coalesce(barangay.name, 'Unassigned')
+        when 'date' then checked.latest ->> 'assessment_date'
+        when 'nutrition' then checked.latest ->> 'nutrition_status'
+        when 'illness' then case checked.latest ->> 'primary_illness'
+          when 'other' then coalesce(nullif(checked.latest ->> 'illness_other', ''), 'other')
+          else checked.latest ->> 'primary_illness'
+        end
+        when 'vaccination' then checked.latest ->> 'vaccination_status'
+      end as by_text,
+      case sort_column
+        -- Days old, so ascending reads youngest first like the Age column.
+        when 'age' then (current_date - person.birthday)::numeric
+        when 'bmi' then (checked.latest ->> 'bmi')::numeric
+        when 'bp' then (checked.latest ->> 'systolic_bp')::numeric
+        when 'temperature' then (checked.latest ->> 'temperature_c')::numeric
+        when 'pulse' then (checked.latest ->> 'pulse_rate')::numeric
+        when 'checks' then checked.checks::numeric
+      end as by_number
+  ) as sort_key
   where (scope_barangay_id is null or household.barangay_id = scope_barangay_id)
     and (scope_purok_id is null or household.purok_id = scope_purok_id)
     and (
       coalesce(search_text, '') = ''
       or strpos(lower(concat_ws(' ', person.first_name, person.last_name, household.household_number)), lower(search_text)) > 0
     )
-  order by person.last_name, person.first_name, person.resident_id
+  order by
+    case when sort_ascending then sort_key.by_text end asc nulls last,
+    case when not sort_ascending then sort_key.by_text end desc nulls last,
+    case when sort_ascending then sort_key.by_number end asc nulls last,
+    case when not sort_ascending then sort_key.by_number end desc nulls last,
+    person.last_name, person.first_name, person.resident_id
   limit greatest(page_limit, 1)
   offset greatest(page_offset, 0)
 $$;
 
-revoke execute on function public.resident_health_page(date, date, uuid, uuid, text, integer, integer) from public, anon;
-grant execute on function public.resident_health_page(date, date, uuid, uuid, text, integer, integer) to authenticated;
+revoke execute on function public.resident_health_page(date, date, uuid, uuid, text, integer, integer, text, boolean) from public, anon;
+grant execute on function public.resident_health_page(date, date, uuid, uuid, text, integer, integer, text, boolean) to authenticated;
 
 -- Every resident with their household's number and scope, so the registry can search and filter on one row.
 -- Applied to the live project as migration `resident_rows`.

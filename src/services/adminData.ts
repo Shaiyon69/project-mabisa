@@ -624,8 +624,27 @@ export function lowStockItems(items: InventoryItem[]): InventoryItem[] {
   });
 }
 
+/**
+ * A clicked column header on a server-paged table. Ordered ahead of the list's
+ * own order, which then breaks ties. A leading `-` flips the column, so Age can
+ * sort on `birthday` and still read youngest first when ascending.
+ */
+type ColumnSort = { column: string; ascending: boolean } | null;
+
+function orderOf(sort: NonNullable<ColumnSort>): [string, { ascending: boolean }] {
+  const flipped = sort.column.startsWith('-');
+
+  return [flipped ? sort.column.slice(1) : sort.column, { ascending: flipped ? !sort.ascending : sort.ascending }];
+}
+
 /** One page of barangay stock, low stock first. `is_low` is the view's copy of the `lowStockItems` rule. */
-export async function fetchInventoryPage(query: string, filters: AdminFilters, limit: number, offset: number): Promise<Page<InventoryItemRow>> {
+export async function fetchInventoryPage(
+  query: string,
+  filters: AdminFilters,
+  limit: number,
+  offset: number,
+  sort: ColumnSort = null,
+): Promise<Page<InventoryItemRow>> {
   const search = sanitizeSearch(query);
   let request = supabase.from('inventory_item_rows').select('*', { count: 'exact' });
 
@@ -643,6 +662,10 @@ export async function fetchInventoryPage(query: string, filters: AdminFilters, l
 
   if (search) {
     request = request.or(`item_name.ilike.%${search}%,type.ilike.%${search}%,barangay_name.ilike.%${search}%`);
+  }
+
+  if (sort) {
+    request = request.order(...orderOf(sort));
   }
 
   return pageOf(
@@ -707,7 +730,13 @@ export function canAssignPurok(viewer: UserRole | null, account: UserRole): bool
  *
  * In purok order, unassigned last: they are the rows to act on.
  */
-export async function fetchAccountPage(viewer: UserRole | null, filters: AdminFilters, limit: number, offset: number): Promise<Page<AccountRow>> {
+export async function fetchAccountPage(
+  viewer: UserRole | null,
+  filters: AdminFilters,
+  limit: number,
+  offset: number,
+  sort: ColumnSort = null,
+): Promise<Page<AccountRow>> {
   const managed: UserRole | null = viewer === 'admin' ? 'barangay_admin' : viewer === 'barangay_admin' ? 'bhw' : null;
 
   if (!managed) {
@@ -730,6 +759,10 @@ export async function fetchAccountPage(viewer: UserRole | null, filters: AdminFi
 
   if (filters.purokId) {
     request = request.eq('purok_id', filters.purokId);
+  }
+
+  if (sort) {
+    request = request.order(...orderOf(sort));
   }
 
   const page = pageOf(
@@ -785,6 +818,7 @@ export async function fetchResidentPage(
   offset: number,
   filters: AdminFilters,
   statusFilter?: ResidentStatusFilter,
+  sort: ColumnSort = null,
 ): Promise<Page<Individual>> {
   const search = sanitizeSearch(query);
   // The band is an `!inner` embed: it nests matches under one parent row, so a
@@ -831,6 +865,10 @@ export async function fetchResidentPage(
 
   if (search) {
     request = request.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,household_number.ilike.%${search}%`);
+  }
+
+  if (sort) {
+    request = request.order(...orderOf(sort));
   }
 
   // Secondary sort is the primary key: shared last names have no stable order across LIMIT/OFFSET pages.
@@ -1355,6 +1393,7 @@ export async function fetchResidentHealthPage(
   filters: AdminFilters,
   limit: number,
   offset: number,
+  sort: ColumnSort = null,
 ): Promise<Page<ResidentHealthRow>> {
   const { data, error } = await supabase.rpc('resident_health_page', {
     period_from: filters.from,
@@ -1364,6 +1403,9 @@ export async function fetchResidentHealthPage(
     search_text: query.trim() || null,
     page_limit: limit,
     page_offset: offset,
+    // A header key the function knows, not a column name: it orders by CASE.
+    // Left off unsorted, so the call still matches a database without the sort arguments.
+    ...(sort ? { sort_column: sort.column, sort_ascending: sort.ascending } : {}),
   });
 
   if (error) {
@@ -1462,11 +1504,19 @@ export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
 }
 
 /** One page of what each BHW is still carrying, per item, from the `bhw_item_stock` view, with the BHW's name. */
-export async function fetchBhwStockPage(limit: number, offset: number): Promise<Page<BhwItemStock & { bhw_name: string | null }>> {
+export async function fetchBhwStockPage(
+  limit: number,
+  offset: number,
+  sort: ColumnSort = null,
+): Promise<Page<BhwItemStock & { bhw_name: string | null }>> {
+  let request = supabase.from('bhw_item_stock').select('*', { count: 'exact' });
+
+  if (sort) {
+    request = request.order(...orderOf(sort));
+  }
+
   const page = pageOf(
-    await supabase
-      .from('bhw_item_stock')
-      .select('*', { count: 'exact' })
+    await request
       .order('item_name')
       .order('bhw_id')
       .order('item_id')

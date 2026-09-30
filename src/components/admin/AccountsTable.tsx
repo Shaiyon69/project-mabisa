@@ -19,7 +19,7 @@ import { Button } from '../common/Button';
 import { FormField, SelectField, TextAreaField } from '../common/FormField';
 import { Modal } from '../common/Modal';
 import { ErrorState, WarningState } from '../common/StateMessage';
-import { Table, TableBadge, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
+import { Table, TableBadge, TableMeta, TablePager, TableToolbar, type TableColumn, type TableSort } from '../common/Table';
 
 /**
  * What each role is called on screen. `admin` is the RHU account that reads every
@@ -82,10 +82,11 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
   const { puroks, barangays, sessionBarangayId, unadministered } = lookups;
 
   const filtered = Boolean(filters.accountRole || filters.accountActive || filters.barangayId || filters.purokId);
-  const scopeKey = [role, filters.accountRole, filters.accountActive, filters.barangayId, filters.purokId].join('|');
+  const [sort, setSort] = useState<TableSort | null>(null);
+  const scopeKey = ['accounts', role, filters.accountRole, filters.accountActive, filters.barangayId, filters.purokId, sort?.column, sort?.ascending].join('|');
   const { rows, total, error: pageError, loading, page, pageCount, setPage, offset } = useServerPage(
     scopeKey,
-    (limit, start) => fetchAccountPage(role, filters, limit, start),
+    (limit, start) => fetchAccountPage(role, filters, limit, start, sort),
     { reloadToken },
   );
   const error = pageError ?? lookups.error;
@@ -125,11 +126,13 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     {
       key: 'name',
       header: 'Name',
+      sortBy: 'full_name',
       render: (account) => account.profile.full_name,
     },
     {
       key: 'role',
       header: 'Role',
+      sortBy: 'role',
       render: (account) => ROLE_LABELS[account.profile.role],
     },
     // A barangay administrator holds no purok, so the RHU's tab has no column for
@@ -141,11 +144,13 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
           {
             key: 'assigned-purok',
             header: 'Assigned Purok',
+            sortBy: 'purok_name',
             render: (account: AccountRow) => account.purokName ?? 'None — cannot receive records',
           },
           {
             key: 'assigned-since',
             header: 'Assigned Since',
+            sortBy: 'assigned_since',
             render: (account: AccountRow) => (account.assignedSince ? formatDate(account.assignedSince) : '—'),
           },
         ]
@@ -153,6 +158,7 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
     {
       key: 'status',
       header: 'Status',
+      sortBy: 'is_active',
       render: (account) => (
         <TableBadge
           label={account.profile.is_active ? 'Active' : 'Deactivated'}
@@ -215,6 +221,8 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
         numbered
         startIndex={offset}
         busy={loading}
+        sort={sort}
+        onSort={setSort}
         emptyTitle={loading ? 'Loading the accounts' : 'No accounts found'}
         emptyText={
           loading
