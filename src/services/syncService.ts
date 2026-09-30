@@ -1,6 +1,7 @@
 import { Network } from '@capacitor/network';
 import type { BhwItemStock, HealthAssessment, Household, Immunization, Individual, InventoryItem, SupplyDisbursement } from '../types/database';
 import { logDev } from '../lib/utils';
+import { appTooOldToSync } from './appUpdate';
 import { readAllPages, supabase } from '../lib/supabase';
 import {
   initializeLocalDatabase,
@@ -224,6 +225,16 @@ export async function syncPendingQueue(): Promise<SyncResult> {
       return {
         ...idleResult('unauthenticated'),
         errorMessage: 'Not signed in. Records stay saved on this device until you sign in again.',
+      };
+    }
+
+    // The server no longer accepts this build's writes. Pushing anyway would burn
+    // every entry's retries into the dead letter; holding the queue loses nothing,
+    // since the update installs over this app and keeps its database.
+    if (appTooOldToSync()) {
+      return {
+        ...idleResult('failed'),
+        errorMessage: 'This app version is too old to sync. Install the update — your records stay saved.',
       };
     }
 

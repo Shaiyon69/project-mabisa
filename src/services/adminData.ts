@@ -664,10 +664,36 @@ export function lowStockItems(items: InventoryItem[]): InventoryItem[] {
   });
 }
 
+/**
+ * A clicked column header on a server-paged table. Ordered ahead of the list's
+ * own order, which then breaks ties. A leading `-` flips the column, so Age can
+ * sort on `birthday` and still read youngest first when ascending.
+ */
+type ColumnSort = { column: string; ascending: boolean } | null;
+
+function orderOf(sort: NonNullable<ColumnSort>): [string, { ascending: boolean }] {
+  const flipped = sort.column.startsWith('-');
+
+  return [flipped ? sort.column.slice(1) : sort.column, { ascending: flipped ? !sort.ascending : sort.ascending }];
+}
+
 /** One page of barangay stock, low stock first. `is_low` is the view's copy of the `lowStockItems` rule. */
-export async function fetchInventoryPage(query: string, filters: AdminFilters, limit: number, offset: number): Promise<Page<InventoryItemRow>> {
+export async function fetchInventoryPage(
+  query: string,
+  filters: AdminFilters,
+  limit: number,
+  offset: number,
+  sort: ColumnSort = null,
+): Promise<Page<InventoryItemRow>> {
   const search = sanitizeSearch(query);
-  let request = supabase.from('inventory_item_rows').select('*', { count: 'exact' });
+  // A search reads the fuzzy function, which returns the view's rows best match
+  // first; the filters below chain onto either. Cast since the client types the
+  // two builders apart though PostgREST treats them alike.
+  let request = search
+    ? (supabase
+        .rpc('search_inventory_item_rows', { search_text: search }, { count: 'exact' })
+        .select('*') as unknown as ReturnType<typeof inventoryRows>)
+    : inventoryRows();
 
   if (filters.barangayId) {
     request = request.eq('barangay_id', filters.barangayId);
@@ -681,17 +707,20 @@ export async function fetchInventoryPage(query: string, filters: AdminFilters, l
     request = request.eq('is_low', filters.stockLevel === 'low');
   }
 
-  if (search) {
-    request = request.or(`item_name.ilike.%${search}%,type.ilike.%${search}%,barangay_name.ilike.%${search}%`);
+  if (sort) {
+    request = request.order(...orderOf(sort));
   }
 
-  return pageOf(
-    await request
-      .order('is_low', { ascending: false })
-      .order('item_name')
-      .order('item_id')
-      .range(offset, offset + limit - 1),
-  );
+  // An unsorted search keeps the function's relevance order, which already ends on the primary key.
+  if (sort || !search) {
+    request = request.order('is_low', { ascending: false }).order('item_name').order('item_id');
+  }
+
+  return pageOf(await request.range(offset, offset + limit - 1));
+}
+
+function inventoryRows() {
+  return supabase.from('inventory_item_rows').select('*', { count: 'exact' });
 }
 
 /** Quantity released per item over the period, largest first. */
@@ -747,7 +776,13 @@ export function canAssignPurok(viewer: UserRole | null, account: UserRole): bool
  *
  * In purok order, unassigned last: they are the rows to act on.
  */
-export async function fetchAccountPage(viewer: UserRole | null, filters: AdminFilters, limit: number, offset: number): Promise<Page<AccountRow>> {
+export async function fetchAccountPage(
+  viewer: UserRole | null,
+  filters: AdminFilters,
+  limit: number,
+  offset: number,
+  sort: ColumnSort = null,
+): Promise<Page<AccountRow>> {
   const managed: UserRole | null = viewer === 'admin' ? 'barangay_admin' : viewer === 'barangay_admin' ? 'bhw' : null;
 
   if (!managed) {
@@ -770,6 +805,10 @@ export async function fetchAccountPage(viewer: UserRole | null, filters: AdminFi
 
   if (filters.purokId) {
     request = request.eq('purok_id', filters.purokId);
+  }
+
+  if (sort) {
+    request = request.order(...orderOf(sort));
   }
 
   const page = pageOf(
@@ -825,6 +864,7 @@ export async function fetchResidentPage(
   offset: number,
   filters: AdminFilters,
   statusFilter?: ResidentStatusFilter,
+  sort: ColumnSort = null,
 ): Promise<Page<Individual>> {
   const search = sanitizeSearch(query);
   // The band is an `!inner` embed: it nests matches under one parent row, so a
@@ -833,6 +873,16 @@ export async function fetchResidentPage(
   let request = statusFilter
     ? supabase.from('resident_rows').select('*, health_assessments!inner(assessment_id)', { count: 'exact' })
     : supabase.from('resident_rows').select('*', { count: 'exact' });
+
+  // A search reads the fuzzy function instead, which returns `resident_rows` best
+  // match first; filters and the embed chain on the same. Cast as for inventory.
+  if (search) {
+    const matches = supabase.rpc('search_resident_rows', { search_text: search }, { count: 'exact' });
+
+    request = (
+      statusFilter ? matches.select('*, health_assessments!inner(assessment_id)') : matches.select('*')
+    ) as unknown as typeof request;
+  }
 
   if (filters.barangayId) {
     request = request.eq('barangay_id', filters.barangayId);
@@ -869,15 +919,18 @@ export async function fetchResidentPage(
       .lte('health_assessments.assessment_date', statusFilter.to);
   }
 
-  if (search) {
-    request = request.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,household_number.ilike.%${search}%`);
+  if (sort) {
+    request = request.order(...orderOf(sort));
   }
 
-  // Secondary sort is the primary key: shared last names have no stable order across LIMIT/OFFSET pages.
-  const { data, count, error } = await request
-    .order('last_name')
-    .order('resident_id')
-    .range(offset, offset + limit - 1);
+  // Secondary sort is the primary key: shared last names have no stable order across
+  // LIMIT/OFFSET pages. An unsorted search keeps the function's relevance order,
+  // which already ends on the primary key.
+  if (sort || !search) {
+    request = request.order('last_name').order('resident_id');
+  }
+
+  const { data, count, error } = await request.range(offset, offset + limit - 1);
 
   if (error) {
     throw new Error(error.message);
@@ -1395,6 +1448,7 @@ export async function fetchResidentHealthPage(
   filters: AdminFilters,
   limit: number,
   offset: number,
+  sort: ColumnSort = null,
 ): Promise<Page<ResidentHealthRow>> {
   const { data, error } = await supabase.rpc('resident_health_page', {
     period_from: filters.from,
@@ -1404,6 +1458,9 @@ export async function fetchResidentHealthPage(
     search_text: query.trim() || null,
     page_limit: limit,
     page_offset: offset,
+    // A header key the function knows, not a column name: it orders by CASE.
+    // Left off unsorted, so the call still matches a database without the sort arguments.
+    ...(sort ? { sort_column: sort.column, sort_ascending: sort.ascending } : {}),
   });
 
   if (error) {
@@ -1502,11 +1559,19 @@ export function supplyUtilization(snapshot: AdminSnapshot): ItemUtilization[] {
 }
 
 /** One page of what each BHW is still carrying, per item, from the `bhw_item_stock` view, with the BHW's name. */
-export async function fetchBhwStockPage(limit: number, offset: number): Promise<Page<BhwItemStock & { bhw_name: string | null }>> {
+export async function fetchBhwStockPage(
+  limit: number,
+  offset: number,
+  sort: ColumnSort = null,
+): Promise<Page<BhwItemStock & { bhw_name: string | null }>> {
+  let request = supabase.from('bhw_item_stock').select('*', { count: 'exact' });
+
+  if (sort) {
+    request = request.order(...orderOf(sort));
+  }
+
   const page = pageOf(
-    await supabase
-      .from('bhw_item_stock')
-      .select('*', { count: 'exact' })
+    await request
       .order('item_name')
       .order('bhw_id')
       .order('item_id')

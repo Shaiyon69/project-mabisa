@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { ROWS_PER_PAGE } from '../components/common/Table';
+import { supabase } from '../lib/supabase';
 import type { Page } from '../services/adminData';
+
+type Settled<Row> = Page<Row> & { offset: number; error: string | null; settledFor: string };
+
+/**
+ * The last page each list read, by scope and page number. Coming back to a
+ * sidebar tab shows it at once while the same page re-reads behind it, instead
+ * of an empty table for a round trip.
+ */
+const lastPages = new Map<string, Settled<unknown>>();
+
+// RLS narrowed these rows to whoever was signed in.
+supabase.auth.onAuthStateChange(() => lastPages.clear());
 
 type ServerPageOptions = {
   /** Re-reads the page in view without leaving it, e.g. after a write. */
@@ -11,7 +24,8 @@ type ServerPageOptions = {
 
 /**
  * One list paged by the server. `scopeKey` must name every input `fetchPage`
- * reads: a new one goes back to page 1, and it is what triggers a read.
+ * reads, and the list itself: a new one goes back to page 1, it is what
+ * triggers a read, and it keys the cache above.
  */
 export function useServerPage<Row>(
   scopeKey: string,
@@ -21,13 +35,18 @@ export function useServerPage<Row>(
   const [page, setPage] = useState(1);
   const [pagedScope, setPagedScope] = useState(scopeKey);
   // `offset` belongs to the rows in hand, so numbering never runs ahead of the data.
-  const [result, setResult] = useState<Page<Row> & { offset: number; error: string | null; settledFor: string }>({
-    rows: [],
-    total: 0,
-    offset: 0,
-    error: null,
-    settledFor: '',
-  });
+  const [result, setResult] = useState<Settled<Row>>(
+    () =>
+      (lastPages.get(`${scopeKey}|1`) as Settled<Row> | undefined) ?? {
+        rows: [],
+        total: 0,
+        offset: 0,
+        error: null,
+        settledFor: '',
+      },
+  );
+  // The debounce is for typing: a first read or a page turn goes out at once.
+  const debouncedScope = useRef(scopeKey);
   // Held so a caller's inline function does not re-trigger the read on every render.
   const latestFetch = useRef(fetchPage);
 
@@ -37,8 +56,10 @@ export function useServerPage<Row>(
     setPage(1);
   }
 
-  const requestKey = `${scopeKey}|${page}|${reloadToken}`;
-  const loading = result.settledFor !== requestKey;
+  const cacheKey = `${scopeKey}|${page}`;
+  const requestKey = `${cacheKey}|${reloadToken}`;
+  // Cached rows for this page count as settled; the re-read behind them updates quietly.
+  const loading = result.settledFor !== requestKey && !result.settledFor.startsWith(`${cacheKey}|`);
   const pageCount = Math.max(1, Math.ceil(result.total / ROWS_PER_PAGE));
 
   // A write or a shrinking list can leave fewer pages than the one in view.
@@ -52,6 +73,9 @@ export function useServerPage<Row>(
 
   useEffect(() => {
     let current = true;
+    const wait = debouncedScope.current === scopeKey ? 0 : delayMs;
+
+    debouncedScope.current = scopeKey;
 
     const timer = setTimeout(() => {
       const offset = (page - 1) * ROWS_PER_PAGE;
@@ -59,7 +83,10 @@ export function useServerPage<Row>(
       latestFetch.current(ROWS_PER_PAGE, offset)
         .then((next) => {
           if (current) {
-            setResult({ ...next, offset, error: null, settledFor: requestKey });
+            const settled = { ...next, offset, error: null, settledFor: requestKey };
+
+            lastPages.set(cacheKey, settled);
+            setResult(settled);
           }
         })
         .catch((cause: unknown) => {
@@ -71,13 +98,13 @@ export function useServerPage<Row>(
             }));
           }
         });
-    }, delayMs);
+    }, wait);
 
     return () => {
       current = false;
       clearTimeout(timer);
     };
-  }, [page, requestKey, delayMs]);
+  }, [page, requestKey, cacheKey, scopeKey, delayMs]);
 
   return {
     rows: result.rows,

@@ -81,13 +81,15 @@ export function BHWLayout({ logout, fullName }: BHWLayoutProps) {
             opener plugin if health workers lose the thread between the two. */}
         {update ? (
           <p className="field-rail field-rail-hold app-update-rail" role="status">
-            <span>Update {update.version} is ready</span>
+            <span>{update.required ? `Update ${update.version} needed to sync` : `Update ${update.version} is ready`}</span>
             <a href={update.url} target="_blank" rel="noreferrer">
               Install
             </a>
-            <button type="button" onClick={dismiss}>
-              Later
-            </button>
+            {update.required ? null : (
+              <button type="button" onClick={dismiss}>
+                Later
+              </button>
+            )}
           </p>
         ) : null}
 
