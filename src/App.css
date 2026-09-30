@@ -3717,6 +3717,50 @@ td,
   }
 }
 
+/* Placeholders while a first read is out. The sweep stops for reduced motion. */
+.skeleton {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--muted-surface) 25%, var(--panel) 50%, var(--muted-surface) 75%) 0 0 / 200% 100%;
+  animation: skeleton-sweep 1.2s ease-in-out infinite;
+}
+
+.skeleton-page {
+  display: grid;
+  gap: 16px;
+}
+
+.skeleton-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.skeleton-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
 /* The sorted column: tinted like Task Manager's, after the sticky first-column fill so it wins. */
 .ui-table-wrap th[aria-sort] {
   color: var(--text);
