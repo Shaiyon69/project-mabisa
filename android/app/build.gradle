@@ -11,7 +11,7 @@ android {
         // apply to a local build. versionCode is what Android compares to decide an
         // install is an upgrade; versionName is what the app reports to the update check,
         // and the release tag is built from the same value.
-        versionCode (System.getenv("VERSION_CODE") ?: "2") as Integer
+        versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "2")
         versionName System.getenv("VERSION_NAME") ?: "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
