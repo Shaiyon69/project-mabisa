@@ -3766,3 +3766,111 @@ td,
   color: var(--text);
   background: color-mix(in srgb, var(--primary) 16%, var(--muted-surface));
 }
+
+/* Terms of Use and Privacy Notice. Long enough to need its own scroll inside
+   the sheet, which otherwise grows past a phone screen with no way down. */
+.terms-dialog .modal-panel {
+  width: min(100%, 680px);
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+}
+
+.terms-body h3 {
+  margin: 16px 0 6px;
+  font-size: 15px;
+}
+
+.terms-body p,
+.terms-body ul {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.terms-body ul {
+  padding-left: 20px;
+}
+
+.terms-body li + li {
+  margin-top: 4px;
+}
+
+/* The agreement line above Sign in. Plain text beside a checkbox rather than a
+   bordered .check-option, so it reads as the condition on the button, not as
+   one more field to fill in. */
+.terms-agree {
+  display: flex;
+  min-height: 44px;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.terms-agree input[type='checkbox'] {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 1px 0 0;
+  accent-color: var(--primary);
+}
+
+/* The eye inside the password field. 44px, so it is a thumb target, with the
+   input padded on the right so typed text never runs under it. */
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 56px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  width: 44px;
+  min-height: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover {
+  color: var(--text-h);
+}
+
+/* Keeps the centring translate; the global pressed-state scale would replace it. */
+.password-toggle:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+/* A button that looks like a link: it opens a dialog, so it is not an <a>. */
+.text-link {
+  display: inline;
+  min-height: 0;
+  border-radius: 4px;
+  padding: 0;
+  color: var(--link);
+  background: none;
+  font-size: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.text-link:active {
+  transform: none;
+}
+
+/* Turnstile's widget is 65px tall; holding the space stops the button jumping when it loads. */
+.captcha {
+  min-height: 65px;
+}

@@ -15,7 +15,10 @@ export type IconName =
   | 'chart'
   | 'shield'
   | 'clipboard'
-  | 'filter';
+  | 'filter'
+  | 'bell'
+  | 'eye'
+  | 'eyeOff';
 
 type IconProps = {
   name: IconName;
@@ -46,6 +49,10 @@ const paths: Record<IconName, React.ReactNode> = {
   // Funnel. Marks the scope control that opens the filter drawer.
   filter: <path d="M3 5h18l-7 8v6l-4 2v-8Z" />,
   clipboard: <><path d="M9 4.5H7.5A1.5 1.5 0 0 0 6 6v13.5A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H15" /><rect x="9" y="2.5" width="6" height="4" rx="1.2" /><path d="M9.5 12.5h5M9.5 16.5h3" /></>,
+  bell: <><path d="M6 9.5a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5Z" /><path d="M10 19.5a2 2 0 0 0 4 0" /></>,
+  // The password toggle: `eye` while hidden (tap to show), `eyeOff` while shown.
+  eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+  eyeOff: <><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-2.9 3.9M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a10 10 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
 };
 
 export function Icon({ name, size = 18, className = '' }: IconProps) {

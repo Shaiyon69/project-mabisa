@@ -221,6 +221,7 @@ export function HealthPage() {
         description="Each resident's latest health check in the period: vitals, illness and vaccination."
         actions={<AdminFilterBar filters={filters} onChange={setFilters} loading={loading} snapshot={scope} role={role} />}
       />
+
       {error ? (
         <Card className="admin-monitor">
           <ErrorState title="Could not load the records" text={error} />
