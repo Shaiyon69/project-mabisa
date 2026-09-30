@@ -25,7 +25,7 @@ export function useAppUpdate(): AppUpdateState {
       }
 
       try {
-        if (localStorage.getItem(DISMISSED_KEY) === found.version) {
+        if (!found.required && localStorage.getItem(DISMISSED_KEY) === found.version) {
           return;
         }
       } catch {

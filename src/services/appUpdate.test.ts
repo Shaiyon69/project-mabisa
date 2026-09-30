@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNewerVersion } from './appUpdate';
+import { isBelowMinimum, isNewerVersion } from './appUpdate';
 
 describe('isNewerVersion', () => {
   it('compares segments as numbers, not text', () => {
@@ -25,5 +25,19 @@ describe('isNewerVersion', () => {
     expect(isNewerVersion('nightly', '1.0.0')).toBe(false);
     expect(isNewerVersion('1.0.0-rc1', '1.0.0')).toBe(false);
     expect(isNewerVersion('', '1.0.0')).toBe(false);
+  });
+});
+
+describe('isBelowMinimum', () => {
+  it('flags a build older than the declared minimum', () => {
+    expect(isBelowMinimum('Fixes.\n\nmin-version: 1.1.20\n', '1.1.19')).toBe(true);
+    expect(isBelowMinimum('min-version: v1.1.20', '1.1.20')).toBe(false);
+    expect(isBelowMinimum('min-version: 1.1.20', '1.1.21')).toBe(false);
+  });
+
+  it('requires nothing when the body declares no minimum', () => {
+    expect(isBelowMinimum(undefined, '1.0.0')).toBe(false);
+    expect(isBelowMinimum('', '1.0.0')).toBe(false);
+    expect(isBelowMinimum('min-version: soon', '1.0.0')).toBe(false);
   });
 });
