@@ -16,7 +16,29 @@ export type AvailableUpdate = {
   version: string;
   /** Direct APK download, handed to the system browser. */
   url: string;
+  /** The installed build is below the release's `min-version`: no "Later", and sync is paused. */
+  required: boolean;
 };
+
+/**
+ * A release body line `min-version: X.Y.Z` names the oldest build the server still
+ * accepts writes from. Set it only when a schema change breaks older builds; they
+ * keep working offline and their queue waits, untouched, until they update.
+ */
+const MIN_VERSION_PATTERN = /^min-version:\s*v?(\S+)\s*$/im;
+
+let belowMinimum = false;
+
+/** True once this launch's check found the installed build too old for the server. */
+export function appTooOldToSync(): boolean {
+  return belowMinimum;
+}
+
+/** Whether `installed` is older than the `min-version` a release body declares. */
+export function isBelowMinimum(releaseBody: string | undefined, installed: string): boolean {
+  const minimum = releaseBody?.match(MIN_VERSION_PATTERN)?.[1];
+  return minimum ? isNewerVersion(minimum, installed) : false;
+}
 
 /**
  * Compares release tags segment by segment as numbers, since a string compare
@@ -46,7 +68,7 @@ export function isNewerVersion(candidate: string, installed: string): boolean {
 }
 
 type ReleaseAsset = { browser_download_url?: string };
-type Release = { tag_name?: string; assets?: ReleaseAsset[] };
+type Release = { tag_name?: string; body?: string; assets?: ReleaseAsset[] };
 
 /**
  * Null means "carry on" for every reason there is — the browser, an offline
@@ -82,7 +104,9 @@ export async function checkForAppUpdate(): Promise<AvailableUpdate | null> {
       return null;
     }
 
-    return { version: tag.replace(/^v/i, ''), url: apk.browser_download_url };
+    belowMinimum = isBelowMinimum(release.body, info.version);
+
+    return { version: tag.replace(/^v/i, ''), url: apk.browser_download_url, required: belowMinimum };
   } catch {
     return null;
   }

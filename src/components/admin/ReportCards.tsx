@@ -493,7 +493,7 @@ function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'>
           <table className="pr-table pr-dense">
             <thead>
               <tr>
-                <th className="num">#</th>
+                <th className="num">No.</th>
                 <th>Resident</th>
                 <th>Sex</th>
                 <th className="num">Age</th>
@@ -545,7 +545,7 @@ function PrintHealth({ snapshot, period, people }: PrintProps & PeopleProps) {
           <table className="pr-table pr-dense">
             <thead>
               <tr>
-                <th className="num">#</th>
+                <th className="num">No.</th>
                 <th>Resident</th>
                 <th className="num">Age</th>
                 <th>Sex</th>

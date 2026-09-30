@@ -12,6 +12,17 @@ import {
   type AdminSnapshot,
 } from '../services/adminData';
 import { isCalendarDate } from '../lib/utils';
+import { supabase } from '../lib/supabase';
+
+/**
+ * The last settled read per screen kind and filter key. A tab switch mounts a
+ * fresh page, and without this it paints the "reading" state for a frame even
+ * when the service cache answers at once.
+ */
+const lastReads = new Map<string, unknown>();
+
+// RLS narrowed these rows to whoever was signed in.
+supabase.auth.onAuthStateChange(() => lastReads.clear());
 
 /** How often an open portal re-reads. Each re-read downloads the period again, so it stays minutes apart. */
 const AUTO_REFRESH_MS = 5 * 60_000;
@@ -127,21 +138,21 @@ type AdminRead<T> = {
  * filters that produced it from the same hook.
  */
 function useAdminRead<T>(
+  kind: string,
   read: (filters: AdminFilters) => Promise<T>,
   empty: T,
   filterKeyOf: (filters: AdminFilters) => string,
 ): AdminRead<T> {
   const { filters, setFilters } = useAdminFilters();
   const [reloadToken, setReloadToken] = useState(0);
-  const [result, setResult] = useState<{ data: T; error: string | null; settledFor: string }>({
-    data: empty,
-    error: null,
-    settledFor: '',
-  });
-  const lastRefresh = useRef(0);
-
   // The reload token stays out of `filterKey`, so a re-read of the same scope keeps the numbers up.
   const filterKey = filterKeyOf(filters);
+  const [result, setResult] = useState<{ data: T; error: string | null; settledFor: string }>(() => {
+    const cached = lastReads.get(`${kind}|${filterKey}`) as T | undefined;
+
+    return cached === undefined ? { data: empty, error: null, settledFor: '' } : { data: cached, error: null, settledFor: filterKey };
+  });
+  const lastRefresh = useRef(0);
   const requestKey = `${filterKey}|${reloadToken}`;
   const latestRead = useRef(read);
 
@@ -182,6 +193,7 @@ function useAdminRead<T>(
       .current(filters)
       .then((data) => {
         if (current) {
+          lastReads.set(`${kind}|${filterKey}`, data);
           setResult({ data, error: null, settledFor: filterKey });
         }
       })
@@ -198,7 +210,7 @@ function useAdminRead<T>(
     return () => {
       current = false;
     };
-  }, [filters, requestKey, filterKey]);
+  }, [filters, requestKey, filterKey, kind]);
 
   return { filters, setFilters, loading: result.settledFor !== filterKey, error: result.error, refresh, data: result.data };
 }
@@ -215,7 +227,7 @@ function snapshotKey(filters: AdminFilters): string {
 
 /** Central data for one admin screen: the period's field data, narrowed to the filters. */
 export function useAdminData(): AdminData {
-  const { data, ...rest } = useAdminRead(fetchAdminSnapshot, emptyAdminSnapshot, snapshotKey);
+  const { data, ...rest } = useAdminRead('snapshot', fetchAdminSnapshot, emptyAdminSnapshot, snapshotKey);
 
   return { ...rest, snapshot: data };
 }
@@ -231,6 +243,7 @@ const emptyScope: AdminScope & { fetchedAt: string } = {
 /** Filters plus the barangay and purok lists, for a screen whose tables page on the server and need no snapshot. */
 export function useAdminScope() {
   const { data, ...rest } = useAdminRead(
+    'scope',
     () => fetchAdminScope().then((scope) => ({ ...scope, fetchedAt: new Date().toISOString() })),
     emptyScope,
     () => 'scope',

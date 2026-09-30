@@ -2,6 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { formatCount } from '../../lib/utils';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { Icon } from './Icon';
+import { SkeletonLine } from './Skeleton';
 import { EmptyState } from './StateMessage';
 
 /** Rows per page, everywhere. The search box above a table narrows the list; the pager reaches the rest. */
@@ -13,7 +15,11 @@ export type TableColumn<Row> = {
   render: (row: Row) => ReactNode;
   /** A column of figures: right-aligned, and a bare number is grouped at the thousands. */
   numeric?: boolean;
+  /** The view column a server-paged table orders by when this header is clicked. */
+  sortBy?: string;
 };
+
+export type TableSort = { column: string; ascending: boolean };
 
 type TableProps<Row> = {
   columns: TableColumn<Row>[];
@@ -29,6 +35,9 @@ type TableProps<Row> = {
   startIndex?: number;
   /** Still reading: dims the rows in hand and raises the loading bar. */
   busy?: boolean;
+  /** Given, a column with `sortBy` gets a clickable header. The caller re-reads in that order. */
+  sort?: TableSort | null;
+  onSort?: (sort: TableSort) => void;
 };
 
 function cell<Row>(column: TableColumn<Row>, row: Row): ReactNode {
@@ -48,6 +57,8 @@ export function Table<Row>({
   numbered,
   startIndex = 0,
   busy = false,
+  sort,
+  onSort,
 }: TableProps<Row>) {
   const [page, setPage] = useState(1);
   const pageCount = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
@@ -63,6 +74,42 @@ export function Table<Row>({
 
   // No rows means no table: the header strip and its 640px scrollbar over an
   // empty state read as a table that failed to load.
+  // A first read still out: the table's own shape in grey, not a "loading" notice.
+  if (!rows.length && busy) {
+    return (
+      <div className="ui-table-wrap" role="status" aria-label="Loading">
+        <table>
+          <thead>
+            <tr>
+              {numbered ? <th data-numeric="">No.</th> : null}
+              {columns.map((column) => (
+                <th key={column.key} data-numeric={column.numeric ? '' : undefined}>
+                  {column.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: pageSize ?? limit ?? ROWS_PER_PAGE }, (_, row) => (
+              <tr key={row}>
+                {numbered ? (
+                  <td>
+                    <SkeletonLine width="60%" />
+                  </td>
+                ) : null}
+                {columns.map((column) => (
+                  <td key={column.key}>
+                    <SkeletonLine width={column.numeric ? '50%' : '80%'} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   if (!rows.length) {
     return (
       <div aria-busy={busy}>
@@ -77,12 +124,35 @@ export function Table<Row>({
         <table>
           <thead>
             <tr>
-              {numbered ? <th data-numeric="">#</th> : null}
-              {columns.map((column) => (
-                <th key={column.key} data-numeric={column.numeric ? '' : undefined}>
-                  {column.header}
-                </th>
-              ))}
+              {numbered ? <th data-numeric="">No.</th> : null}
+              {columns.map((column) => {
+                const active = sort && column.sortBy === sort.column ? sort : null;
+
+                return (
+                  <th
+                    key={column.key}
+                    data-numeric={column.numeric ? '' : undefined}
+                    aria-sort={active ? (active.ascending ? 'ascending' : 'descending') : undefined}
+                  >
+                    {column.sortBy && onSort ? (
+                      <button
+                        type="button"
+                        className="th-sort"
+                        data-descending={active && !active.ascending ? '' : undefined}
+                        onClick={() => onSort({ column: column.sortBy!, ascending: active ? !active.ascending : true })}
+                      >
+                        {/* Task Manager's cue: only the sorted column shows a chevron, above its label. */}
+                        <span className="th-sort-arrow" aria-hidden="true">
+                          {active ? <Icon name="chevron" size={12} /> : null}
+                        </span>
+                        {column.header}
+                      </button>
+                    ) : (
+                      column.header
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

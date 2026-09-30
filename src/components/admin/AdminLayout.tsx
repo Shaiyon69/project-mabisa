@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { AdminSidebar, AdminTabs } from './AdminSidebar';
 import { AdminTopbar } from './AdminTopbar';
+import { PageSkeleton } from '../common/Skeleton';
 import type { UserRole } from '../../types/database';
 
 type AdminLayoutProps = {
@@ -39,6 +40,18 @@ function useBrowserOnline(): boolean {
 export function AdminLayout({ logout, fullName, role }: AdminLayoutProps) {
   const isOnline = useBrowserOnline();
 
+  // Fetch every tab's code while the first screen sits idle, so the first click
+  // on Analytics or Reports does not wait on a chunk download.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void import('../../pages/admin/AdminPages');
+      void import('./AnalyticsPanels');
+      void import('./ReportCards');
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
   // Admin screens are desktop-first because barangay officials use the web dashboard from an LGU workstation.
   return (
     <main className="mobile-shell app-layout admin-layout">
@@ -58,7 +71,10 @@ export function AdminLayout({ logout, fullName, role }: AdminLayoutProps) {
             it would be a second place the same profile row is remembered. Pages
             read it through `useAdminRole()`, which lives in its own file because
             this one may export components only. */}
-        <Outlet context={role} />
+        {/* Held here rather than at the router, so a page's chunk loading keeps the rail on screen. */}
+        <Suspense fallback={<PageSkeleton />}>
+          <Outlet context={role} />
+        </Suspense>
       </section>
     </main>
   );
