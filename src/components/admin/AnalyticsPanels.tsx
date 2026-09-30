@@ -41,7 +41,7 @@ import { Card } from '../common/Card';
 import { EmptyState, ErrorState } from '../common/StateMessage';
 import { useServerPage } from '../../hooks/useServerPage';
 import { FormField } from '../common/FormField';
-import { ROWS_PER_PAGE, Table, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
+import { ROWS_PER_PAGE, Table, TableMeta, TablePager, TableToolbar, type TableColumn, type TableSort } from '../common/Table';
 import { SummaryContext } from './AdminFilterBar';
 
 const ANALYTICS_VIEWS = [
@@ -185,35 +185,37 @@ const complicationsOf = (row: ResidentHealthRow) => row.latest.health_complicati
 const nameOf = (row: ResidentHealthRow) => `${row.person.first_name} ${row.person.last_name}`;
 
 const residentHealthColumns: TableColumn<ResidentHealthRow>[] = [
-  { key: 'name', header: 'Resident', render: nameOf },
-  { key: 'age', header: 'Age', numeric: true, render: (row) => ageInYears(row.person.birthday) ?? '—' },
-  { key: 'sex', header: 'Sex', render: (row) => titleCase(row.person.sex) },
-  { key: 'barangay', header: 'Barangay', render: (row) => row.barangay },
-  { key: 'date', header: 'Last check', render: (row) => formatDate(row.latest.assessment_date) },
-  { key: 'bmi', header: 'BMI', numeric: true, render: (row) => row.latest.bmi },
-  { key: 'nutrition', header: 'Nutrition', render: (row) => titleCase(row.latest.nutrition_status) },
+  { key: 'name', header: 'Resident', sortBy: 'name', render: nameOf },
+  { key: 'age', header: 'Age', numeric: true, sortBy: 'age', render: (row) => ageInYears(row.person.birthday) ?? '—' },
+  { key: 'sex', header: 'Sex', sortBy: 'sex', render: (row) => titleCase(row.person.sex) },
+  { key: 'barangay', header: 'Barangay', sortBy: 'barangay', render: (row) => row.barangay },
+  { key: 'date', header: 'Last check', sortBy: 'date', render: (row) => formatDate(row.latest.assessment_date) },
+  { key: 'bmi', header: 'BMI', numeric: true, sortBy: 'bmi', render: (row) => row.latest.bmi },
+  { key: 'nutrition', header: 'Nutrition', sortBy: 'nutrition', render: (row) => titleCase(row.latest.nutrition_status) },
   {
     key: 'bp',
     header: 'BP (mmHg)',
     numeric: true,
+    sortBy: 'bp',
     render: (row) => (row.latest.systolic_bp != null ? `${row.latest.systolic_bp}/${row.latest.diastolic_bp ?? '—'}` : '—'),
   },
-  { key: 'temperature', header: 'Temp (°C)', numeric: true, render: (row) => row.latest.temperature_c ?? '—' },
-  { key: 'pulse', header: 'Pulse (bpm)', numeric: true, render: (row) => row.latest.pulse_rate ?? '—' },
-  { key: 'illness', header: 'Illness', render: illnessOf },
+  { key: 'temperature', header: 'Temp (°C)', numeric: true, sortBy: 'temperature', render: (row) => row.latest.temperature_c ?? '—' },
+  { key: 'pulse', header: 'Pulse (bpm)', numeric: true, sortBy: 'pulse', render: (row) => row.latest.pulse_rate ?? '—' },
+  { key: 'illness', header: 'Illness', sortBy: 'illness', render: illnessOf },
   { key: 'complications', header: 'Complications', render: complicationsOf },
-  { key: 'vaccination', header: 'Vaccination', render: (row) => titleCase(row.latest.vaccination_status ?? 'unknown') },
-  { key: 'checks', header: 'Checks in period', numeric: true, render: (row) => row.checks },
+  { key: 'vaccination', header: 'Vaccination', sortBy: 'vaccination', render: (row) => titleCase(row.latest.vaccination_status ?? 'unknown') },
+  { key: 'checks', header: 'Checks in period', numeric: true, sortBy: 'checks', render: (row) => row.checks },
 ];
 
 /** Every resident checked in the period, one row each, searchable by name or household number. */
 function ResidentHealthPanel({ filters, scope }: PanelProps) {
   const [query, setQuery] = useState('');
   const needle = query.trim();
-  const scopeKey = [needle, filters.from, filters.to, filters.barangayId, filters.purokId].join('|');
+  const [sort, setSort] = useState<TableSort | null>(null);
+  const scopeKey = ['health', needle, filters.from, filters.to, filters.barangayId, filters.purokId, sort?.column, sort?.ascending].join('|');
   const { rows, total, error, loading, page, pageCount, setPage, offset } = useServerPage(
     scopeKey,
-    (limit, start) => fetchResidentHealthPage(needle, filters, limit, start),
+    (limit, start) => fetchResidentHealthPage(needle, filters, limit, start, sort),
     { delayMs: 300 },
   );
 
@@ -235,6 +237,8 @@ function ResidentHealthPanel({ filters, scope }: PanelProps) {
         rows={rows}
         getRowKey={(row) => row.person.resident_id}
         busy={loading}
+        sort={sort}
+        onSort={setSort}
         emptyTitle={loading ? 'Loading the health records' : needle ? 'No resident matches' : 'No health checks in this period'}
         emptyText={loading ? 'One moment.' : needle ? 'Try a different name or household number.' : 'Try a wider date range.'}
         numbered

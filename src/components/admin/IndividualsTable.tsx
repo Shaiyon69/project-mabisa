@@ -12,34 +12,40 @@ import {
 import { Button } from '../common/Button';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
-import { Table, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
+import { Table, TableMeta, TablePager, TableToolbar, type TableColumn, type TableSort } from '../common/Table';
 import { useServerPage } from '../../hooks/useServerPage';
 
 const columns: TableColumn<Individual>[] = [
   {
     key: 'individual',
     header: 'Individual',
+    sortBy: 'last_name',
     render: (individual) => `${individual.first_name} ${individual.last_name}`,
   },
   {
     key: 'sex',
     header: 'Sex',
+    sortBy: 'sex',
     render: (individual) => titleCase(individual.sex),
   },
   {
     key: 'age',
     header: 'Age',
     numeric: true,
+    // Later birthday, younger resident.
+    sortBy: '-birthday',
     render: (individual) => ageInYears(individual.birthday) ?? '—',
   },
   {
     key: 'household_id',
     header: 'Household',
+    sortBy: 'household_number',
     render: (individual) => individual.household_number || 'Unassigned',
   },
   {
     key: 'barangay',
     header: 'Barangay',
+    sortBy: 'barangay_name',
     // Joined in from the household, the only row that records it. A missing one
     // is a backfill gap, so it is named rather than left blank.
     render: (individual) => individual.barangay_name || 'Unassigned',
@@ -47,6 +53,7 @@ const columns: TableColumn<Individual>[] = [
   {
     key: 'status',
     header: 'Membership',
+    sortBy: 'status',
     // The dashboard's resident count filters on `status` and this registry does
     // not, so the column is named to make the difference readable.
     render: (individual) =>
@@ -55,6 +62,7 @@ const columns: TableColumn<Individual>[] = [
   {
     key: 'updated',
     header: 'Last updated',
+    sortBy: 'updated_at',
     render: (individual) => formatDate(individual.updated_at),
   },
 ];
@@ -75,6 +83,7 @@ type IndividualsTableProps = {
 export function IndividualsTable({ filters }: IndividualsTableProps) {
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<TableSort | null>(null);
 
   // Arrived from a dashboard bar: the band and its period both come from the
   // link, so the list answers the same question the bar did.
@@ -104,13 +113,16 @@ export function IndividualsTable({ filters }: IndividualsTableProps) {
   }
 
   const scopeKey = [
+    'residents',
     query,
+    sort?.column,
+    sort?.ascending,
     ...FILTER_PARAMS.map(([key]) => filters[key] ?? 'all'),
     statusFilter ? `${statusFilter.status}:${statusFilter.from}:${statusFilter.to}` : '',
   ].join('|');
   const { rows, total, error, loading, page, pageCount, setPage, offset } = useServerPage(
     scopeKey,
-    (limit, start) => fetchResidentPage(query, limit, start, filters, statusFilter),
+    (limit, start) => fetchResidentPage(query, limit, start, filters, statusFilter, sort),
     { delayMs: 300 },
   );
 
@@ -153,6 +165,8 @@ export function IndividualsTable({ filters }: IndividualsTableProps) {
         rows={rows}
         getRowKey={(individual) => individual.resident_id}
         busy={loading}
+        sort={sort}
+        onSort={setSort}
         emptyTitle={loading ? 'Loading the records' : 'No residents found'}
         emptyText={loading ? 'One moment.' : "Try a different search, or wait for a health worker's phone to send its records."}
         numbered

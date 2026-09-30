@@ -969,6 +969,52 @@ th {
   text-transform: uppercase;
 }
 
+/* A sortable header fills its cell, so the whole header is the target and
+   the highlight reaches the edges, as in Task Manager. */
+th:has(> .th-sort) {
+  padding: 0;
+}
+
+.th-sort {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 2px 15px 12px;
+  border: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+[data-numeric] > .th-sort {
+  align-items: flex-end;
+}
+
+.th-sort:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.th-sort:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+/* Always the chevron's height, so sorting never shifts the label. */
+.th-sort-arrow {
+  display: flex;
+  height: 12px;
+  align-self: center;
+  transform: rotate(-90deg);
+}
+
+.th-sort[data-descending] .th-sort-arrow {
+  transform: rotate(90deg);
+}
+
 /* The row's own label, held against a sideways scroll: the comparison table is
    nine columns wide and the barangay name is the only thing naming the row.
    Both cells need their own fill — a transparent one lets the scrolled columns
@@ -3669,4 +3715,10 @@ td,
     color: var(--muted);
     font-size: 7pt;
   }
+}
+
+/* The sorted column: tinted like Task Manager's, after the sticky first-column fill so it wins. */
+.ui-table-wrap th[aria-sort] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--primary) 16%, var(--muted-surface));
 }

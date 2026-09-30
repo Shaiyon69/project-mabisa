@@ -452,6 +452,8 @@ export type Database = {
           search_text?: string | null;
           page_limit?: number;
           page_offset?: number;
+          sort_column?: string | null;
+          sort_ascending?: boolean;
         };
         Returns: ResidentHealthPageRow[];
       };

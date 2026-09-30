@@ -5,7 +5,7 @@ import { fetchInventoryPage, reorderLevelOf, type AdminFilters } from '../../ser
 import { useServerPage } from '../../hooks/useServerPage';
 import { FormField } from '../common/FormField';
 import { ErrorState } from '../common/StateMessage';
-import { Table, TableBadge, TableMeta, TablePager, TableToolbar, type TableColumn } from '../common/Table';
+import { Table, TableBadge, TableMeta, TablePager, TableToolbar, type TableColumn, type TableSort } from '../common/Table';
 
 type InventoryTableProps = {
   filters: AdminFilters;
@@ -17,21 +17,24 @@ type InventoryTableProps = {
 
 export function InventoryTable({ filters, spansBarangays, reloadToken }: InventoryTableProps) {
   const [query, setQuery] = useState('');
-  const scopeKey = [query, filters.barangayId, filters.itemType, filters.stockLevel].join('|');
+  const [sort, setSort] = useState<TableSort | null>(null);
+  const scopeKey = ['inventory', query, filters.barangayId, filters.itemType, filters.stockLevel, sort?.column, sort?.ascending].join('|');
   const { rows, total, error, loading, page, pageCount, setPage, offset } = useServerPage(
     scopeKey,
-    (limit, start) => fetchInventoryPage(query, filters, limit, start),
+    (limit, start) => fetchInventoryPage(query, filters, limit, start, sort),
     { reloadToken, delayMs: 300 },
   );
   const columns: TableColumn<InventoryItemRow>[] = [
     {
       key: 'item',
       header: 'Item',
+      sortBy: 'item_name',
       render: (item) => item.item_name,
     },
     {
       key: 'type',
       header: 'Type',
+      sortBy: 'type',
       render: (item) => titleCase(item.type),
     },
     ...(spansBarangays
@@ -39,6 +42,7 @@ export function InventoryTable({ filters, spansBarangays, reloadToken }: Invento
           {
             key: 'barangay',
             header: 'Barangay',
+            sortBy: 'barangay_name',
             render: (item: InventoryItemRow) => item.barangay_name ?? 'Unassigned',
           },
         ]
@@ -47,18 +51,21 @@ export function InventoryTable({ filters, spansBarangays, reloadToken }: Invento
       key: 'current-stock',
       header: 'At the barangay',
       numeric: true,
+      sortBy: 'current_stock',
       render: (item) => item.current_stock,
     },
     {
       key: 'reorder-level',
       header: 'Warn at',
       numeric: true,
+      sortBy: 'reorder_level',
       // 0 is a real setting, not a missing one — the office turned the warning off.
       render: (item) => (item.reorder_level === 0 ? 'Off' : reorderLevelOf(item)),
     },
     {
       key: 'indicator',
       header: 'Indicator',
+      sortBy: 'is_low',
       render: (item) => <TableBadge label={item.is_low ? 'Low Stock' : 'Sufficient'} tone={item.is_low ? 'warning' : 'success'} />,
     },
   ];
@@ -81,6 +88,8 @@ export function InventoryTable({ filters, spansBarangays, reloadToken }: Invento
         numbered
         startIndex={offset}
         busy={loading}
+        sort={sort}
+        onSort={setSort}
         emptyTitle={loading ? 'Loading the supplies' : query ? 'No item matches' : 'No supplies yet'}
         emptyText={
           loading
