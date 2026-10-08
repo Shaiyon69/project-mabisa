@@ -7,12 +7,12 @@ android {
         applicationId "ph.mabisa.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Set by .github/workflows/release.yml from its run number; these defaults only
+        // Set by .github/workflows/release.yml (see android/app-version.txt); these defaults only
         // apply to a local build. versionCode is what Android compares to decide an
         // install is an upgrade; versionName is what the app reports to the update check,
         // and the release tag is built from the same value.
         versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "2")
-        versionName System.getenv("VERSION_NAME") ?: "1.0.1"
+        versionName System.getenv("VERSION_NAME") ?: "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

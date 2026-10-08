@@ -128,9 +128,14 @@ screens under `src/pages/admin/` and `src/components/admin/` excluded — and:
 
 1. runs the type-check, lint and tests;
 2. builds the mobile bundle with the real Supabase values and syncs it into Android;
-3. builds a signed APK with `versionName` `1.1.<run number>` and `versionCode`
+3. builds a signed APK with `versionName` `MAJOR.MINOR.PATCH` and `versionCode`
    `10 + <run number>`, both passed to Gradle as `VERSION_NAME` / `VERSION_CODE`;
-4. publishes it as GitHub release `v1.1.<run number>`. Phones prompt on their next launch.
+4. publishes it as GitHub release `vMAJOR.MINOR.PATCH`. Phones prompt on their next launch.
+
+`MAJOR.MINOR` lives in `android/app-version.txt`: bump MAJOR for big changes, MINOR for
+smaller ones. PATCH counts up on its own — one past the highest published release with
+the same `MAJOR.MINOR` — and restarts at 0 after a bump. So `1.0` ships `v1.0.0`,
+`v1.0.1`, …, and changing the file to `1.1` ships `v1.1.0` next.
 
 A release can also be started by hand from the Actions tab (`workflow_dispatch`). The
 values in `android/app/build.gradle` are only the defaults for a local build.
