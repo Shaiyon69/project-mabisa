@@ -149,9 +149,8 @@ Pages). The page links to
 `https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk`,
 which always resolves to the newest release, so it never needs editing for a new build.
 When it can reach the GitHub API it also shows the version, size and date, and says the
-app is not available yet if nothing has been released. A plainer static copy is still served from
-`/download` on the admin portal's Vercel domain. After that first install the update bar
-handles every later version.
+app is not available yet if nothing has been released. After that first install the update
+bar handles every later version.
 
 ### Compatibility
 
