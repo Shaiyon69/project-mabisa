@@ -1,0 +1,54 @@
+# Publishes the APK download page in site/ to GitHub Pages. The page reads the latest
+# release itself, so a new APK needs no redeploy: this only runs when the page, the
+# artwork it borrows from public/, or this file changes.
+#
+# Kept out of public/ on purpose: release.yml builds an APK for any change there, and
+# editing a download page should not ship a new app to every phone.
+name: Download page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'public/favicon.svg'
+      - 'public/assets/logo.png'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A newer push supersedes a deploy still in flight; there is only one page to show.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p "$RUNNER_TEMP/site"
+          cp site/* "$RUNNER_TEMP/site/"
+          cp public/favicon.svg public/assets/logo.png "$RUNNER_TEMP/site/"
+
+      # Pages must already be on with "GitHub Actions" as its source (Settings → Pages).
+      # The action could switch it on itself, but only with an admin token, and
+      # GITHUB_TOKEN is not one.
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

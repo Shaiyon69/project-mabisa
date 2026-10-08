@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Download the BRHP-MSAM Android app for Barangay Health Workers." />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <title>Download BRHP-MSAM</title>
+    <!--
+      Served from GitHub Pages by .github/workflows/pages.yml, which copies the logo and
+      favicon in from public/ so there is one copy of each. Paths are relative because a
+      project site lives under /project-mabisa/, not at the domain root.
+
+      The page works with no script at all: the button points at /releases/latest/download,
+      which GitHub redirects to the newest release's APK, so it never needs editing. The
+      script only adds the version and size, and hides the button while no release exists,
+      because a link that 404s on a slow connection looks like the phone's fault.
+    -->
+    <style>
+      :root {
+        --bg: #f7f9f4; --panel: #ffffff; --line: #dfe6da;
+        --text-h: #1b3a2b; --text: #34483c; --muted: #56675b;
+        --primary: #2e7d32; --on-primary: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101712; --panel: #18221b; --line: #2a3a2e;
+          --text-h: #e3efe5; --text: #c5d4c8; --muted: #93a596;
+          --primary: #66bb6a; --on-primary: #0c1a0e;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+      main { max-width: 32rem; margin: 0 auto; padding: 2rem 1rem; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 1rem; padding: 1.5rem; text-align: center; }
+      img { width: 96px; height: 96px; }
+      h1 { color: var(--text-h); font-size: 1.5rem; margin: 0.5rem 0 0.25rem; }
+      p { margin: 0 0 1rem; }
+      .button { display: block; background: var(--primary); color: var(--on-primary); text-decoration: none; font-weight: 700; padding: 1rem; border-radius: 0.75rem; font-size: 1.1rem; }
+      .meta { color: var(--muted); font-size: 0.9rem; margin: 0.5rem 0 0; min-height: 1.35em; }
+      .notice { border: 1px dashed var(--line); border-radius: 0.75rem; padding: 1rem; }
+      ol { text-align: left; padding-left: 1.25rem; margin: 1.5rem 0 1rem; }
+      li { margin-bottom: 0.5rem; }
+      small { color: var(--muted); }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <img src="logo.png" alt="" />
+        <h1>BRHP-MSAM for Barangay Health Workers</h1>
+        <p>Android app for field visits. Works offline.</p>
+        <a id="download" class="button" href="https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk">Download the app (APK)</a>
+        <p id="meta" class="meta"></p>
+        <p id="none" class="notice" hidden>The app is not available yet. Check back later, or ask your health office.</p>
+        <ol>
+          <li>Tap the button above and wait for the download to finish.</li>
+          <li>Open the downloaded file. If Android asks, allow your browser to install apps.</li>
+          <li>Open BRHP-MSAM and sign in with the account your health office gave you.</li>
+        </ol>
+        <small>You only do this once. The app tells you when a new version is ready.</small>
+      </div>
+    </main>
+    <script>
+      // The same endpoint the app's update check reads (src/services/appUpdate.ts), so the
+      // page and the update bar always agree on what "latest" is. It excludes drafts and
+      // prereleases. Any failure — offline, rate-limited — leaves the plain link in place.
+      (async () => {
+        try {
+          const response = await fetch('https://api.github.com/repos/Shaiyon69/project-mabisa/releases/latest', {
+            headers: { Accept: 'application/vnd.github+json' },
+          });
+          // 404 is GitHub's answer when nothing has been published yet; anything else
+          // that is not ok (a rate limit, an outage) says nothing about the release.
+          if (response.status === 404) return showNone();
+          if (!response.ok) return;
+
+          const release = await response.json();
+          const apk = (release.assets || []).find((asset) => (asset.browser_download_url || '').endsWith('.apk'));
+          if (!apk) return showNone();
+
+          // Point straight at this release's file so the version shown is the one downloaded.
+          document.getElementById('download').href = apk.browser_download_url;
+          const version = String(release.tag_name || '').replace(/^v/i, '');
+          const size = apk.size ? ` · ${(apk.size / 1048576).toFixed(1)} MB` : '';
+          const date = release.published_at
+            ? ` · ${new Date(release.published_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`
+            : '';
+          document.getElementById('meta').textContent = `Version ${version}${size}${date}`;
+        } catch {
+          // Offline or blocked: keep the static link.
+        }
+
+        function showNone() {
+          document.getElementById('download').hidden = true;
+          document.getElementById('none').hidden = false;
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -142,10 +142,16 @@ values in `android/app/build.gradle` are only the defaults for a local build.
 
 ### First install
 
-BHWs install from `/download` on the admin portal's Vercel domain. The page links to
+BHWs install from the download page at <https://shaiyon69.github.io/project-mabisa/>.
+Its source is `site/index.html`, and `.github/workflows/pages.yml` publishes it to GitHub
+Pages when it changes (Pages must be set to deploy from GitHub Actions under Settings →
+Pages). The page links to
 `https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk`,
-which always resolves to the newest release, so the page never needs editing. After that
-first install the update bar handles every later version.
+which always resolves to the newest release, so it never needs editing for a new build.
+When it can reach the GitHub API it also shows the version, size and date, and says the
+app is not available yet if nothing has been released. A plainer static copy is still served from
+`/download` on the admin portal's Vercel domain. After that first install the update bar
+handles every later version.
 
 ### Compatibility
 
