@@ -641,6 +641,11 @@ button:active,
   font-size: 13px;
 }
 
+.sync-last.is-stale {
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+
 .metric-grid,
 .activity-grid,
 .field-row {
