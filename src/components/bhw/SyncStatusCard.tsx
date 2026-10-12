@@ -43,6 +43,11 @@ const recordLabels: Record<LocalTableName, string> = {
   supply_disbursements: 'Supply release',
 };
 
+/** Past a week, the phone has missed the RHU's weekly reporting. */
+function sentOverAWeekAgo(lastSyncAt: string | null): boolean {
+  return lastSyncAt !== null && Date.now() - Date.parse(lastSyncAt) > 7 * 24 * 60 * 60 * 1000;
+}
+
 /** Date and time, since "this morning" is the question here and `formatDate` carries no clock. */
 function formatSyncMoment(value: string): string {
   return new Intl.DateTimeFormat('en-PH', {
@@ -74,6 +79,7 @@ export function SyncStatusCard({
   const isPending = pendingQueueCount > 0;
   const setAsideCount = deadLetterEntries.length;
   const hasSetAside = setAsideCount > 0;
+  const stale = sentOverAWeekAgo(lastSyncAt);
 
   const syncedLabel = isError ? 'Could not send' : hasSetAside ? 'Needs checking' : isPending ? 'Waiting to send' : 'All sent';
   // The engine's last run is not the whole answer. Rows queued since it finished
@@ -113,9 +119,11 @@ export function SyncStatusCard({
         />
       </div>
 
-      <p className="muted sync-last">
+      <p className={`muted sync-last${stale ? ' is-stale' : ''}`}>
         {lastSyncAt
-          ? `Last sent ${formatSyncMoment(lastSyncAt)}`
+          ? stale
+            ? `Not sent in over a week (last sent ${formatSyncMoment(lastSyncAt)}). Find signal so the health office gets this week's records.`
+            : `Last sent ${formatSyncMoment(lastSyncAt)}`
           : 'Nothing has been sent from this phone yet.'}
       </p>
 
