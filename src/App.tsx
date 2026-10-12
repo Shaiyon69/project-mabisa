@@ -415,7 +415,7 @@ export function App() {
           deviceReady.unsent === 0
             ? 'The records on this phone could not be read, so there is no way to tell whose they are. Sign in again once there is a connection, or ask the health office.'
             : movedPurok
-              ? `${deviceReady.unsent} record(s) saved here were recorded in your previous purok and have not reached the health office yet. Sending them now would file them under your new purok. Ask the health office to move you back, sync, then come back to this purok.`
+              ? `${deviceReady.unsent} record(s) saved here were recorded in your previous purok and have not reached the health office yet. Sending them now would file them under your new purok. Ask your barangay administrator to move you back, send them, then ask to be moved to this purok again.`
               : `${deviceReady.unsent} record(s) saved here have not reached the health office yet, and only the worker who recorded them can send them. Ask her to sign in on this phone and sync, then sign in again.`
         }
         logout={handleLogout}
