@@ -18,10 +18,10 @@ type SupplyDisbursementFormProps = {
 
 export function SupplyDisbursementForm({ individualCount, inventoryItems, onSaved }: SupplyDisbursementFormProps) {
   const [residentId, setResidentId] = useState('');
-  // Falls back to the first item each render, not just at mount, since
-  // `inventoryItems` loads asynchronously and is typically still empty then.
+  // No default: a release must name the item the BHW picked. Cleared if a pull takes the item off the phone.
   const [selectedItemId, setSelectedItemId] = useState('');
-  const itemId = selectedItemId || inventoryItems[0]?.item_id || '';
+  const selectedItem = inventoryItems.find((item) => item.item_id === selectedItemId);
+  const itemId = selectedItem?.item_id ?? '';
   const [quantity, setQuantity] = useState('1');
   const [disbursementDate, setDisbursementDate] = useState(today());
 
@@ -31,7 +31,6 @@ export function SupplyDisbursementForm({ individualCount, inventoryItems, onSave
 
   const hasIndividuals = individualCount > 0;
   const hasInventory = inventoryItems.length > 0;
-  const selectedItem = inventoryItems.find((item) => item.item_id === itemId);
   const requestedQuantity = Number(quantity);
   const missingRequirements = [
     !hasIndividuals && 'a registered resident',
