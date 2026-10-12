@@ -9,6 +9,7 @@ import {
   fetchActivePuroks,
   fetchBarangayScope,
   fetchBarangaysMissingAdmin,
+  resetAccountPassword,
   setProfileActive,
   type AccountRow,
   type AdminFilters,
@@ -32,7 +33,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 /** Which dialog is open, and for whom. One value, so two cannot be open at once. */
-type PendingAction = { kind: 'assign' | 'active'; account: AccountRow } | null;
+type PendingAction = { kind: 'assign' | 'active' | 'password'; account: AccountRow } | null;
 
 type AccountsTableProps = {
   /**
@@ -55,9 +56,9 @@ type AccountsTableProps = {
  * admin and writes the audit event in the same transaction. Both take a reason,
  * which the form requires.
  *
- * Creating an account goes through the `create-account` function, which holds the
- * service role a browser cannot: writing to `auth.users` is not a publishable-key
- * operation. Resetting a password is still absent.
+ * Creating an account and resetting a password go through the `create-account`
+ * and `reset-password` functions, which hold the service role a browser cannot:
+ * writing to `auth.users` is not a publishable-key operation.
  */
 export function AccountsTable({ role, filters }: AccountsTableProps) {
   const managesAnyone = role === 'admin' || role === 'barangay_admin';
@@ -181,6 +182,9 @@ export function AccountsTable({ role, filters }: AccountsTableProps) {
               {account.purokName ? 'Reassign' : 'Assign purok'}
             </Button>
           ) : null}
+          <Button variant="ghost" onClick={() => setPending({ kind: 'password', account })}>
+            Reset password
+          </Button>
           <Button variant="ghost" onClick={() => setPending({ kind: 'active', account })}>
             {account.profile.is_active ? 'Deactivate' : 'Reactivate'}
           </Button>
@@ -395,7 +399,7 @@ type AccountActionFormProps = {
 };
 
 /** The reasons an action is usually taken, offered before the free-text box. */
-const REASONS: Record<'assign' | 'deactivate' | 'reactivate', string[]> = {
+const REASONS: Record<'assign' | 'deactivate' | 'reactivate' | 'password', string[]> = {
   assign: [
     'New health worker',
     'Reassigned to another purok',
@@ -405,32 +409,37 @@ const REASONS: Record<'assign' | 'deactivate' | 'reactivate', string[]> = {
   ],
   deactivate: ['Resigned', 'On extended leave', 'Transferred out of the barangay', 'End of contract', 'No longer active in the field'],
   reactivate: ['Returned from leave', 'Rehired', 'Reinstated after review'],
+  password: ['Forgot their password', 'Password may have been seen by someone else'],
 };
 
 const OTHER = 'Other';
 
-/** One dialog for both mutations: a reason, plus a purok when it is an assignment. */
+/** One dialog for every account action: a reason, plus a purok or a new password when the action needs one. */
 function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFormProps) {
   const { kind, account } = pending;
   const deactivating = account.profile.is_active;
   const [purokId, setPurokId] = useState('');
+  const [password, setPassword] = useState('');
   const [choice, setChoice] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const offered = REASONS[kind === 'assign' ? 'assign' : deactivating ? 'deactivate' : 'reactivate'];
+  const offered = REASONS[kind === 'active' ? (deactivating ? 'deactivate' : 'reactivate') : kind];
   // The audit trail takes one string either way: the picked reason, or what was typed under "Other".
   const recorded = choice === OTHER ? reason : choice;
 
   const title =
     kind === 'assign'
       ? `Assign ${account.profile.full_name} to a purok`
-      : `${deactivating ? 'Deactivate' : 'Reactivate'} ${account.profile.full_name}`;
+      : kind === 'password'
+        ? `Reset the password for ${account.profile.full_name}`
+        : `${deactivating ? 'Deactivate' : 'Reactivate'} ${account.profile.full_name}`;
 
   // Submit is withheld rather than validated on click, so the missing reason (and
-  // purok, on an assignment) shows before the round trip.
-  const ready = recorded.trim().length > 0 && (kind !== 'assign' || purokId !== '');
+  // purok or password) shows before the round trip.
+  const ready =
+    recorded.trim().length > 0 && (kind !== 'assign' || purokId !== '') && (kind !== 'password' || password.length >= 8);
 
   async function submit() {
     setBusy(true);
@@ -439,6 +448,8 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
     try {
       if (kind === 'assign') {
         await assignBhwToPurok(account.profile.user_id, purokId, recorded.trim());
+      } else if (kind === 'password') {
+        await resetAccountPassword(account.profile.user_id, password, recorded.trim());
       } else {
         await setProfileActive(account.profile.user_id, !deactivating, recorded.trim());
       }
@@ -455,7 +466,9 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
       <p className="muted">
         {kind === 'assign'
           ? 'A BHW reads and writes field records for one purok at a time. Assigning a new purok ends the current assignment.'
-          : deactivating
+          : kind === 'password'
+            ? 'The old password stops working. Hand the new one to the person directly. Records waiting on their phone are not affected.'
+            : deactivating
             ? 'A deactivated account can still sign in, but every RLS helper starts from an active profile — so it reads nothing and writes nothing.'
             : 'The account regains the access its role and purok assignment allow.'}
       </p>
@@ -469,6 +482,17 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
             </option>
           ))}
         </SelectField>
+      ) : null}
+
+      {kind === 'password' ? (
+        <FormField
+          label="New password"
+          type="text"
+          autoComplete="off"
+          hint="At least 8 characters. It is shown here so it can be written down and handed over."
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
       ) : null}
 
       <SelectField
@@ -505,7 +529,15 @@ function AccountActionForm({ pending, puroks, onClose, onDone }: AccountActionFo
             reads the same for an assignment and for cutting an account off from
             every field record it can reach. */}
         <Button variant={kind === 'active' && deactivating ? 'danger' : 'primary'} onClick={() => void submit()} disabled={!ready || busy}>
-          {busy ? 'Applying…' : kind === 'assign' ? 'Assign purok' : deactivating ? 'Deactivate account' : 'Reactivate account'}
+          {busy
+            ? 'Applying…'
+            : kind === 'assign'
+              ? 'Assign purok'
+              : kind === 'password'
+                ? 'Reset password'
+                : deactivating
+                  ? 'Deactivate account'
+                  : 'Reactivate account'}
         </Button>
       </div>
     </Modal>

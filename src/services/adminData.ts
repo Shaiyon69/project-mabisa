@@ -1034,6 +1034,15 @@ export async function createAccount(input: {
   }
 }
 
+/** A new password for an account this session manages, through the `reset-password` function. */
+export async function resetAccountPassword(userId: string, password: string, reason: string): Promise<void> {
+  const { error } = await supabase.functions.invoke('reset-password', { body: { userId, password, reason } });
+
+  if (error) {
+    throw new Error(await functionFailure(error));
+  }
+}
+
 /**
  * Why the function refused. `invoke` reports only that the call was not a 2xx and
  * leaves the reason in the response it hangs off the error.
