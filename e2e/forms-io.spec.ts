@@ -351,5 +351,7 @@ test.describe('what comes back out', () => {
 
     await shot(page, info, screen + ' residents list');
     save(screen);
+
+    expect(listed, 'the resident just saved should appear on the Residents screen').toBeGreaterThan(0);
   });
 });
