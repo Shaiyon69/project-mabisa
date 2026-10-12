@@ -391,6 +391,9 @@ const SNAPSHOT_TTL_MS = 5 * 60_000;
  */
 let snapshotCache: { key: string; at: number; rows: Promise<Awaited<ReturnType<typeof readSnapshotRows>>> } | null = null;
 
+/** One `unscoped` per cached read, so a memo keyed on it holds while a filter change re-narrows the same rows. */
+const unscopedByRead = new WeakMap<object, BarangayRollup>();
+
 /**
  * Drops the cached read so the next caller reaches Supabase. `refresh()` in
  * `useAdminData` calls this, which is what keeps the 60s poll, the
@@ -443,9 +446,17 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
 
   const [{ barangays, puroks, sessionBarangayId, barangayLabel }, households, individuals, assessments, disbursements, inventory, allocations] =
     rows;
-  // Active members only: someone who moved out or died is still on file, but
-  // is not counted in the resident-facing demographics.
-  const residents = individuals.filter((resident) => resident.status === 'active');
+  let unscoped = unscopedByRead.get(rows);
+
+  if (!unscoped) {
+    // Active members only: someone who moved out or died is still on file, but
+    // is not counted in the resident-facing demographics.
+    const active = individuals.filter((resident) => resident.status === 'active');
+    unscoped = { barangays, households, residents: active, everyResident: individuals, assessments, disbursements };
+    unscopedByRead.set(rows, unscoped);
+  }
+
+  const { residents } = unscoped;
 
   // Narrow to the selected barangay and purok. Both reach everything below
   // through the household, the only table carrying `barangay_id`.
@@ -481,7 +492,7 @@ export async function fetchAdminSnapshot(filters: AdminFilters): Promise<AdminSn
     disbursements: disbursementRows,
     inventoryItems: inventoryRows,
     allocations: allocationRows,
-    unscoped: { barangays, households, residents, everyResident: individuals, assessments, disbursements },
+    unscoped,
     sessionBarangayId,
     barangayLabel,
     fetchedAt: new Date().toISOString(),
@@ -1028,6 +1039,15 @@ export async function createAccount(input: {
   barangayId: string | null;
 }): Promise<void> {
   const { error } = await supabase.functions.invoke('create-account', { body: input });
+
+  if (error) {
+    throw new Error(await functionFailure(error));
+  }
+}
+
+/** A new password for an account this session manages, through the `reset-password` function. */
+export async function resetAccountPassword(userId: string, password: string, reason: string): Promise<void> {
+  const { error } = await supabase.functions.invoke('reset-password', { body: { userId, password, reason } });
 
   if (error) {
     throw new Error(await functionFailure(error));

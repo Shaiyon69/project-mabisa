@@ -754,6 +754,8 @@ describe('fetchAdminSnapshot purok narrowing', () => {
     // Cached rows, but not a cached answer — the narrowing still ran.
     expect(all.residents.map((row) => row.resident_id)).toEqual(['r1', 'r2']);
     expect(narrowed.residents.map((row) => row.resident_id)).toEqual(['r1']);
+    // Same identity, so the analytics memos keyed on it skip the re-walk.
+    expect(narrowed.unscoped).toBe(all.unscoped);
   });
 
   it('reads again for another period, and after an invalidation', async () => {
