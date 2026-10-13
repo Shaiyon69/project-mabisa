@@ -3,7 +3,7 @@ export type Theme = 'light' | 'dark';
 const STORAGE_KEY = 'mabisa.theme';
 
 /**
- * The stored choice, or the one the device asks for. Called from `main.tsx`
+ * The stored choice, or light: the device's dark setting is ignored on purpose. Called from `main.tsx`
  * before the first render, outside React and so outside the error boundary —
  * which is why every access here is guarded: a WebView with site data blocked
  * throws on `localStorage`, and an unguarded throw there is a blank app.
@@ -18,19 +18,10 @@ export function readTheme(): Theme {
       return stored;
     }
   } catch {
-    // Storage unavailable — fall through to what the device asks for.
+    // Storage unavailable — fall through to light.
   }
 
-  return prefersDark() ? 'dark' : 'light';
-}
-
-/** What the phone's own display setting asks for, when nobody has chosen here. */
-function prefersDark(): boolean {
-  try {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  } catch {
-    return false;
-  }
+  return 'light';
 }
 
 export function storeTheme(theme: Theme): void {
