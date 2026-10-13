@@ -22,68 +22,27 @@
     -->
     <style>
       :root {
-        --bg: #f7f9f4; --panel: #ffffff; --line: #dfe6da; --soft: #eaf3e8;
+        color-scheme: light;
+        --bg: #f7f9f4; --panel: #ffffff; --line: #dfe6da;
         --text-h: #1b3a2b; --text: #34483c; --muted: #56675b;
         --primary: #2e7d32; --on-primary: #ffffff;
         --warn-bg: #fff6e0; --warn-line: #f0d48a;
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #101712; --panel: #18221b; --line: #2a3a2e; --soft: #1f2d22;
-          --text-h: #e3efe5; --text: #c5d4c8; --muted: #93a596;
-          --primary: #66bb6a; --on-primary: #0c1a0e;
-          --warn-bg: #2a2412; --warn-line: #5c4a1c;
-        }
-      }
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
-      /* Phones get full-bleed sections with no side gutter; wider screens fill the width
-         with as many columns as fit instead of a narrow centred strip. */
-      main { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 0.75rem; max-width: 90rem; margin: 0 auto; padding: 0.75rem; align-items: start; }
-      .wide { grid-column: 1 / -1; }
-      /* The two short sections share a column so they stack instead of leaving a hole
-         beside the long ones. */
-      /* Below desktop width the stack dissolves and the sections fall back to reading
-         order: install, first time, using, problems. */
-      .stack { display: contents; }
-      #install { order: 1; } #first { order: 2; } #use { order: 3; } #help { order: 4; } .again, footer { order: 5; }
-      /* Three columns on a desktop, where the hero's button is already in view, so the
-         repeat at the bottom is for smaller screens only. */
-      @media (min-width: 64rem) {
-        main { grid-template-columns: repeat(3, 1fr); }
-        .stack { display: grid; gap: inherit; align-content: start; order: 2; }
-        #use { order: 3; }
-        .again { display: none; }
-      }
-      section { background: var(--panel); border: 1px solid var(--line); border-radius: 0.75rem; padding: 1rem; }
-      @media (max-width: 40rem) {
-        main { padding: 0 0 1rem; gap: 0.5rem; }
-        section { border-radius: 0; border-left: 0; border-right: 0; padding: 0.875rem; }
-      }
-      .hero { display: grid; gap: 0.75rem; text-align: center; }
-      .hero-head { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+      main { display: grid; gap: 0.75rem; max-width: 40rem; margin: 0 auto; padding: 1rem; }
+      section { background: var(--panel); border: 1px solid var(--line); border-radius: 0.75rem; padding: 1.25rem; }
+      .hero { text-align: center; }
       .hero img { width: 72px; height: 72px; }
-      @media (min-width: 48rem) {
-        .hero { grid-template-columns: 1fr minmax(18rem, 24rem); align-items: center; text-align: left; gap: 1.5rem; }
-        .hero-head { flex-direction: row; align-items: center; gap: 1rem; }
-        .hero .jump { justify-content: flex-start; }
-      }
-      h1 { color: var(--text-h); font-size: clamp(1.3rem, 1rem + 1.5vw, 1.75rem); line-height: 1.2; margin: 0; }
-      h2 { color: var(--text-h); font-size: 1.2rem; margin: 0 0 0.5rem; }
+      h1 { color: var(--text-h); font-size: clamp(1.3rem, 1rem + 1.5vw, 1.75rem); line-height: 1.2; margin: 0.5rem 0; }
+      h2 { color: var(--text-h); font-size: 1.2rem; margin: 0 0 0.75rem; }
       h3 { color: var(--text-h); font-size: 1rem; margin: 0; }
       p { margin: 0 0 0.5rem; }
       p:last-child { margin-bottom: 0; }
-      .lead { font-size: 1.05rem; margin: 0.5rem 0; }
-      .button { display: block; background: var(--primary); color: var(--on-primary); text-decoration: none; font-weight: 700; padding: 0.9rem; border-radius: 0.6rem; font-size: 1.15rem; text-align: center; }
-      .meta { color: var(--muted); font-size: 0.9rem; margin: 0.35rem 0 0; min-height: 1.35em; text-align: center; }
-      .note { color: var(--muted); font-size: 0.9rem; text-align: center; }
-      .notice { border: 1px dashed var(--line); border-radius: 0.6rem; padding: 0.75rem; }
-      .jump { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; justify-content: center; }
-      .jump a { color: var(--primary); font-weight: 600; font-size: 0.9rem; }
-      .features { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0.5rem; }
-      .features li { display: flex; gap: 0.6rem; align-items: flex-start; background: var(--soft); border-radius: 0.6rem; padding: 0.6rem; }
-      .icon { font-size: 1.4rem; line-height: 1; flex: none; }
-      .features p { margin: 0; font-size: 0.95rem; }
+      .button { display: block; background: var(--primary); color: var(--on-primary); text-decoration: none; font-weight: 700; padding: 0.9rem; border-radius: 0.6rem; font-size: 1.15rem; text-align: center; margin-top: 1rem; }
+      .meta { color: var(--muted); font-size: 0.9rem; margin: 0.35rem 0 0; min-height: 1.35em; }
+      .note { color: var(--muted); font-size: 0.9rem; }
+      .notice { border: 1px dashed var(--line); border-radius: 0.6rem; padding: 0.75rem; margin-top: 1rem; }
       ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
       ol.steps > li { counter-increment: step; position: relative; padding: 0 0 0.75rem 2.4rem; }
       ol.steps > li:last-child { padding-bottom: 0; }
@@ -91,128 +50,56 @@
       ol.steps p { margin: 0.1rem 0 0; }
       .say { font-weight: 700; color: var(--text-h); }
       .tip { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 0.6rem; padding: 0.5rem 0.65rem; margin-top: 0.35rem; font-size: 0.95rem; }
-      table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin-bottom: 0.75rem; }
-      th, td { text-align: left; padding: 0.4rem 0.3rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-      th { color: var(--text-h); white-space: nowrap; }
       details { border-top: 1px solid var(--line); padding: 0.55rem 0; }
       details:first-of-type { border-top: 0; padding-top: 0; }
       summary { cursor: pointer; font-weight: 600; color: var(--text-h); }
       details p { margin: 0.35rem 0 0; }
-      footer { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 0 0.875rem; }
+      footer { text-align: center; color: var(--muted); font-size: 0.9rem; }
+      @media (max-width: 40rem) {
+        main { padding: 0 0 1rem; }
+        section { border-radius: 0; border-left: 0; border-right: 0; padding: 1rem; }
+      }
       [hidden] { display: none !important; }
     </style>
   </head>
   <body>
     <main>
-      <section class="hero wide">
-        <div>
-          <div class="hero-head">
-            <img src="/assets/logo.png" alt="" />
-            <h1>BRHP-MSAM for Barangay Health Workers</h1>
-          </div>
-          <p class="lead">Record your house visits, health checks, vaccines and supplies on your phone — even where there is no signal.</p>
-          <nav class="jump" aria-label="On this page">
-            <a href="#what">What it does</a>
-            <a href="#install">How to install</a>
-            <a href="#first">First time</a>
-            <a href="#use">Using it</a>
-            <a href="#help">Problems?</a>
-          </nav>
-        </div>
-        <div>
-          <a class="button download" href="https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk">Download the app</a>
-          <p class="meta"></p>
-          <p class="none notice" hidden>The app is not available yet. Check back later, or ask your health office.</p>
-          <p class="note">For Android phones only. It is free. It does not work on iPhone.</p>
-        </div>
-      </section>
-
-      <section id="what" class="wide">
-        <h2>What the app does</h2>
-        <ul class="features">
-          <li><span class="icon" aria-hidden="true">🏠</span><div><h3>Households and residents</h3><p>Add each house you visit and the people who live there.</p></div></li>
-          <li><span class="icon" aria-hidden="true">❤️</span><div><h3>Health checks</h3><p>Write down blood pressure, weight, temperature and illness.</p></div></li>
-          <li><span class="icon" aria-hidden="true">💉</span><div><h3>Vaccines</h3><p>Keep a record of each vaccine dose given.</p></div></li>
-          <li><span class="icon" aria-hidden="true">📦</span><div><h3>Supplies</h3><p>Note the medicine and supplies you give to residents.</p></div></li>
-          <li><span class="icon" aria-hidden="true">📶</span><div><h3>Works with no signal</h3><p>Everything saves on your phone. It is sent to your health office by itself once you have signal again.</p></div></li>
-        </ul>
+      <section class="hero">
+        <img src="/assets/logo.png" alt="" />
+        <h1>BRHP-MSAM for Barangay Health Workers</h1>
+        <p>Record house visits, health checks, vaccines and supplies on your phone, even with no signal.</p>
+        <a class="button download" href="https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk">Download the app</a>
+        <p class="meta"></p>
+        <p class="none notice" hidden>The app is not available yet. Check back later, or ask your health office.</p>
+        <p class="note">Android phones only. Free. Not for iPhone.</p>
       </section>
 
       <section id="install">
         <h2>How to install</h2>
-        <p>You only need to do this once. Use mobile data or Wi-Fi. The download is about 25 MB, so Wi-Fi is best.</p>
         <ol class="steps">
           <li>
-            <h3>Tap the green button</h3>
-            <p>Tap <span class="say">Download the app</span> above.</p>
-            <div class="tip">Your phone may warn <span class="say">"File might be harmful"</span>. This is normal for apps not from the Play Store. Tap <span class="say">Download anyway</span>.</div>
+            <h3>Download</h3>
+            <p>Tap <span class="say">Download the app</span> above. If your phone says <span class="say">"File might be harmful"</span>, tap <span class="say">Download anyway</span>.</p>
           </li>
           <li>
             <h3>Open the file</h3>
-            <p>When the download finishes, tap <span class="say">Open</span> at the bottom of the screen. If you missed it, pull down from the top of the screen and tap the file <span class="say">app-release.apk</span>.</p>
+            <p>Tap <span class="say">Open</span> when it finishes, or pull down from the top and tap <span class="say">app-release.apk</span>.</p>
           </li>
           <li>
-            <h3>Allow the install</h3>
-            <p>The first time, your phone may say it cannot install apps from this source. Tap <span class="say">Settings</span>, turn on <span class="say">Allow from this source</span>, then press the back button.</p>
-          </li>
-          <li>
-            <h3>Tap Install</h3>
-            <p>Tap <span class="say">Install</span> and wait a few seconds.</p>
-            <div class="tip">If Google Play Protect shows a warning, tap <span class="say">More details</span>, then <span class="say">Install anyway</span>.</div>
+            <h3>Allow and install</h3>
+            <p>If asked, tap <span class="say">Settings</span>, turn on <span class="say">Allow from this source</span>, and go back. Then tap <span class="say">Install</span>.</p>
+            <div class="tip">If Google Play Protect warns you, tap <span class="say">More details</span>, then <span class="say">Install anyway</span>.</div>
           </li>
           <li>
             <h3>Open the app</h3>
-            <p>Tap <span class="say">Open</span>. Next time, find <span class="say">BRHP-MSAM</span> with the green logo on your home screen or app list.</p>
+            <p>Look for <span class="say">BRHP-MSAM</span> with the green logo.</p>
           </li>
         </ol>
       </section>
 
-      <section id="use">
-        <h2>Using the app</h2>
-        <p>Use the buttons at the bottom of the screen:</p>
-        <table>
-          <tbody>
-            <tr><th>Home</th><td>See your recent work and whether your records were sent.</td></tr>
-            <tr><th>Residents</th><td>Add a new household, or find a person already recorded.</td></tr>
-            <tr><th>Health</th><td>Record a health check or a vaccine for a resident.</td></tr>
-            <tr><th>Supply</th><td>Record medicine or supplies you gave out.</td></tr>
-            <tr><th>Profile</th><td>See your account, change dark or light screen, or log out.</td></tr>
-          </tbody>
-        </table>
-
-        <h3>Were my records sent?</h3>
-        <p>Look at the bar at the top of the app:</p>
-        <table>
-          <tbody>
-            <tr><th>All records sent</th><td>Everything reached your health office.</td></tr>
-            <tr><th>No signal</th><td>Records are safe on your phone. They will be sent when you have signal.</td></tr>
-            <tr><th>Waiting to send</th><td>Sending soon. Keep the app open with signal for a moment.</td></tr>
-            <tr><th>Could not send</th><td>Open <span class="say">Home</span> and follow what it says there.</td></tr>
-          </tbody>
-        </table>
-
-        <h3>Updates</h3>
-        <p>When a new version is ready, a bar at the top says <span class="say">Update is ready</span>. Tap <span class="say">Install</span> and follow steps 2 to 5 above. Your records stay on your phone. If it says <span class="say">Update needed to sync</span>, install it soon — your records will not be sent until you do.</p>
-      </section>
-
-      <div class="stack">
-        <section id="first">
+      <section id="first">
         <h2>The first time you open it</h2>
-        <p>You need signal for this part only.</p>
-        <ol class="steps">
-          <li>
-            <h3>Sign in</h3>
-            <p>Type the <span class="say">email</span> and <span class="say">password</span> your health office gave you. No account yet? Ask your health office — you cannot make one yourself.</p>
-          </li>
-          <li>
-            <h3>Choose a 4-digit PIN</h3>
-            <p>Pick 4 numbers you will remember, then type them again. Do not share your PIN.</p>
-          </li>
-          <li>
-            <h3>Done</h3>
-            <p>From now on you only type your PIN to open the app, even with no signal.</p>
-          </li>
-        </ol>
+        <p>You need signal for this part only. Sign in with the email and password from your health office, then choose a 4-digit PIN. After that, you only type your PIN to open the app.</p>
       </section>
 
       <section id="help">
@@ -226,26 +113,20 @@
           <p>On the sign-in screen, tap <span class="say">I forgot my password</span>. If you do not see it, ask your health office to reset it.</p>
         </details>
         <details>
+          <summary>Were my records sent?</summary>
+          <p>Look at the bar at the top of the app. <span class="say">All records sent</span> means they reached your health office. <span class="say">No signal</span> or <span class="say">Waiting to send</span> means they are safe on your phone and will be sent when you have signal. <span class="say">Could not send</span>: open <span class="say">Home</span> and follow what it says.</p>
+        </details>
+        <details>
+          <summary>How do I update the app?</summary>
+          <p>When a bar says <span class="say">Update is ready</span>, tap <span class="say">Install</span> and follow steps 2 to 3 above. Do not uninstall first: that deletes records not yet sent. If it says <span class="say">Update needed to sync</span>, install it soon, or your records will not be sent.</p>
+        </details>
+        <details>
           <summary>The download or install does not work</summary>
-          <p>Check that you have signal and enough free space, then try again from step 1. Use the Chrome browser if another browser fails. If it still does not work, show this page to your health office.</p>
-        </details>
-        <details>
-          <summary>I have an iPhone</summary>
-          <p>The app only works on Android phones. Ask your health office about a phone you can use.</p>
-        </details>
-        <details>
-          <summary>Should I uninstall the app to update it?</summary>
-          <p>No. Uninstalling deletes records that were not sent yet. Just install the new version on top of the old one.</p>
+          <p>Check that you have signal and free space, then try again. Use Chrome if another browser fails. If it still fails, show this page to your health office.</p>
         </details>
       </section>
-      </div>
 
-      <section class="wide again">
-        <a class="button download" href="https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk">Download the app</a>
-        <p class="meta"></p>
-      </section>
-
-      <footer class="wide">Still stuck? Ask your barangay or municipal health office.</footer>
+      <footer>Still stuck? Ask your barangay or municipal health office.</footer>
     </main>
     <script>
       // The same endpoint the app's update check reads (src/services/appUpdate.ts), so the
