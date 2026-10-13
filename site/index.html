@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Download the BRHP-MSAM Android app for Barangay Health Workers, with step-by-step help to install and use it." />
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Download BRHP-MSAM</title>
     <!--
-      Served from GitHub Pages by .github/workflows/pages.yml, which copies the logo and
-      favicon in from public/ so there is one copy of each. Paths are relative because a
-      project site lives under /project-mabisa/, not at the domain root.
+      Served from Vercel at /download: the buildCommand in vercel.json copies this file into
+      dist-admin/download/. The logo and favicon come from public/ via the admin build, so
+      their paths are absolute (relative ones break at /download without a trailing slash).
 
       Readers are health workers, not phone experts: short sentences, one action per step,
       and the exact words they will see on screen in quotes. When a screen's wording
@@ -107,7 +107,7 @@
       <section class="hero wide">
         <div>
           <div class="hero-head">
-            <img src="logo.png" alt="" />
+            <img src="/assets/logo.png" alt="" />
             <h1>BRHP-MSAM for Barangay Health Workers</h1>
           </div>
           <p class="lead">Record your house visits, health checks, vaccines and supplies on your phone — even where there is no signal.</p>
