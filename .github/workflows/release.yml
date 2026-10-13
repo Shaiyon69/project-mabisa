@@ -28,16 +28,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    # The run number only grows, so every release is newer than the last. versionName is
-    # what an installed app compares against the release tag, and the tag is built from
-    # it, so the two cannot disagree. versionCode starts above the 2 of earlier builds.
-    env:
-      VERSION_NAME: 1.1.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
-      # Expressions have no arithmetic, so the offset is added in the shell.
-      - run: echo "VERSION_CODE=$(( ${{ github.run_number }} + 10 ))" >> "$GITHUB_ENV"
+      # Versions are MAJOR.MINOR.PATCH. MAJOR.MINOR comes from android/app-version.txt and
+      # is bumped by hand: MAJOR for big changes, MINOR for smaller ones. PATCH is one past
+      # the highest published vMAJOR.MINOR.* tag, so it restarts at 0 after a bump and a
+      # failed run leaves its number for the next. versionName is what an installed app
+      # compares against the release tag, and the tag is built from it, so the two cannot
+      # disagree. versionCode only has to grow, which the run number does; the offset
+      # keeps it above the 2 of earlier builds.
+      - name: Version
+        run: |
+          base=$(tr -d '[:space:]' < android/app-version.txt)
+          last=$(git ls-remote --tags origin "refs/tags/v$base.*" \
+            | sed -E "s#.*refs/tags/v$base\.##" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          echo "VERSION_NAME=$base.$(( ${last:--1} + 1 ))" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(( ${{ github.run_number }} + 10 ))" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:

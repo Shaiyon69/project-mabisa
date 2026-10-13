@@ -11,8 +11,44 @@
 }
 
 .auth-shell {
-  width: min(100%, 500px);
+  width: min(100%, 560px);
   justify-content: center;
+}
+
+.auth-shell .login-panel {
+  gap: 28px;
+  padding: 36px 32px;
+}
+
+.login-hero {
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+
+.login-hero .brand-mark {
+  width: 84px;
+  height: 84px;
+}
+
+.login-hero h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.login-panel form.stack {
+  gap: 18px;
+}
+
+.login-panel form input:not([type='checkbox']) {
+  min-height: 52px;
+  font-size: 16px;
+}
+
+.login-panel form .muted {
+  text-align: center;
+  line-height: 1.5;
 }
 
 .app-layout {
@@ -1884,6 +1920,10 @@ td,
   .login-panel,
   .screen-panel {
     padding: 17px;
+  }
+
+  .auth-shell .login-panel {
+    padding: 28px 20px;
   }
 
   .field-row,
