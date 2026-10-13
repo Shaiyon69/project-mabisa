@@ -141,8 +141,7 @@ values in `android/app/build.gradle` are only the defaults for a local build.
 
 BHWs install from the download page at <https://brhp-msam.vercel.app/download>.
 Its source is `site/index.html`; the `buildCommand` in `vercel.json` copies it into the
-admin build. The old GitHub Pages address (<https://shaiyon69.github.io/project-mabisa/>)
-only redirects there, via `.github/workflows/pages.yml`. The page links to
+admin build. The page links to
 `https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk`,
 which always resolves to the newest release, so it never needs editing for a new build.
 When it can reach the GitHub API it also shows the version, size and date, and says the
