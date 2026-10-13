@@ -181,8 +181,7 @@ export function LoginPage({
                 }}
               >
                 Terms and Conditions
-              </button>{' '}
-              and Privacy Notice under the Data Privacy Act of 2012.
+              </button>
             </span>
           </label>
 
