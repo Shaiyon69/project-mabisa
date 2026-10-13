@@ -14,7 +14,7 @@ The system was previously called MABISA. The rename covers what people read — 
 - Capacitor Community SQLite for device-local storage
 - Capacitor Network for connection restoration events
 - Supabase (hosted) for authentication, the central PostgreSQL database and one Edge Function
-- Vitest for unit tests, Playwright for end-to-end tests
+- Vitest for unit tests
 
 ## Application Surfaces
 
@@ -53,11 +53,8 @@ Check, test and build:
 npx tsc -b          # type-check
 npm run lint
 npm test            # unit tests
-npm run test:e2e    # Playwright; starts its own dev server
 npm run build
 ```
-
-`npm run test:e2e` needs Chromium once: `npx playwright install chromium`.
 
 ## Web Deployment
 
@@ -144,8 +141,7 @@ values in `android/app/build.gradle` are only the defaults for a local build.
 
 BHWs install from the download page at <https://brhp-msam.vercel.app/download>.
 Its source is `site/index.html`; the `buildCommand` in `vercel.json` copies it into the
-admin build. The old GitHub Pages address (<https://shaiyon69.github.io/project-mabisa/>)
-only redirects there, via `.github/workflows/pages.yml`. The page links to
+admin build. The page links to
 `https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk`,
 which always resolves to the newest release, so it never needs editing for a new build.
 When it can reach the GitHub API it also shows the version, size and date, and says the
@@ -259,21 +255,7 @@ A BHW cannot save a household until they have an active purok assignment.
 
 ## Supabase Schema
 
-The migrations are applied to the Supabase project directly. `database/` keeps the SQL
-alongside the code:
-
-```text
-database/barangay_roles.sql                barangays, puroks, the three roles, scoping and stock
-database/health_assessment_extensions.sql  vitals on health checks
-database/immunizations.sql                 the vaccination log
-database/server_paging.sql                 views and RPC behind the portal's paged tables
-database/drop_legacy_users.sql             removal of the pre-profiles role model
-database/terms_acceptances.sql             who agreed to which privacy terms (not yet applied)
-database/rls_initplan.sql                  RLS helpers checked once per query
-database/fuzzy_search.sql                  typo-tolerant admin search
-```
-
-`barangay_roles.sql` is the file to read before touching a policy.
+The schema and migrations live in the Supabase project and are not kept in this repository.
 
 The field tables are `households`, `individuals`, `health_assessments`, `immunizations`,
 `inventory_items` and `supply_disbursements`; the access model adds `profiles`,
@@ -312,8 +294,6 @@ src/services/       localDatabase.ts (SQLite), syncService.ts (queue replay), ad
 src/hooks/          useAdminData, useServerPage, useBackgroundSync, useDeviceLock, useAppUpdate
 src/lib/            supabase.ts client, utils.ts, charts.ts, theme.ts and device helpers
 src/types/          database.ts row shapes
-database/           schema SQL and the demo seed
-e2e/                Playwright specs
 public/             logo, favicon and the SQLite wasm for the web build
 android/            generated native project, committed
 ```

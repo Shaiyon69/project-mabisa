@@ -53,8 +53,8 @@ CLAUDE.local.md
 # Local UI audit output (screenshots + findings) — never committed.
 /ui-report
 
-# Exploratory e2e sweeps and the demo-data wipe script — local tools, not part of the repo.
-/e2e/deep-probe.spec.ts
-/e2e/ui-audit.spec.ts
-/e2e/live-backend.spec.ts
-/database/seed_demo_data.sql
+# Database SQL and end-to-end tests are local only.
+/database/
+/e2e/
+/playwright.config.ts
+/recovery_admin.txt
