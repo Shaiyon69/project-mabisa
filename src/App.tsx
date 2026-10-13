@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import './App.css';
 import { AppRoutes, SurfaceNotice } from './app/AppRoutes';
@@ -15,6 +15,9 @@ import { clearPin } from './lib/devicePin';
 import { buildsBhw } from './app/surface';
 import { logDev } from './lib/utils';
 import { isDeskRole, isUserRole, type UserRole } from './types/database';
+
+// Clears a hand-typed path like /admin/accounts; search and hash stay for auth links.
+window.history.replaceState(null, '', `/${window.location.search}${window.location.hash}`);
 
 type LoginState = {
   email: string;
@@ -431,7 +434,9 @@ export function App() {
   const routes = <AppRoutes logout={handleLogout} role={role} roleChecked={roleChecked} fullName={fullName} />;
 
   return (
-    <BrowserRouter>
+    // In-memory routing keeps the address bar at the bare domain on every screen.
+    // shortcut: refresh returns to the dashboard and back/forward skip tabs, switch back to BrowserRouter if deep links are needed.
+    <MemoryRouter>
       {runsOfflineEngine ? (
         <Suspense fallback={<SurfaceNotice title="Starting up" body="One moment." />}>
           <MabisaDataProvider bhwId={bhwId}>{routes}</MabisaDataProvider>
@@ -439,6 +444,6 @@ export function App() {
       ) : (
         routes
       )}
-    </BrowserRouter>
+    </MemoryRouter>
   );
 }
