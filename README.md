@@ -66,7 +66,7 @@ APK. `vercel.json` at the repo root pins the build to the admin surface:
 
 ```json
 {
-  "buildCommand": "npm run build:admin",
+  "buildCommand": "npm run build:admin && mkdir -p dist-admin/download && cp site/index.html dist-admin/download/index.html",
   "outputDirectory": "dist-admin",
   "cleanUrls": true,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
@@ -142,10 +142,10 @@ values in `android/app/build.gradle` are only the defaults for a local build.
 
 ### First install
 
-BHWs install from the download page at <https://shaiyon69.github.io/project-mabisa/>.
-Its source is `site/index.html`, and `.github/workflows/pages.yml` publishes it to GitHub
-Pages when it changes (Pages must be set to deploy from GitHub Actions under Settings →
-Pages). The page links to
+BHWs install from the download page at <https://brhp-msam.vercel.app/download>.
+Its source is `site/index.html`; the `buildCommand` in `vercel.json` copies it into the
+admin build. The old GitHub Pages address (<https://shaiyon69.github.io/project-mabisa/>)
+only redirects there, via `.github/workflows/pages.yml`. The page links to
 `https://github.com/Shaiyon69/project-mabisa/releases/latest/download/app-release.apk`,
 which always resolves to the newest release, so it never needs editing for a new build.
 When it can reach the GitHub API it also shows the version, size and date, and says the

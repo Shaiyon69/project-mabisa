@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build:admin",
+  "buildCommand": "npm run build:admin && mkdir -p dist-admin/download && cp site/index.html dist-admin/download/index.html",
   "outputDirectory": "dist-admin",
   "cleanUrls": true,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
