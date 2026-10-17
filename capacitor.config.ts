@@ -14,6 +14,11 @@ const config: CapacitorConfig = {
   appId: 'ph.mabisa.app',
   appName: 'BRHP-MSAM',
   webDir: 'dist',
+  android: {
+    // Android 15 draws apps edge-to-edge and the WebView reports no safe-area insets,
+    // so without this the header sits under the status bar.
+    adjustMarginsForEdgeToEdge: 'force',
+  },
   plugins: {
     CapacitorSQLite: {
       // Native Android keeps the database on the filesystem, so none of the web

@@ -364,8 +364,9 @@ export async function initializeLocalDatabase(): Promise<SQLiteDBConnection> {
 
 /**
  * Which SQLCipher mode to open with: web has no keystore (`no-encryption`), a
- * native device with no secret yet encrypts in place (`encryption`, once),
- * otherwise `secret`.
+ * native device with no secret yet converts an existing plaintext file in place
+ * (`encryption`, once), otherwise `secret`. `encryption` throws "not found" when
+ * there is no file to convert, so a fresh install must open with `secret`.
  */
 async function prepareEncryption(): Promise<'no-encryption' | 'encryption' | 'secret'> {
   if (isWebPlatform) {
@@ -379,8 +380,9 @@ async function prepareEncryption(): Promise<'no-encryption' | 'encryption' | 'se
   }
 
   await sqlite.setEncryptionSecret(generateDatabasePassphrase());
+  const plaintext = await sqlite.isDatabase('mabisa_local');
   logDev('Local database encrypted for the first time on this device');
-  return 'encryption';
+  return plaintext.result ? 'encryption' : 'secret';
 }
 
 async function openLocalDatabase(): Promise<SQLiteDBConnection> {
@@ -421,7 +423,13 @@ async function openLocalDatabase(): Promise<SQLiteDBConnection> {
       );
 
   if (!(await database.isDBOpen()).result) {
-    await database.open();
+    try {
+      await database.open();
+    } catch (error) {
+      // A failed open leaves the connection registered; drop it so a retry starts clean.
+      await sqlite.closeConnection('mabisa_local', false).catch(() => undefined);
+      throw error;
+    }
   }
   await database.execute('pragma foreign_keys = on');
 
