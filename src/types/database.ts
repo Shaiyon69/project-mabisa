@@ -144,6 +144,8 @@ export type Individual = {
   // are absent on a resident read straight from `individuals`.
   household_number?: string;
   barangay_name?: string;
+  // The household's purok, as an id: `resident_rows` carries no purok name.
+  purok_id?: string | null;
   first_name: string;
   middle_name?: string;
   last_name: string;

@@ -583,7 +583,8 @@ describe('residentHealthRows', () => {
   it('shows each resident once, named, with their latest check and how many they had', () => {
     const rows = residentHealthRows({
       barangays: [{ barangay_id: 'b1', name: 'Cabugao', code: null, is_active: true, created_at: '', updated_at: '', created_by: null }],
-      households: [{ household_id: 'h1', household_number: 'HH-1', barangay_id: 'b1', updated_at: '' }],
+      puroks: [{ purok_id: 'p1', name: 'Purok 1', code: null, is_active: true, created_at: '', updated_at: '', created_by: 'u1', barangay_id: 'b1' }],
+      households: [{ household_id: 'h1', household_number: 'HH-1', barangay_id: 'b1', purok_id: 'p1', updated_at: '' }],
       people: [
         { resident_id: 'r1', household_id: 'h1', first_name: 'Ana', last_name: 'Santos', sex: 'female', birthday: '2000-01-01' },
         { resident_id: 'r2', household_id: 'h9', first_name: 'Ben', last_name: 'Cruz', sex: 'male', birthday: '1990-01-01' },
@@ -597,8 +598,8 @@ describe('residentHealthRows', () => {
     });
 
     expect(rows.map((row) => row.person.last_name)).toEqual(['Cruz', 'Santos']);
-    expect(rows[0]).toMatchObject({ barangay: 'Unassigned', checks: 1 });
-    expect(rows[1]).toMatchObject({ barangay: 'Cabugao', householdNumber: 'HH-1', checks: 2 });
+    expect(rows[0]).toMatchObject({ barangay: 'Unassigned', purok: 'Unassigned', checks: 1 });
+    expect(rows[1]).toMatchObject({ barangay: 'Cabugao', purok: 'Purok 1', householdNumber: 'HH-1', checks: 2 });
     expect(rows[1].latest.assessment_id).toBe('a2');
   });
 });

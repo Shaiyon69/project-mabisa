@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Individual, NutritionStatus } from '../../types/database';
+import type { Individual, NutritionStatus, Purok } from '../../types/database';
 import { ageInYears, formatDate, titleCase } from '../../lib/utils';
 import {
   FILTER_PARAMS,
@@ -15,7 +15,7 @@ import { ErrorState } from '../common/StateMessage';
 import { Table, TableMeta, TablePager, TableToolbar, type TableColumn, type TableSort } from '../common/Table';
 import { useServerPage } from '../../hooks/useServerPage';
 
-const columns: TableColumn<Individual>[] = [
+const columnsFor = (purokNames: Map<string, string>): TableColumn<Individual>[] => [
   {
     key: 'individual',
     header: 'Individual',
@@ -41,6 +41,12 @@ const columns: TableColumn<Individual>[] = [
     header: 'Household',
     sortBy: 'household_number',
     render: (individual) => individual.household_number || 'Unassigned',
+  },
+  {
+    key: 'purok',
+    header: 'Purok',
+    // Not sortable: the registry view holds the purok id, and an id sorts in no useful order.
+    render: (individual) => purokNames.get(individual.purok_id ?? '') || 'Unassigned',
   },
   {
     key: 'barangay',
@@ -78,10 +84,12 @@ const columns: TableColumn<Individual>[] = [
  */
 type IndividualsTableProps = {
   filters: AdminFilters;
+  puroks: Purok[];
 };
 
-export function IndividualsTable({ filters }: IndividualsTableProps) {
+export function IndividualsTable({ filters, puroks }: IndividualsTableProps) {
   const [params, setParams] = useSearchParams();
+  const columns = useMemo(() => columnsFor(new Map(puroks.map((purok) => [purok.purok_id, purok.name]))), [puroks]);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<TableSort | null>(null);
 

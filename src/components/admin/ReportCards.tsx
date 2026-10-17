@@ -459,6 +459,7 @@ function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'>
   const active = new Set(snapshot.residents.map((resident) => resident.resident_id));
   const households = new Map(snapshot.households.map((household) => [household.household_id, household]));
   const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
+  const puroks = new Map(snapshot.puroks.map((purok) => [purok.purok_id, purok.name]));
   const rows = people
     .filter((person) => active.has(person.resident_id))
     .map((person) => {
@@ -468,6 +469,7 @@ function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'>
         person,
         householdNumber: household?.household_number ?? '',
         barangay: (household?.barangay_id && barangays.get(household.barangay_id)) || 'Unassigned',
+        purok: (household?.purok_id && puroks.get(household.purok_id)) || 'Unassigned',
       };
     })
     .sort(
@@ -488,7 +490,7 @@ function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'>
           ...sexes.map((row) => ({ label: titleCase(row.label), value: row.count })),
         ]}
       />
-      <PrintSection number="01" title="Residents on the register" context="Active residents, by barangay and household number.">
+      <PrintSection number="01" title="Residents on the register" context="Active residents, by barangay, purok and household number.">
         {rows.length ? (
           <table className="pr-table pr-dense">
             <thead>
@@ -499,6 +501,7 @@ function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'>
                 <th className="num">Age</th>
                 <th>Birthday</th>
                 <th>Household</th>
+                <th>Purok</th>
                 <th>Barangay</th>
               </tr>
             </thead>
@@ -513,6 +516,7 @@ function PrintResidents({ snapshot, people }: Pick<ReportCardsProps, 'snapshot'>
                   <td className="num">{ageInYears(row.person.birthday) ?? '—'}</td>
                   <td>{formatDate(row.person.birthday)}</td>
                   <td>{row.householdNumber || '—'}</td>
+                  <td>{row.purok}</td>
                   <td>{row.barangay}</td>
                 </tr>
               ))}
@@ -550,6 +554,7 @@ function PrintHealth({ snapshot, period, people }: PrintProps & PeopleProps) {
                 <th className="num">Age</th>
                 <th>Sex</th>
                 <th>Household</th>
+                <th>Purok</th>
                 <th>Barangay</th>
                 <th>Last check</th>
                 <th className="num">Wt (kg)</th>
@@ -575,6 +580,7 @@ function PrintHealth({ snapshot, period, people }: PrintProps & PeopleProps) {
                   <td className="num">{ageInYears(row.person.birthday) ?? '—'}</td>
                   <td>{titleCase(row.person.sex)}</td>
                   <td>{row.householdNumber || '—'}</td>
+                  <td>{row.purok}</td>
                   <td>{row.barangay}</td>
                   <td>{formatDate(row.latest.assessment_date)}</td>
                   <td className="num">{blank(row.latest.weight)}</td>

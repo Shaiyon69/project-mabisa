@@ -1421,6 +1421,8 @@ export type ResidentHealthRow = {
   person: AdminPerson;
   householdNumber: string;
   barangay: string;
+  /** Unset on rows from `resident_health_page`, which does not return the purok. */
+  purok?: string;
   /** Their most recent check in the period. */
   latest: HealthAssessment;
   checks: number;
@@ -1428,11 +1430,12 @@ export type ResidentHealthRow = {
 
 /** One row per resident checked in the period, by last name. */
 export function residentHealthRows(
-  snapshot: Pick<AdminSnapshot, 'households' | 'barangays' | 'assessments'> & { people: AdminPerson[] },
+  snapshot: Pick<AdminSnapshot, 'households' | 'barangays' | 'puroks' | 'assessments'> & { people: AdminPerson[] },
 ): ResidentHealthRow[] {
   const people = new Map(snapshot.people.map((person) => [person.resident_id, person]));
   const households = new Map(snapshot.households.map((household) => [household.household_id, household]));
   const barangays = new Map(snapshot.barangays.map((barangay) => [barangay.barangay_id, barangay.name]));
+  const puroks = new Map(snapshot.puroks.map((purok) => [purok.purok_id, purok.name]));
   const checks = tally(snapshot.assessments, (assessment) => assessment.resident_id);
   const checkCount = new Map(checks.map((row) => [row.label, row.count]));
 
@@ -1451,6 +1454,7 @@ export function residentHealthRows(
           person,
           householdNumber: household?.household_number ?? '',
           barangay: (household?.barangay_id && barangays.get(household.barangay_id)) || 'Unassigned',
+          purok: (household?.purok_id && puroks.get(household.purok_id)) || 'Unassigned',
           latest,
           checks: checkCount.get(latest.resident_id) ?? 1,
         },
